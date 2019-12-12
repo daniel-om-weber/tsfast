@@ -2,15 +2,20 @@
 
 __all__ = ["index", "modules", "custom_doc_links", "git_url"]
 
-index = {"hdf2sequence": "00_core.ipynb",
+index = {"get_hdf_files": "00_core.ipynb",
+         "hdf_extensions": "00_core.ipynb",
+         "hdf2sequence": "00_core.ipynb",
          "hdf2scalars": "00_core.ipynb",
          "Hdf2SeqSeq": "00_core.ipynb",
          "Hdf2SeqScal": "00_core.ipynb",
+         "Hdf2SeqScalSeq": "00_core.ipynb",
+         "Hdf2SeqScalScal": "00_core.ipynb",
          "SequenceItem": "00_core.ipynb",
          "SeqTfm": "00_core.ipynb",
+         "ParentSplitter": "00_core.ipynb",
          "createWindows": "00_core.ipynb"}
 
-modules = ["seq_core.py"]
+modules = ["core.py"]
 
 git_url = "https://github.com/daniel-om-weber/seqdata/tree/master/"
 

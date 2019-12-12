@@ -8,37 +8,15 @@
 
 -->
 
-# Project name here
+# Title
 
-> Summary description here.
+> summary
 
 
-This file will become your README and also the index of your documentation.
+# seqdata
+
+seqdata is a library for fast and flexible datagrabbing of sequential datasets for deep learning with pytorch and fastai2.
 
 ## Install
 
-`pip install your_project_name`
-
-## How to use
-
-Fill me in please! Don't forget code examples:
-<div class="codecell" markdown="1">
-<div class="input_area" markdown="1">
-
-```
-1+1
-```
-
-</div>
-<div class="output_area" markdown="1">
-
-
-
-
-    2
-
-
-
-</div>
-
-</div>
+`pip install git+https://github.com/daniel-om-weber/seqdata.git`
