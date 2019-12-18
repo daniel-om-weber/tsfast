@@ -22,7 +22,8 @@ index = {"get_hdf_files": "00_core.ipynb",
          "SeqNoiseInjection": "00_core.ipynb",
          "ParentSplitter": "00_core.ipynb"}
 
-modules = ["core.py"]
+modules = ["core.py",
+           "model.py"]
 
 git_url = "https://github.com/daniel-om-weber/seqdata/tree/master/"
 

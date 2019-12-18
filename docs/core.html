@@ -1,10 +1,10 @@
 ---
 
-title: Title
+title: Corefunctions
 keywords: fastai
 sidebar: home_sidebar
 
-summary: "summary"
+summary: "Corefunctionality for data preparation of sequential data for pytorch, fastai models"
 ---
 <!--
 
@@ -23,19 +23,36 @@ summary: "summary"
 </div>
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<h1 id="Codestructure">Codestructure<a class="anchor-link" href="#Codestructure">&#182;</a></h1><ol>
-<li>Extract File Paths</li>
-<li>Convert Paths to Sequence Objects (TensorSequence, TensorScalars, TensorSequence) &lt;-&gt; (input,input,output)</li>
-<li>Data Manipulation<ol>
-<li>Sequence pruning</li>
-<li>Sequence Resampling</li>
-</ol>
+<h1 id="Application-Structure">Application Structure<a class="anchor-link" href="#Application-Structure">&#182;</a></h1><p>The data will be extracted and prepared via transforms. Those are grouped in:</p>
+<ul>
+<li>Type Transforms: Those extraxt the needed components from the source items, like input sequences or target scalar values. The work on single tensors.</li>
+<li>Item Transforms: Those Transforms may work on tuple level and therefore may process relationships between input and output.</li>
+<li>Batch Transform: Those transforms work on batch level. They receive batched tensors and may apply lazy transforms like normalization very effeciently.</li>
+</ul>
+<p>An application example may look like the following:</p>
+<ul>
+<li>sourceitems: <ul>
+<li>path extraction with hdf5 file endings</li>
+<li>create pandas dataframe with information for type transforms, like slices</li>
+<li>filter items in pandas dataframe</li>
+</ul>
 </li>
-<li>Split Sequence Objects in Train, Validation</li>
-<li>(Create Windows out of Sequence Objects)</li>
-<li>Noise Injection in Training Dataset Input</li>
-<li>Normalize Input </li>
-</ol>
+<li>type transforms: <ul>
+<li>extract hdf5 input and output sequence</li>
+<li>create windows</li>
+</ul>
+</li>
+<li>item transforms: <ul>
+<li>filter sequence by value</li>
+<li>shift output sequence by 1 element</li>
+</ul>
+</li>
+<li>batch transforms: <ul>
+<li>noise injection</li>
+<li>normalization</li>
+</ul>
+</li>
+</ul>
 
 </div>
 </div>
@@ -45,9 +62,15 @@ summary: "summary"
 </div>
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<h2 id="1.-Extract-File-Paths">1. Extract File Paths<a class="anchor-link" href="#1.-Extract-File-Paths">&#182;</a></h2><p>Der erste Schritt kann mit get_files von fastai2 erledigt werden.</p>
-<p>Alternativ kann dies mit weniger Code mit der get_hdf_files() Funktion erledigt werden.</p>
+<h2 id="1.-Extract-Source-Items">1. Extract Source Items<a class="anchor-link" href="#1.-Extract-Source-Items">&#182;</a></h2><p>The file paths may be extracted with <code>get_files</code> of fastai2. <a href="/core.html#get_hdf_files"><code>get_hdf_files</code></a> removes the need of writing the hdf5 file extension.</p>
+<p>Then a pandas dataframe may be created in case further information for the source items need to be stored like slices for the windowing function.</p>
 
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="1.1-Extract-File-Paths">1.1 Extract File Paths<a class="anchor-link" href="#1.1-Extract-File-Paths">&#182;</a></h3>
 </div>
 </div>
 </div>
@@ -94,7 +117,7 @@ summary: "summary"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="get_hdf_files" class="doc_header"><code>get_hdf_files</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L12" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>get_hdf_files</code>(<strong><code>path</code></strong>, <strong><code>recurse</code></strong>=<em><code>True</code></em>, <strong><code>folders</code></strong>=<em><code>None</code></em>)</p>
+<h4 id="get_hdf_files" class="doc_header"><code>get_hdf_files</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L14" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>get_hdf_files</code>(<strong><code>path</code></strong>, <strong><code>recurse</code></strong>=<em><code>True</code></em>, <strong><code>folders</code></strong>=<em><code>None</code></em>)</p>
 </blockquote>
 <p>Get hdf5 files in <code>path</code> recursively, only in <code>folders</code>, if specified.</p>
 
@@ -138,10 +161,429 @@ summary: "summary"
 </div>
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="1.2-Create-Pandas-Source-Dataframe">1.2 Create Pandas Source Dataframe<a class="anchor-link" href="#1.2-Create-Pandas-Source-Dataframe">&#182;</a></h3>
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h4 id="df_source_items" class="doc_header"><code>df_source_items</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L19" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>df_source_items</code>(<strong><code>f_list</code></strong>, <strong><code>pd_tfms</code></strong>=<em><code>None</code></em>)</p>
+</blockquote>
+<p>Create Pandas Dataframe out of a list of items, with a list of df transforms applied</p>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">df</span> <span class="o">=</span> <span class="n">df_source_items</span><span class="p">(</span><span class="n">hdf_files</span><span class="p">)</span>
+<span class="n">df</span><span class="o">.</span><span class="n">head</span><span class="p">()</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_html rendered_html output_subarea output_execute_result">
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>path</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>test_data/train/Sim_RealisticCycle2.hdf5</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>test_data/train/Sim_RealisticCycle1.hdf5</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>test_data/valid/Sim_RealisticCycle3.hdf5</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h4 id="DfHDFCreateWindows" class="doc_header"><code>DfHDFCreateWindows</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L28" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>DfHDFCreateWindows</code>(<strong><code>win_sz</code></strong>, <strong><code>stp_sz</code></strong>, <strong><code>clm</code></strong>, <strong><code>fixed_start</code></strong>=<em><code>False</code></em>, <strong><code>fixed_end</code></strong>=<em><code>False</code></em>)</p>
+</blockquote>
+<p>create windows of sequences, splits sequence into multiple items</p>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="o">%%time</span>
+<span class="n">create_win</span> <span class="o">=</span> <span class="n">DfHDFCreateWindows</span><span class="p">(</span><span class="n">win_sz</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span><span class="n">stp_sz</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span><span class="n">clm</span><span class="o">=</span><span class="s1">&#39;current&#39;</span><span class="p">)</span>
+<span class="n">create_win</span><span class="p">(</span><span class="n">df</span><span class="p">)</span><span class="o">.</span><span class="n">head</span><span class="p">()</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>CPU times: user 12.1 ms, sys: 77 µs, total: 12.1 ms
+Wall time: 11.3 ms
+</pre>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># %%time</span>
+<span class="n">src_df</span> <span class="o">=</span> <span class="n">df_source_items</span><span class="p">(</span><span class="n">hdf_files</span><span class="p">,[</span><span class="n">DfHDFCreateWindows</span><span class="p">(</span><span class="n">win_sz</span><span class="o">=</span><span class="mi">100</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="n">stp_sz</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span><span class="n">clm</span><span class="o">=</span><span class="s1">&#39;current&#39;</span><span class="p">)])</span>
+<span class="n">src_df</span><span class="o">.</span><span class="n">head</span><span class="p">()</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_html rendered_html output_subarea output_execute_result">
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>path</th>
+      <th>l_slc</th>
+      <th>r_slc</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>test_data/train/Sim_RealisticCycle2.hdf5</td>
+      <td>0</td>
+      <td>101</td>
+    </tr>
+    <tr>
+      <th>0</th>
+      <td>test_data/train/Sim_RealisticCycle2.hdf5</td>
+      <td>10</td>
+      <td>111</td>
+    </tr>
+    <tr>
+      <th>0</th>
+      <td>test_data/train/Sim_RealisticCycle2.hdf5</td>
+      <td>20</td>
+      <td>121</td>
+    </tr>
+    <tr>
+      <th>0</th>
+      <td>test_data/train/Sim_RealisticCycle2.hdf5</td>
+      <td>30</td>
+      <td>131</td>
+    </tr>
+    <tr>
+      <th>0</th>
+      <td>test_data/train/Sim_RealisticCycle2.hdf5</td>
+      <td>40</td>
+      <td>141</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
 <h2 id="2.-Convert-Paths-to-Sequence-Objects">2. Convert Paths to Sequence Objects<a class="anchor-link" href="#2.-Convert-Paths-to-Sequence-Objects">&#182;</a></h2><p>Der Pfad wird unter Angabe der Spaltennamen in Sequenzen und Skalare Werte umgewandelt, um so am Ende ein 3-Tupel zu erhalten aus:</p>
 <ul>
 <li>(Sequence, Scalar, Sequence) &lt;-&gt; (input,input,output)</li>
 </ul>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="2.1-Datatypes-for-Sequences-and-Scalars">2.1 Datatypes for Sequences and Scalars<a class="anchor-link" href="#2.1-Datatypes-for-Sequences-and-Scalars">&#182;</a></h3>
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h3 id="TensorSequences" class="doc_header"><code>class</code> <code>TensorSequences</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L59" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>TensorSequences</code>(<strong><code>x</code></strong>, <strong>**<code>kwargs</code></strong>) :: <code>TensorBase</code></p>
+</blockquote>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h3 id="TensorSequencesInput" class="doc_header"><code>class</code> <code>TensorSequencesInput</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L60" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>TensorSequencesInput</code>(<strong><code>x</code></strong>, <strong>**<code>kwargs</code></strong>) :: <a href="/core.html#TensorSequences"><code>TensorSequences</code></a></p>
+</blockquote>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h3 id="TensorSequencesOutput" class="doc_header"><code>class</code> <code>TensorSequencesOutput</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L61" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>TensorSequencesOutput</code>(<strong><code>x</code></strong>, <strong>**<code>kwargs</code></strong>) :: <a href="/core.html#TensorSequences"><code>TensorSequences</code></a></p>
+</blockquote>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h4 id="Transform: False (object,object) -> toTensorSequencesInput " class="doc_header"><code>Transform: False (object,object) -> toTensorSequencesInput </code><a href="" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>Transform: False (object,object) -> toTensorSequencesInput </code>(<strong><code>enc</code></strong>=<em><code>None</code></em>, <strong><code>dec</code></strong>=<em><code>None</code></em>, <strong><code>split_idx</code></strong>=<em><code>None</code></em>, <strong><code>as_item</code></strong>=<em><code>False</code></em>, <strong><code>order</code></strong>=<em><code>None</code></em>)</p>
+</blockquote>
+<p>Delegates (<code>__call__</code>,<code>decode</code>,<code>setup</code>) to (<code>encodes</code>,<code>decodes</code>,<code>setups</code>) if <code>split_idx</code> matches</p>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h4 id="Transform: False (object,object) -> toTensorSequencesOutput " class="doc_header"><code>Transform: False (object,object) -> toTensorSequencesOutput </code><a href="" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>Transform: False (object,object) -> toTensorSequencesOutput </code>(<strong><code>enc</code></strong>=<em><code>None</code></em>, <strong><code>dec</code></strong>=<em><code>None</code></em>, <strong><code>split_idx</code></strong>=<em><code>None</code></em>, <strong><code>as_item</code></strong>=<em><code>False</code></em>, <strong><code>order</code></strong>=<em><code>None</code></em>)</p>
+</blockquote>
+<p>Delegates (<code>__call__</code>,<code>decode</code>,<code>setup</code>) to (<code>encodes</code>,<code>decodes</code>,<code>setups</code>) if <code>split_idx</code> matches</p>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h3 id="TensorScalars" class="doc_header"><code>class</code> <code>TensorScalars</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L70" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>TensorScalars</code>(<strong><code>x</code></strong>, <strong>**<code>kwargs</code></strong>) :: <code>TensorBase</code></p>
+</blockquote>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h3 id="TensorScalarsInput" class="doc_header"><code>class</code> <code>TensorScalarsInput</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L71" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>TensorScalarsInput</code>(<strong><code>x</code></strong>, <strong>**<code>kwargs</code></strong>) :: <a href="/core.html#TensorScalars"><code>TensorScalars</code></a></p>
+</blockquote>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h3 id="TensorScalarsOutput" class="doc_header"><code>class</code> <code>TensorScalarsOutput</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L72" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>TensorScalarsOutput</code>(<strong><code>x</code></strong>, <strong>**<code>kwargs</code></strong>) :: <a href="/core.html#TensorScalars"><code>TensorScalars</code></a></p>
+</blockquote>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="2.2-Extract-sequential-data-from-hdf5-files">2.2 Extract sequential data from hdf5-files<a class="anchor-link" href="#2.2-Extract-sequential-data-from-hdf5-files">&#182;</a></h3><p>Two different functions, based on pandas df and on lists</p>
 
 </div>
 </div>
@@ -158,7 +600,7 @@ summary: "summary"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="hdf2sequence" class="doc_header"><code>hdf2sequence</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L17" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>hdf2sequence</code>(<strong><code>hdf_path</code></strong>, <strong><code>c_names</code></strong>)</p>
+<h4 id="HDF2Sequence" class="doc_header"><code>HDF2Sequence</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L77" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>HDF2Sequence</code>(<strong><code>c_names</code></strong>, <strong><code>cached</code></strong>=<em><code>True</code></em>)</p>
 </blockquote>
 
 </div>
@@ -174,7 +616,9 @@ summary: "summary"
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">hdf2sequence</span><span class="p">(</span><span class="n">hdf_files</span><span class="p">[</span><span class="mi">0</span><span class="p">],[</span><span class="s1">&#39;current&#39;</span><span class="p">,</span><span class="s1">&#39;voltage&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">shape</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># %%timeit</span>
+<span class="n">hdf2seq</span> <span class="o">=</span> <span class="n">HDF2Sequence</span><span class="p">([</span><span class="s1">&#39;current&#39;</span><span class="p">,</span><span class="s1">&#39;voltage&#39;</span><span class="p">],</span><span class="n">cached</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="n">hdf2seq</span><span class="p">(</span><span class="n">hdf_files</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 </pre></div>
 
     </div>
@@ -189,7 +633,62 @@ summary: "summary"
 
 
 <div class="output_text output_subarea output_execute_result">
-<pre>(265598, 2)</pre>
+<pre>tensor([[ 0.0000,  4.1874],
+        [-0.0052,  4.1875],
+        [-0.0090,  4.1875],
+        ...,
+        [ 1.0783,  3.7160],
+        [ 1.0739,  3.7161],
+        [ 1.0706,  3.7162]])</pre>
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">hdf2seq</span> <span class="o">=</span> <span class="n">HDF2Sequence</span><span class="p">([</span><span class="s1">&#39;current&#39;</span><span class="p">,</span><span class="s1">&#39;voltage&#39;</span><span class="p">],</span><span class="n">cached</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># %%timeit</span>
+<span class="n">hdf2seq</span><span class="p">(</span><span class="n">hdf_files</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+
+<div class="output_text output_subarea output_execute_result">
+<pre>tensor([[ 0.0000,  4.1874],
+        [-0.0052,  4.1875],
+        [-0.0090,  4.1875],
+        ...,
+        [ 1.0783,  3.7160],
+        [ 1.0739,  3.7161],
+        [ 1.0706,  3.7162]])</pre>
 </div>
 
 </div>
@@ -210,7 +709,7 @@ summary: "summary"
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">pipe</span> <span class="o">=</span> <span class="n">Pipeline</span><span class="p">(</span><span class="n">partial</span><span class="p">(</span><span class="n">hdf2sequence</span><span class="p">,</span><span class="n">c_names</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;current&#39;</span><span class="p">,</span><span class="s1">&#39;voltage&#39;</span><span class="p">]))</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">pipe</span> <span class="o">=</span> <span class="n">Pipeline</span><span class="p">(</span><span class="n">HDF2Sequence</span><span class="p">([</span><span class="s1">&#39;current&#39;</span><span class="p">,</span><span class="s1">&#39;voltage&#39;</span><span class="p">]))</span>
 </pre></div>
 
     </div>
@@ -239,7 +738,7 @@ summary: "summary"
 
 
 <div class="output_text output_subarea output_execute_result">
-<pre>(3, array([0.       , 4.1873503], dtype=float32))</pre>
+<pre>(3, tensor([0.0000, 4.1874]))</pre>
 </div>
 
 </div>
@@ -260,7 +759,7 @@ summary: "summary"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="hdf2scalars" class="doc_header"><code>hdf2scalars</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L25" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>hdf2scalars</code>(<strong><code>hdf_path</code></strong>, <strong><code>c_names</code></strong>)</p>
+<h4 id="hdf2scalars" class="doc_header"><code>hdf2scalars</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L104" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>hdf2scalars</code>(<strong><code>hdf_path</code></strong>, <strong><code>c_names</code></strong>)</p>
 </blockquote>
 
 </div>
@@ -273,93 +772,22 @@ summary: "summary"
 </div>
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<h3 id="Tensor-Tuple-erstellen">Tensor Tuple erstellen<a class="anchor-link" href="#Tensor-Tuple-erstellen">&#182;</a></h3>
-</div>
-</div>
-</div>
-<div class="cell border-box-sizing code_cell rendered">
+<h3 id="Performance-Test">Performance Test<a class="anchor-link" href="#Performance-Test">&#182;</a></h3><p>Caching stores the arrays for future use at every function call. Very usefull, especially for windows. Should allways be turned. Only explicitly turn it off when there is not enough memory for your data.</p>
 
+</div>
+</div>
 </div>
 <div class="cell border-box-sizing code_cell rendered">
+<div class="input">
 
-<div class="output_wrapper">
-<div class="output">
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">tfms</span><span class="o">=</span><span class="p">[</span>  <span class="p">[</span><span class="n">HDF2Sequence</span><span class="p">([</span><span class="s1">&#39;current&#39;</span><span class="p">,</span><span class="s1">&#39;voltage&#39;</span><span class="p">],</span><span class="n">cached</span><span class="o">=</span><span class="kc">False</span><span class="p">)],</span>
+        <span class="p">[</span><span class="n">HDF2Sequence</span><span class="p">([</span><span class="s1">&#39;voltage&#39;</span><span class="p">],</span><span class="n">cached</span><span class="o">=</span><span class="kc">False</span><span class="p">)]]</span>
+<span class="n">dsrc</span> <span class="o">=</span> <span class="n">DataSource</span><span class="p">(</span><span class="n">src_df</span><span class="o">.</span><span class="n">iloc</span><span class="p">[:</span><span class="mi">1000</span><span class="p">],</span><span class="n">tfms</span><span class="o">=</span><span class="n">tfms</span><span class="p">)</span>
+</pre></div>
 
-<div class="output_area">
-
-
-<div class="output_markdown rendered_html output_subarea ">
-<h3 id="Hdf2SeqSeq" class="doc_header"><code>class</code> <code>Hdf2SeqSeq</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L33" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>Hdf2SeqSeq</code>(<strong><code>seq_inp</code></strong>, <strong><code>seq_out</code></strong>) :: <code>Transform</code></p>
-</blockquote>
-<p>Delegates (<code>__call__</code>,<code>decode</code>,<code>setup</code>) to (<code>encodes</code>,<code>decodes</code>,<code>setups</code>) if <code>split_idx</code> matches</p>
-
-</div>
-
-</div>
-
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-
-<div class="output_markdown rendered_html output_subarea ">
-<h3 id="Hdf2SeqScal" class="doc_header"><code>class</code> <code>Hdf2SeqScal</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L39" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>Hdf2SeqScal</code>(<strong><code>seq_inp</code></strong>, <strong><code>scal_out</code></strong>) :: <code>Transform</code></p>
-</blockquote>
-<p>Delegates (<code>__call__</code>,<code>decode</code>,<code>setup</code>) to (<code>encodes</code>,<code>decodes</code>,<code>setups</code>) if <code>split_idx</code> matches</p>
-
-</div>
-
-</div>
-
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-
-<div class="output_markdown rendered_html output_subarea ">
-<h3 id="Hdf2SeqScalSeq" class="doc_header"><code>class</code> <code>Hdf2SeqScalSeq</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L44" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>Hdf2SeqScalSeq</code>(<strong><code>seq_inp</code></strong>, <strong><code>scal_inp</code></strong>, <strong><code>seq_out</code></strong>) :: <code>Transform</code></p>
-</blockquote>
-<p>Delegates (<code>__call__</code>,<code>decode</code>,<code>setup</code>) to (<code>encodes</code>,<code>decodes</code>,<code>setups</code>) if <code>split_idx</code> matches</p>
-
-</div>
-
-</div>
-
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-
-<div class="output_markdown rendered_html output_subarea ">
-<h3 id="Hdf2SeqScalScal" class="doc_header"><code>class</code> <code>Hdf2SeqScalScal</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L51" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>Hdf2SeqScalScal</code>(<strong><code>seq_inp</code></strong>, <strong><code>scal_inp</code></strong>, <strong><code>scal_out</code></strong>) :: <code>Transform</code></p>
-</blockquote>
-<p>Delegates (<code>__call__</code>,<code>decode</code>,<code>setup</code>) to (<code>encodes</code>,<code>decodes</code>,<code>setups</code>) if <code>split_idx</code> matches</p>
-
-</div>
-
-</div>
-
+    </div>
 </div>
 </div>
 
@@ -369,10 +797,7 @@ summary: "summary"
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">hdf2seq</span> <span class="o">=</span> <span class="n">Pipeline</span><span class="p">(</span><span class="n">Hdf2SeqSeq</span><span class="p">([</span><span class="s1">&#39;current&#39;</span><span class="p">,</span><span class="s1">&#39;voltage&#39;</span><span class="p">],[</span><span class="s1">&#39;voltage&#39;</span><span class="p">]))</span>
-
-<span class="n">items</span> <span class="o">=</span> <span class="n">hdf2seq</span><span class="p">(</span><span class="n">hdf_files</span><span class="p">)</span>
-<span class="nb">len</span><span class="p">(</span><span class="n">items</span><span class="p">),</span><span class="n">items</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="nb">len</span><span class="p">(</span><span class="n">dsrc</span><span class="p">)</span>
 </pre></div>
 
     </div>
@@ -387,7 +812,7 @@ summary: "summary"
 
 
 <div class="output_text output_subarea output_execute_result">
-<pre>(3, (265598, 2))</pre>
+<pre>1000</pre>
 </div>
 
 </div>
@@ -395,6 +820,73 @@ summary: "summary"
 </div>
 </div>
 
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># %%time</span>
+<span class="c1"># for x in dsrc:</span>
+<span class="c1">#     x</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">tfms</span><span class="o">=</span><span class="p">[</span>  <span class="p">[</span><span class="n">HDF2Sequence</span><span class="p">([</span><span class="s1">&#39;current&#39;</span><span class="p">,</span><span class="s1">&#39;voltage&#39;</span><span class="p">],</span><span class="n">cached</span><span class="o">=</span><span class="kc">True</span><span class="p">)],</span>
+        <span class="p">[</span><span class="n">HDF2Sequence</span><span class="p">([</span><span class="s1">&#39;voltage&#39;</span><span class="p">],</span><span class="n">cached</span><span class="o">=</span><span class="kc">True</span><span class="p">)]]</span>
+<span class="n">dsrc</span> <span class="o">=</span> <span class="n">DataSource</span><span class="p">(</span><span class="n">src_df</span><span class="o">.</span><span class="n">iloc</span><span class="p">[:</span><span class="mi">1000</span><span class="p">],</span><span class="n">tfms</span><span class="o">=</span><span class="n">tfms</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="o">%%time</span>
+<span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">dsrc</span><span class="p">:</span>
+    <span class="n">x</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>CPU times: user 711 ms, sys: 0 ns, total: 711 ms
+Wall time: 711 ms
+</pre>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Caching is way faster because every file gets loaded multiple times</p>
+
+</div>
+</div>
 </div>
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
@@ -415,7 +907,7 @@ summary: "summary"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h3 id="SequenceItem" class="doc_header"><code>class</code> <code>SequenceItem</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L61" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>SequenceItem</code>(<strong><code>x</code></strong>=<em><code>None</code></em>, <strong>*<code>rest</code></strong>) :: <code>Tuple</code></p>
+<h3 id="SequenceItem" class="doc_header"><code>class</code> <code>SequenceItem</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L114" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>SequenceItem</code>(<strong><code>x</code></strong>=<em><code>None</code></em>, <strong>*<code>rest</code></strong>) :: <code>Tuple</code></p>
 </blockquote>
 <p>A <code>tuple</code> with elementwise ops and more friendly <strong>init</strong> behavior</p>
 
@@ -446,7 +938,7 @@ summary: "summary"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h3 id="SeqTfm" class="doc_header"><code>class</code> <code>SeqTfm</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L67" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>SeqTfm</code>(<strong><code>enc</code></strong>=<em><code>None</code></em>, <strong><code>dec</code></strong>=<em><code>None</code></em>, <strong><code>split_idx</code></strong>=<em><code>None</code></em>, <strong><code>as_item</code></strong>=<em><code>False</code></em>, <strong><code>order</code></strong>=<em><code>None</code></em>) :: <code>Transform</code></p>
+<h3 id="SeqTfm" class="doc_header"><code>class</code> <code>SeqTfm</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L120" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>SeqTfm</code>(<strong><code>enc</code></strong>=<em><code>None</code></em>, <strong><code>dec</code></strong>=<em><code>None</code></em>, <strong><code>split_idx</code></strong>=<em><code>None</code></em>, <strong><code>as_item</code></strong>=<em><code>False</code></em>, <strong><code>order</code></strong>=<em><code>None</code></em>) :: <code>Transform</code></p>
 </blockquote>
 <p>Delegates (<code>__call__</code>,<code>decode</code>,<code>setup</code>) to (<code>encodes</code>,<code>decodes</code>,<code>setups</code>) if <code>split_idx</code> matches</p>
 
@@ -467,25 +959,48 @@ summary: "summary"
 </div>
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<h2 id="3.-Split-in-Training,-Validation">3. Split in Training, Validation<a class="anchor-link" href="#3.-Split-in-Training,-Validation">&#182;</a></h2><p>Splitting kann anhand von vorher bekannten Indizes, dem Dateipfad oder anderen allgemeinen Funktion durchgeführt werden.</p>
-<p>Splitting innerhalb einer Sequenzen sollte in der Praxis nur dann geschehen wenn eine einzige Sequenz vorhanden ist. Diese kann dann vorher manuell geteilt werden.</p>
-
+<h2 id="3.-Item-Transformations">3. Item Transformations<a class="anchor-link" href="#3.-Item-Transformations">&#182;</a></h2>
 </div>
 </div>
 </div>
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<h3 id="3.1-Splitting-mit-vorgegebenem-Index">3.1 Splitting mit vorgegebenem Index<a class="anchor-link" href="#3.1-Splitting-mit-vorgegebenem-Index">&#182;</a></h3>
+<h3 id="3.1-Sequence-Slicing-Transformation">3.1 Sequence Slicing Transformation<a class="anchor-link" href="#3.1-Sequence-Slicing-Transformation">&#182;</a></h3>
 </div>
 </div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h3 id="SeqSlice" class="doc_header"><code>class</code> <code>SeqSlice</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L124" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>SeqSlice</code>(<strong><code>l_slc</code></strong>=<em><code>None</code></em>, <strong><code>r_slc</code></strong>=<em><code>None</code></em>) :: <code>Transform</code></p>
+</blockquote>
+<p>Take a slice from an array-like object. Useful for e.g. shifting input and output</p>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
 </div>
 <div class="cell border-box-sizing code_cell rendered">
 <div class="input">
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">splitter</span> <span class="o">=</span> <span class="n">IndexSplitter</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">])</span>
-<span class="n">test_eq</span><span class="p">(</span><span class="n">splitter</span><span class="p">(</span><span class="n">items</span><span class="p">),[[</span><span class="mi">0</span><span class="p">],[</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">]])</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">l_shift</span> <span class="o">=</span> <span class="n">SeqSlice</span><span class="p">(</span><span class="n">r_slc</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="mi">5</span><span class="p">))</span>
+<span class="n">test_eq</span><span class="p">(</span><span class="n">l_shift</span><span class="p">(</span><span class="n">arr</span><span class="p">),</span><span class="n">arr</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
 </pre></div>
 
     </div>
@@ -495,7 +1010,219 @@ summary: "summary"
 </div>
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<h3 id="3.2-Splitting-mit-allgemeiner-Funktion">3.2 Splitting mit allgemeiner Funktion<a class="anchor-link" href="#3.2-Splitting-mit-allgemeiner-Funktion">&#182;</a></h3><p>Items, bei denen die definierte Funktion <code>True</code> zurück gibt, werden den Validierungsdatensatz zugeordnet, der Rest dem Training. In diesem Fall wird nach dem Übergeordneten Ordnernamen gesucht.</p>
+<h3 id="3.2-Sequence-Noise-Injection-Transformation">3.2 Sequence Noise Injection Transformation<a class="anchor-link" href="#3.2-Sequence-Noise-Injection-Transformation">&#182;</a></h3>
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h3 id="SeqNoiseInjection" class="doc_header"><code>class</code> <code>SeqNoiseInjection</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L132" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>SeqNoiseInjection</code>(<strong><code>std</code></strong>=<em><code>0.1</code></em>, <strong><code>mean</code></strong>=<em><code>0.0</code></em>) :: <code>Transform</code></p>
+</blockquote>
+<p>Adds normal distributed noise to the tensor sequence with seperate mean and std for every signal</p>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">x</span> <span class="o">=</span> <span class="n">TensorSequencesInput</span><span class="p">(</span><span class="n">tensor</span><span class="p">([[</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">],[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="o">-</span><span class="mf">1.0</span><span class="p">]]))</span>
+<span class="n">ns_mean</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">([</span><span class="mf">0.</span><span class="p">,</span><span class="mf">10.1</span><span class="p">,</span><span class="mf">3.1</span><span class="p">])</span>
+<span class="n">ns_std</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span><span class="mf">1.1</span><span class="p">,</span><span class="mf">0.1</span><span class="p">])</span>
+<span class="n">x</span><span class="p">,</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+
+<div class="output_text output_subarea output_execute_result">
+<pre>(tensor([[ 1.,  1.,  1.],
+         [-1., -1., -1.]]), torch.Size([2, 3]))</pre>
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">seq_noise</span> <span class="o">=</span> <span class="n">SeqNoiseInjection</span><span class="p">(</span><span class="n">std</span><span class="o">=</span><span class="n">ns_std</span><span class="p">,</span><span class="n">mean</span><span class="o">=</span><span class="n">ns_std</span><span class="p">)</span>
+<span class="n">seq_noise</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+
+<div class="output_text output_subarea output_execute_result">
+<pre>tensor([[ 2.0550,  0.7530,  1.0090],
+        [-0.2604, -0.9350, -0.7234]])</pre>
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">seq_noise</span> <span class="o">=</span> <span class="n">SeqNoiseInjection</span><span class="p">(</span><span class="n">std</span><span class="o">=</span><span class="n">ns_std</span><span class="o">*</span><span class="mi">10</span><span class="p">)</span>
+<span class="n">seq_noise</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+
+<div class="output_text output_subarea output_execute_result">
+<pre>tensor([[ 5.5078, -0.3782,  1.0131],
+        [ 9.5494, -6.8599, -1.1504]])</pre>
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="3.3-Normalization">3.3 Normalization<a class="anchor-link" href="#3.3-Normalization">&#182;</a></h3><p><code>Normalize</code> is programmed for <code>TensorImage</code> as an input tensor. It gets. At init the variable axes need to be chosen correspondingly to the shape of your tensor.</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="nd">@Normalize</span>
+<span class="k">def</span> <span class="nf">encodes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">:</span><span class="n">TensorSequencesInput</span><span class="p">):</span> 
+    <span class="k">return</span> <span class="p">(</span><span class="n">x</span><span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">mean</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">std</span>
+
+<span class="nd">@Normalize</span>
+<span class="k">def</span> <span class="nf">decodes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">:</span><span class="n">TensorSequencesInput</span><span class="p">):</span>
+    <span class="n">f</span> <span class="o">=</span> <span class="n">to_cpu</span> <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">device</span><span class="o">.</span><span class="n">type</span><span class="o">==</span><span class="s1">&#39;cpu&#39;</span> <span class="k">else</span> <span class="n">noop</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">x</span><span class="o">*</span><span class="n">f</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">std</span><span class="p">)</span> <span class="o">+</span> <span class="n">f</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mean</span><span class="p">))</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">norm</span> <span class="o">=</span> <span class="n">Normalize</span><span class="o">.</span><span class="n">from_stats</span><span class="p">(</span><span class="n">mean</span><span class="o">=</span><span class="n">ns_mean</span><span class="p">,</span><span class="n">std</span><span class="o">=</span><span class="n">ns_std</span><span class="p">,</span><span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span><span class="n">ndim</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span><span class="n">cuda</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="n">x</span><span class="p">,</span><span class="n">norm</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+
+<div class="output_text output_subarea output_execute_result">
+<pre>(tensor([[ 1.,  1.,  1.],
+         [-1., -1., -1.]]), tensor([[  1.0000,  -8.2727, -21.0000],
+         [ -1.0000, -10.0909, -41.0000]]))</pre>
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="4.-Split-in-Training,-Validation">4. Split in Training, Validation<a class="anchor-link" href="#4.-Split-in-Training,-Validation">&#182;</a></h2><p>Splitting kann anhand von vorher bekannten Indizes, dem Dateipfad oder anderen allgemeinen Funktion durchgeführt werden.</p>
+<p>Splitting innerhalb einer Sequenzen sollte in der Praxis nur dann geschehen wenn eine einzige Sequenz vorhanden ist. Diese kann dann vorher manuell geteilt werden.</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="4.1-Splitting-mit-vorgegebenem-Index">4.1 Splitting mit vorgegebenem Index<a class="anchor-link" href="#4.1-Splitting-mit-vorgegebenem-Index">&#182;</a></h3>
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">splitter</span> <span class="o">=</span> <span class="n">IndexSplitter</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">])</span>
+<span class="n">test_eq</span><span class="p">(</span><span class="n">splitter</span><span class="p">(</span><span class="n">hdf_files</span><span class="p">),[[</span><span class="mi">0</span><span class="p">],[</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">]])</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="4.2-Splitting-mit-allgemeiner-Funktion">4.2 Splitting mit allgemeiner Funktion<a class="anchor-link" href="#4.2-Splitting-mit-allgemeiner-Funktion">&#182;</a></h3><p>Items, bei denen die definierte Funktion <code>True</code> zurück gibt, werden den Validierungsdatensatz zugeordnet, der Rest dem Training. In diesem Fall wird nach dem Übergeordneten Ordnernamen gesucht.</p>
 
 </div>
 </div>
@@ -516,7 +1243,7 @@ summary: "summary"
 </div>
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<h3 id="3.3-Splitting-anhand-des-Parent-Folders">3.3 Splitting anhand des Parent-Folders<a class="anchor-link" href="#3.3-Splitting-anhand-des-Parent-Folders">&#182;</a></h3><p>Splitter, der Explizit Training und Validierungsordner den Datensätzen zuordnet</p>
+<h3 id="4.3-Splitting-anhand-des-Parent-Folders">4.3 Splitting anhand des Parent-Folders<a class="anchor-link" href="#4.3-Splitting-anhand-des-Parent-Folders">&#182;</a></h3><p>Splitter, der Explizit Training und Validierungsordner den Datensätzen zuordnet</p>
 
 </div>
 </div>
@@ -533,7 +1260,7 @@ summary: "summary"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="ParentSplitter" class="doc_header"><code>ParentSplitter</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L73" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>ParentSplitter</code>(<strong><code>train_name</code></strong>=<em><code>'train'</code></em>, <strong><code>valid_name</code></strong>=<em><code>'valid'</code></em>)</p>
+<h4 id="ParentSplitter" class="doc_header"><code>ParentSplitter</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L152" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>ParentSplitter</code>(<strong><code>train_name</code></strong>=<em><code>'train'</code></em>, <strong><code>valid_name</code></strong>=<em><code>'valid'</code></em>)</p>
 </blockquote>
 <p>Split <code>items</code> from the parent folder names (<code>train_name</code> and <code>valid_name</code>).</p>
 
@@ -551,8 +1278,7 @@ summary: "summary"
 <div class="inner_cell">
     <div class="input_area">
 <div class=" highlight hl-ipython3"><pre><span></span><span class="n">splitter</span> <span class="o">=</span> <span class="n">ParentSplitter</span><span class="p">()</span>
-<span class="n">split_idxs</span> <span class="o">=</span> <span class="n">splitter</span><span class="p">(</span><span class="n">hdf_files</span><span class="p">)</span>
-<span class="n">test_eq</span><span class="p">(</span><span class="n">split_idxs</span><span class="p">,[[</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">],[</span><span class="mi">2</span><span class="p">]])</span>
+<span class="n">test_eq</span><span class="p">(</span><span class="n">splitter</span><span class="p">(</span><span class="n">hdf_files</span><span class="p">),[[</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">],[</span><span class="mi">2</span><span class="p">]])</span>
 </pre></div>
 
     </div>
@@ -562,7 +1288,8 @@ summary: "summary"
 </div>
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<h2 id="4.-Create-Datasource">4. Create Datasource<a class="anchor-link" href="#4.-Create-Datasource">&#182;</a></h2>
+<h2 id="5.-Create-Datasource">5. Create Datasource<a class="anchor-link" href="#5.-Create-Datasource">&#182;</a></h2><p>A Datasource combines all implemented components on item level.</p>
+
 </div>
 </div>
 </div>
@@ -571,7 +1298,9 @@ summary: "summary"
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">dsrc</span> <span class="o">=</span> <span class="n">DataSource</span><span class="p">(</span><span class="n">items</span><span class="p">,</span><span class="n">splits</span><span class="o">=</span><span class="n">split_idxs</span><span class="p">)</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">tfms</span><span class="o">=</span><span class="p">[</span>  <span class="p">[</span><span class="n">HDF2Sequence</span><span class="p">([</span><span class="s1">&#39;current&#39;</span><span class="p">,</span><span class="s1">&#39;voltage&#39;</span><span class="p">]),</span><span class="n">SeqSlice</span><span class="p">(</span><span class="n">l_slc</span><span class="o">=</span><span class="mi">1</span><span class="p">),</span><span class="n">toTensorSequencesInput</span><span class="p">],</span>
+        <span class="p">[</span><span class="n">HDF2Sequence</span><span class="p">([</span><span class="s1">&#39;voltage&#39;</span><span class="p">]),</span><span class="n">SeqSlice</span><span class="p">(</span><span class="n">r_slc</span><span class="o">=-</span><span class="mi">1</span><span class="p">),</span><span class="n">toTensorSequencesOutput</span><span class="p">]]</span>
+<span class="n">dsrc</span> <span class="o">=</span> <span class="n">DataSource</span><span class="p">(</span><span class="n">src_df</span><span class="p">,</span><span class="n">tfms</span><span class="o">=</span><span class="n">tfms</span><span class="p">,</span><span class="n">splits</span><span class="o">=</span><span class="n">splitter</span><span class="p">(</span><span class="n">src_df</span><span class="o">.</span><span class="n">path</span><span class="p">))</span>
 </pre></div>
 
     </div>
@@ -584,214 +1313,8 @@ summary: "summary"
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="nb">len</span><span class="p">(</span><span class="n">dsrc</span><span class="o">.</span><span class="n">train</span><span class="p">),</span><span class="nb">len</span><span class="p">(</span><span class="n">dsrc</span><span class="o">.</span><span class="n">valid</span><span class="p">)</span>
-</pre></div>
-
-    </div>
-</div>
-</div>
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-
-
-<div class="output_text output_subarea output_execute_result">
-<pre>(2, 1)</pre>
-</div>
-
-</div>
-
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-
-<div class="inner_cell">
-    <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">dsrc</span><span class="o">.</span><span class="n">train</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-</pre></div>
-
-    </div>
-</div>
-</div>
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-
-
-<div class="output_text output_subarea output_execute_result">
-<pre>((array([[ 0.       ,  4.1873503],
-         [-0.0052   ,  4.187454 ],
-         [-0.009    ,  4.187548 ],
-         ...,
-         [ 1.0783   ,  3.7160358],
-         [ 1.0739   ,  3.716139 ],
-         [ 1.0706   ,  3.7162225]], dtype=float32), array([[4.1873503],
-         [4.187454 ],
-         [4.187548 ],
-         ...,
-         [3.7160358],
-         [3.716139 ],
-         [3.7162225]], dtype=float32)),)</pre>
-</div>
-
-</div>
-
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
-<div class="text_cell_render border-box-sizing rendered_html">
-<h2 id="5.-Create-Windows">5. Create Windows<a class="anchor-link" href="#5.-Create-Windows">&#182;</a></h2><p>Aus einer langen Sequenz werden mehrere kurze Sequenzen extrahiert um so verschiedene Teile zu gleicher Zeit dem Model zu zeigen.</p>
-<p>Dies geschieht auf Tuple level und ist deshalb kein TupleTransform</p>
-
-</div>
-</div>
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-
-<div class="inner_cell">
-    <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">obj</span> <span class="o">=</span> <span class="n">items</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-<span class="nb">len</span><span class="p">(</span><span class="n">obj</span><span class="p">[</span><span class="mi">2</span><span class="p">]),</span><span class="n">obj</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
-</pre></div>
-
-    </div>
-</div>
-</div>
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-
-
-<div class="output_text output_subarea output_execute_result">
-<pre>(64866, array([[3.735982 ],
-        [3.7363622],
-        [3.7367425],
-        ...,
-        [2.505974 ],
-        [2.502833 ],
-        [2.4996917]], dtype=float32))</pre>
-</div>
-
-</div>
-
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
-<div class="text_cell_render border-box-sizing rendered_html">
-<p>Testen ob bei vervielfältigung sich der Speicherbedarf massiv ändert</p>
-
-</div>
-</div>
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-
-<div class="inner_cell">
-    <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">temp</span> <span class="o">=</span> <span class="p">[</span><span class="n">obj</span><span class="p">]</span><span class="o">*</span><span class="mi">100000</span>
-</pre></div>
-
-    </div>
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
-<div class="text_cell_render border-box-sizing rendered_html">
-<p>Untersuchung mittels Speicherbedarf bei htop zeigt, dass sich der Speicherbedarf selbst bei 10^5 facher Liste nicht um mehr als 10 MB ändert. Das ist die Darstellungsgrenze</p>
-
-</div>
-</div>
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-
-<div class="output_markdown rendered_html output_subarea ">
-<h4 id="createWindows" class="doc_header"><code>createWindows</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/core.py#L81" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>createWindows</code>(<strong><code>x</code></strong>)</p>
-</blockquote>
-
-</div>
-
-</div>
-
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-
-<div class="inner_cell">
-    <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">tst</span> <span class="o">=</span> <span class="n">createWindows</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span>
-</pre></div>
-
-    </div>
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-
-<div class="inner_cell">
-    <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">tst</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span>
-</pre></div>
-
-    </div>
-</div>
-</div>
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-
-
-<div class="output_text output_subarea output_execute_result">
-<pre>(100, 2)</pre>
-</div>
-
-</div>
-
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-
-<div class="inner_cell">
-    <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">pipe_tst</span> <span class="o">=</span> <span class="n">Pipeline</span><span class="p">(</span><span class="n">createWindows</span><span class="p">)</span>
-<span class="n">lst</span> <span class="o">=</span> <span class="n">pipe_tst</span><span class="p">(</span><span class="n">items</span><span class="p">)</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">db</span> <span class="o">=</span> <span class="n">dsrc</span><span class="o">.</span><span class="n">databunch</span><span class="p">(</span><span class="n">bs</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span><span class="n">after_batch</span><span class="o">=</span><span class="p">[</span><span class="n">Cuda</span><span class="p">(),</span><span class="n">SeqNoiseInjection</span><span class="p">(</span><span class="n">std</span><span class="o">=</span><span class="p">[</span><span class="mf">1.1</span><span class="p">,</span><span class="mf">0.01</span><span class="p">]),</span><span class="n">Normalize</span><span class="p">(</span><span class="n">axes</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">])])</span>
+<span class="n">db</span><span class="o">.</span><span class="n">one_batch</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span>
 </pre></div>
 
     </div>
@@ -804,8 +1327,95 @@ summary: "summary"
 <div class="output_area">
 
 <div class="output_subarea output_stream output_stdout output_text">
-<pre>95.5 ms ± 1.67 ms per loop (mean ± std. dev. of 7 runs, 10 loops each)
+<pre>--Return--
+&gt; &lt;ipython-input-31-66b4b46c4ef6&gt;(9)setups()-&gt;None
+-&gt; import pdb; pdb.set_trace()
+(Pdb) q
 </pre>
+</div>
+</div>
+
+<div class="output_area">
+
+<div class="output_subarea output_text output_error">
+<pre>
+<span class="ansi-red-fg">---------------------------------------------------------------------------</span>
+<span class="ansi-red-fg">BdbQuit</span>                                   Traceback (most recent call last)
+<span class="ansi-green-fg">&lt;ipython-input-43-5ae1ee1c4576&gt;</span> in <span class="ansi-cyan-fg">&lt;module&gt;</span>
+<span class="ansi-green-fg">----&gt; 1</span><span class="ansi-red-fg"> </span>db <span class="ansi-blue-fg">=</span> dsrc<span class="ansi-blue-fg">.</span>databunch<span class="ansi-blue-fg">(</span>bs<span class="ansi-blue-fg">=</span><span class="ansi-cyan-fg">128</span><span class="ansi-blue-fg">,</span>after_batch<span class="ansi-blue-fg">=</span><span class="ansi-blue-fg">[</span>Cuda<span class="ansi-blue-fg">(</span><span class="ansi-blue-fg">)</span><span class="ansi-blue-fg">,</span>SeqNoiseInjection<span class="ansi-blue-fg">(</span>std<span class="ansi-blue-fg">=</span><span class="ansi-blue-fg">[</span><span class="ansi-cyan-fg">1.1</span><span class="ansi-blue-fg">,</span><span class="ansi-cyan-fg">0.01</span><span class="ansi-blue-fg">]</span><span class="ansi-blue-fg">)</span><span class="ansi-blue-fg">,</span>Normalize<span class="ansi-blue-fg">(</span>axes<span class="ansi-blue-fg">=</span><span class="ansi-blue-fg">[</span><span class="ansi-cyan-fg">0</span><span class="ansi-blue-fg">,</span><span class="ansi-cyan-fg">1</span><span class="ansi-blue-fg">]</span><span class="ansi-blue-fg">)</span><span class="ansi-blue-fg">]</span><span class="ansi-blue-fg">)</span>
+<span class="ansi-green-intense-fg ansi-bold">      2</span> db<span class="ansi-blue-fg">.</span>one_batch<span class="ansi-blue-fg">(</span><span class="ansi-blue-fg">)</span><span class="ansi-blue-fg">[</span><span class="ansi-cyan-fg">0</span><span class="ansi-blue-fg">]</span><span class="ansi-blue-fg">.</span>shape
+
+<span class="ansi-green-fg">~/miniconda3/lib/python3.7/site-packages/fastai2/data/core.py</span> in <span class="ansi-cyan-fg">databunch</span><span class="ansi-blue-fg">(self, bs, val_bs, shuffle_train, n, path, dl_type, dl_kwargs, **kwargs)</span>
+<span class="ansi-green-intense-fg ansi-bold">    150</span>         <span class="ansi-green-fg">if</span> dl_type <span class="ansi-green-fg">is</span> <span class="ansi-green-fg">None</span><span class="ansi-blue-fg">:</span> dl_type <span class="ansi-blue-fg">=</span> self<span class="ansi-blue-fg">.</span>_dl_type
+<span class="ansi-green-intense-fg ansi-bold">    151</span>         dls = [dl_type(self.subset(i), bs=b, shuffle=s, drop_last=s, n=n if i==0 else None, **kwargs, **dk)
+<span class="ansi-green-fg">--&gt; 152</span><span class="ansi-red-fg">                for i,(b,s,dk) in enumerate(zip(bss,shuffles,dl_kwargs))]
+</span><span class="ansi-green-intense-fg ansi-bold">    153</span>         <span class="ansi-green-fg">return</span> DataBunch<span class="ansi-blue-fg">(</span><span class="ansi-blue-fg">*</span>dls<span class="ansi-blue-fg">,</span> path<span class="ansi-blue-fg">=</span>path<span class="ansi-blue-fg">)</span>
+<span class="ansi-green-intense-fg ansi-bold">    154</span> 
+
+<span class="ansi-green-fg">~/miniconda3/lib/python3.7/site-packages/fastai2/data/core.py</span> in <span class="ansi-cyan-fg">&lt;listcomp&gt;</span><span class="ansi-blue-fg">(.0)</span>
+<span class="ansi-green-intense-fg ansi-bold">    150</span>         <span class="ansi-green-fg">if</span> dl_type <span class="ansi-green-fg">is</span> <span class="ansi-green-fg">None</span><span class="ansi-blue-fg">:</span> dl_type <span class="ansi-blue-fg">=</span> self<span class="ansi-blue-fg">.</span>_dl_type
+<span class="ansi-green-intense-fg ansi-bold">    151</span>         dls = [dl_type(self.subset(i), bs=b, shuffle=s, drop_last=s, n=n if i==0 else None, **kwargs, **dk)
+<span class="ansi-green-fg">--&gt; 152</span><span class="ansi-red-fg">                for i,(b,s,dk) in enumerate(zip(bss,shuffles,dl_kwargs))]
+</span><span class="ansi-green-intense-fg ansi-bold">    153</span>         <span class="ansi-green-fg">return</span> DataBunch<span class="ansi-blue-fg">(</span><span class="ansi-blue-fg">*</span>dls<span class="ansi-blue-fg">,</span> path<span class="ansi-blue-fg">=</span>path<span class="ansi-blue-fg">)</span>
+<span class="ansi-green-intense-fg ansi-bold">    154</span> 
+
+<span class="ansi-green-fg">~/miniconda3/lib/python3.7/site-packages/fastai2/data/core.py</span> in <span class="ansi-cyan-fg">__init__</span><span class="ansi-blue-fg">(self, dataset, bs, shuffle, num_workers, **kwargs)</span>
+<span class="ansi-green-intense-fg ansi-bold">     38</span>             kwargs<span class="ansi-blue-fg">[</span>nm<span class="ansi-blue-fg">]</span> <span class="ansi-blue-fg">=</span> Pipeline<span class="ansi-blue-fg">(</span>kwargs<span class="ansi-blue-fg">.</span>get<span class="ansi-blue-fg">(</span>nm<span class="ansi-blue-fg">,</span><span class="ansi-green-fg">None</span><span class="ansi-blue-fg">)</span><span class="ansi-blue-fg">,</span> as_item<span class="ansi-blue-fg">=</span><span class="ansi-blue-fg">(</span>nm<span class="ansi-blue-fg">==</span><span class="ansi-blue-fg">&#39;before_batch&#39;</span><span class="ansi-blue-fg">)</span><span class="ansi-blue-fg">)</span>
+<span class="ansi-green-intense-fg ansi-bold">     39</span>         super<span class="ansi-blue-fg">(</span><span class="ansi-blue-fg">)</span><span class="ansi-blue-fg">.</span>__init__<span class="ansi-blue-fg">(</span>dataset<span class="ansi-blue-fg">,</span> bs<span class="ansi-blue-fg">=</span>bs<span class="ansi-blue-fg">,</span> shuffle<span class="ansi-blue-fg">=</span>shuffle<span class="ansi-blue-fg">,</span> num_workers<span class="ansi-blue-fg">=</span>num_workers<span class="ansi-blue-fg">,</span> <span class="ansi-blue-fg">**</span>kwargs<span class="ansi-blue-fg">)</span>
+<span class="ansi-green-fg">---&gt; 40</span><span class="ansi-red-fg">         </span><span class="ansi-green-fg">for</span> nm <span class="ansi-green-fg">in</span> _batch_tfms<span class="ansi-blue-fg">:</span> kwargs<span class="ansi-blue-fg">[</span>nm<span class="ansi-blue-fg">]</span><span class="ansi-blue-fg">.</span>setup<span class="ansi-blue-fg">(</span>self<span class="ansi-blue-fg">)</span>
+<span class="ansi-green-intense-fg ansi-bold">     41</span> 
+<span class="ansi-green-intense-fg ansi-bold">     42</span>     <span class="ansi-green-fg">def</span> _one_pass<span class="ansi-blue-fg">(</span>self<span class="ansi-blue-fg">)</span><span class="ansi-blue-fg">:</span>
+
+<span class="ansi-green-fg">~/miniconda3/lib/python3.7/site-packages/fastcore/transform.py</span> in <span class="ansi-cyan-fg">setup</span><span class="ansi-blue-fg">(self, items)</span>
+<span class="ansi-green-intense-fg ansi-bold">    167</span>         tfms <span class="ansi-blue-fg">=</span> self<span class="ansi-blue-fg">.</span>fs<span class="ansi-blue-fg">[</span><span class="ansi-blue-fg">:</span><span class="ansi-blue-fg">]</span>
+<span class="ansi-green-intense-fg ansi-bold">    168</span>         self<span class="ansi-blue-fg">.</span>fs<span class="ansi-blue-fg">.</span>clear<span class="ansi-blue-fg">(</span><span class="ansi-blue-fg">)</span>
+<span class="ansi-green-fg">--&gt; 169</span><span class="ansi-red-fg">         </span><span class="ansi-green-fg">for</span> t <span class="ansi-green-fg">in</span> tfms<span class="ansi-blue-fg">:</span> self<span class="ansi-blue-fg">.</span>add<span class="ansi-blue-fg">(</span>t<span class="ansi-blue-fg">,</span>items<span class="ansi-blue-fg">)</span>
+<span class="ansi-green-intense-fg ansi-bold">    170</span> 
+<span class="ansi-green-intense-fg ansi-bold">    171</span>     <span class="ansi-green-fg">def</span> add<span class="ansi-blue-fg">(</span>self<span class="ansi-blue-fg">,</span>t<span class="ansi-blue-fg">,</span> items<span class="ansi-blue-fg">=</span><span class="ansi-green-fg">None</span><span class="ansi-blue-fg">)</span><span class="ansi-blue-fg">:</span>
+
+<span class="ansi-green-fg">~/miniconda3/lib/python3.7/site-packages/fastcore/transform.py</span> in <span class="ansi-cyan-fg">add</span><span class="ansi-blue-fg">(self, t, items)</span>
+<span class="ansi-green-intense-fg ansi-bold">    170</span> 
+<span class="ansi-green-intense-fg ansi-bold">    171</span>     <span class="ansi-green-fg">def</span> add<span class="ansi-blue-fg">(</span>self<span class="ansi-blue-fg">,</span>t<span class="ansi-blue-fg">,</span> items<span class="ansi-blue-fg">=</span><span class="ansi-green-fg">None</span><span class="ansi-blue-fg">)</span><span class="ansi-blue-fg">:</span>
+<span class="ansi-green-fg">--&gt; 172</span><span class="ansi-red-fg">         </span>t<span class="ansi-blue-fg">.</span>setup<span class="ansi-blue-fg">(</span>items<span class="ansi-blue-fg">)</span>
+<span class="ansi-green-intense-fg ansi-bold">    173</span>         self<span class="ansi-blue-fg">.</span>fs<span class="ansi-blue-fg">.</span>append<span class="ansi-blue-fg">(</span>t<span class="ansi-blue-fg">)</span>
+<span class="ansi-green-intense-fg ansi-bold">    174</span> 
+
+<span class="ansi-green-fg">~/miniconda3/lib/python3.7/site-packages/fastcore/transform.py</span> in <span class="ansi-cyan-fg">setup</span><span class="ansi-blue-fg">(self, items)</span>
+<span class="ansi-green-intense-fg ansi-bold">     61</span>     <span class="ansi-green-fg">def</span> __call__<span class="ansi-blue-fg">(</span>self<span class="ansi-blue-fg">,</span> x<span class="ansi-blue-fg">,</span> <span class="ansi-blue-fg">**</span>kwargs<span class="ansi-blue-fg">)</span><span class="ansi-blue-fg">:</span> <span class="ansi-green-fg">return</span> self<span class="ansi-blue-fg">.</span>_call<span class="ansi-blue-fg">(</span><span class="ansi-blue-fg">&#39;encodes&#39;</span><span class="ansi-blue-fg">,</span> x<span class="ansi-blue-fg">,</span> <span class="ansi-blue-fg">**</span>kwargs<span class="ansi-blue-fg">)</span>
+<span class="ansi-green-intense-fg ansi-bold">     62</span>     <span class="ansi-green-fg">def</span> decode  <span class="ansi-blue-fg">(</span>self<span class="ansi-blue-fg">,</span> x<span class="ansi-blue-fg">,</span> <span class="ansi-blue-fg">**</span>kwargs<span class="ansi-blue-fg">)</span><span class="ansi-blue-fg">:</span> <span class="ansi-green-fg">return</span> self<span class="ansi-blue-fg">.</span>_call<span class="ansi-blue-fg">(</span><span class="ansi-blue-fg">&#39;decodes&#39;</span><span class="ansi-blue-fg">,</span> x<span class="ansi-blue-fg">,</span> <span class="ansi-blue-fg">**</span>kwargs<span class="ansi-blue-fg">)</span>
+<span class="ansi-green-fg">---&gt; 63</span><span class="ansi-red-fg">     </span><span class="ansi-green-fg">def</span> setup<span class="ansi-blue-fg">(</span>self<span class="ansi-blue-fg">,</span> items<span class="ansi-blue-fg">=</span><span class="ansi-green-fg">None</span><span class="ansi-blue-fg">)</span><span class="ansi-blue-fg">:</span> <span class="ansi-green-fg">return</span> self<span class="ansi-blue-fg">.</span>setups<span class="ansi-blue-fg">(</span>items<span class="ansi-blue-fg">)</span>
+<span class="ansi-green-intense-fg ansi-bold">     64</span>     <span class="ansi-green-fg">def</span> __repr__<span class="ansi-blue-fg">(</span>self<span class="ansi-blue-fg">)</span><span class="ansi-blue-fg">:</span> <span class="ansi-green-fg">return</span> <span class="ansi-blue-fg">f&#39;{self.__class__.__name__}: {self.use_as_item} {self.encodes} {self.decodes}&#39;</span>
+<span class="ansi-green-intense-fg ansi-bold">     65</span> 
+
+<span class="ansi-green-fg">~/miniconda3/lib/python3.7/site-packages/fastcore/dispatch.py</span> in <span class="ansi-cyan-fg">__call__</span><span class="ansi-blue-fg">(self, *args, **kwargs)</span>
+<span class="ansi-green-intense-fg ansi-bold">     96</span>         <span class="ansi-green-fg">if</span> <span class="ansi-green-fg">not</span> f<span class="ansi-blue-fg">:</span> <span class="ansi-green-fg">return</span> args<span class="ansi-blue-fg">[</span><span class="ansi-cyan-fg">0</span><span class="ansi-blue-fg">]</span>
+<span class="ansi-green-intense-fg ansi-bold">     97</span>         <span class="ansi-green-fg">if</span> self<span class="ansi-blue-fg">.</span>inst <span class="ansi-green-fg">is</span> <span class="ansi-green-fg">not</span> <span class="ansi-green-fg">None</span><span class="ansi-blue-fg">:</span> f <span class="ansi-blue-fg">=</span> MethodType<span class="ansi-blue-fg">(</span>f<span class="ansi-blue-fg">,</span> self<span class="ansi-blue-fg">.</span>inst<span class="ansi-blue-fg">)</span>
+<span class="ansi-green-fg">---&gt; 98</span><span class="ansi-red-fg">         </span><span class="ansi-green-fg">return</span> f<span class="ansi-blue-fg">(</span><span class="ansi-blue-fg">*</span>args<span class="ansi-blue-fg">,</span> <span class="ansi-blue-fg">**</span>kwargs<span class="ansi-blue-fg">)</span>
+<span class="ansi-green-intense-fg ansi-bold">     99</span> 
+<span class="ansi-green-intense-fg ansi-bold">    100</span>     <span class="ansi-green-fg">def</span> __get__<span class="ansi-blue-fg">(</span>self<span class="ansi-blue-fg">,</span> inst<span class="ansi-blue-fg">,</span> owner<span class="ansi-blue-fg">)</span><span class="ansi-blue-fg">:</span>
+
+<span class="ansi-green-fg">&lt;ipython-input-31-66b4b46c4ef6&gt;</span> in <span class="ansi-cyan-fg">setups</span><span class="ansi-blue-fg">(self, dl)</span>
+<span class="ansi-green-intense-fg ansi-bold">      7</span>     <span class="ansi-green-fg">def</span> setups<span class="ansi-blue-fg">(</span>self<span class="ansi-blue-fg">,</span> dl<span class="ansi-blue-fg">:</span>DataLoader<span class="ansi-blue-fg">)</span><span class="ansi-blue-fg">:</span>
+<span class="ansi-green-intense-fg ansi-bold">      8</span>         x<span class="ansi-blue-fg">,</span><span class="ansi-blue-fg">*</span>_ <span class="ansi-blue-fg">=</span> dl<span class="ansi-blue-fg">.</span>one_batch<span class="ansi-blue-fg">(</span><span class="ansi-blue-fg">)</span>
+<span class="ansi-green-fg">----&gt; 9</span><span class="ansi-red-fg">         </span><span class="ansi-green-fg">import</span> pdb<span class="ansi-blue-fg">;</span> pdb<span class="ansi-blue-fg">.</span>set_trace<span class="ansi-blue-fg">(</span><span class="ansi-blue-fg">)</span>
+<span class="ansi-green-intense-fg ansi-bold">     10</span> 
+<span class="ansi-green-intense-fg ansi-bold">     11</span>     <span class="ansi-green-fg">def</span> encodes<span class="ansi-blue-fg">(</span>self<span class="ansi-blue-fg">,</span> o<span class="ansi-blue-fg">:</span>TensorSequencesInput<span class="ansi-blue-fg">)</span><span class="ansi-blue-fg">:</span>
+
+<span class="ansi-green-fg">~/miniconda3/lib/python3.7/bdb.py</span> in <span class="ansi-cyan-fg">trace_dispatch</span><span class="ansi-blue-fg">(self, frame, event, arg)</span>
+<span class="ansi-green-intense-fg ansi-bold">     90</span>             <span class="ansi-green-fg">return</span> self<span class="ansi-blue-fg">.</span>dispatch_call<span class="ansi-blue-fg">(</span>frame<span class="ansi-blue-fg">,</span> arg<span class="ansi-blue-fg">)</span>
+<span class="ansi-green-intense-fg ansi-bold">     91</span>         <span class="ansi-green-fg">if</span> event <span class="ansi-blue-fg">==</span> <span class="ansi-blue-fg">&#39;return&#39;</span><span class="ansi-blue-fg">:</span>
+<span class="ansi-green-fg">---&gt; 92</span><span class="ansi-red-fg">             </span><span class="ansi-green-fg">return</span> self<span class="ansi-blue-fg">.</span>dispatch_return<span class="ansi-blue-fg">(</span>frame<span class="ansi-blue-fg">,</span> arg<span class="ansi-blue-fg">)</span>
+<span class="ansi-green-intense-fg ansi-bold">     93</span>         <span class="ansi-green-fg">if</span> event <span class="ansi-blue-fg">==</span> <span class="ansi-blue-fg">&#39;exception&#39;</span><span class="ansi-blue-fg">:</span>
+<span class="ansi-green-intense-fg ansi-bold">     94</span>             <span class="ansi-green-fg">return</span> self<span class="ansi-blue-fg">.</span>dispatch_exception<span class="ansi-blue-fg">(</span>frame<span class="ansi-blue-fg">,</span> arg<span class="ansi-blue-fg">)</span>
+
+<span class="ansi-green-fg">~/miniconda3/lib/python3.7/bdb.py</span> in <span class="ansi-cyan-fg">dispatch_return</span><span class="ansi-blue-fg">(self, frame, arg)</span>
+<span class="ansi-green-intense-fg ansi-bold">    152</span>             <span class="ansi-green-fg">finally</span><span class="ansi-blue-fg">:</span>
+<span class="ansi-green-intense-fg ansi-bold">    153</span>                 self<span class="ansi-blue-fg">.</span>frame_returning <span class="ansi-blue-fg">=</span> <span class="ansi-green-fg">None</span>
+<span class="ansi-green-fg">--&gt; 154</span><span class="ansi-red-fg">             </span><span class="ansi-green-fg">if</span> self<span class="ansi-blue-fg">.</span>quitting<span class="ansi-blue-fg">:</span> <span class="ansi-green-fg">raise</span> BdbQuit
+<span class="ansi-green-intense-fg ansi-bold">    155</span>             <span class="ansi-red-fg"># The user issued a &#39;next&#39; or &#39;until&#39; command.</span>
+<span class="ansi-green-intense-fg ansi-bold">    156</span>             <span class="ansi-green-fg">if</span> self<span class="ansi-blue-fg">.</span>stopframe <span class="ansi-green-fg">is</span> frame <span class="ansi-green-fg">and</span> self<span class="ansi-blue-fg">.</span>stoplineno <span class="ansi-blue-fg">!=</span> <span class="ansi-blue-fg">-</span><span class="ansi-cyan-fg">1</span><span class="ansi-blue-fg">:</span>
+
+<span class="ansi-red-fg">BdbQuit</span>: </pre>
 </div>
 </div>
 

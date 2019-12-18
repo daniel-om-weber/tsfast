@@ -10,8 +10,14 @@ entries:
       title: Overview
       url: /
     - output: web,pdf
-      title: Title
+      title: Corefunctions
       url: /core
+    - output: web,pdf
+      title: Models
+      url: /model
+    - output: web,pdf
+      title: Title
+      url: /performance_test
     output: web
     title: seqdata
   output: web

@@ -146,8 +146,6 @@ class SeqNoiseInjection(Transform):
         return o+torch.normal(mean=self.mean.expand_as(o),
                               std=self.std.expand_as(o))
 
-#     def decodes(self, o): return o-self.mean
-
 #Cell
 def _parent_idxs(items, name): return mask2idxs(Path(o).parent.name == name for o in items)
 

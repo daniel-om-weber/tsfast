@@ -1,6 +1,8 @@
 {
   "seqdata": {
     "Overview": "/",
-    "Title": "/core"
+    "Corefunctions": "/core",
+    "Models": "/model",
+    "Title": "/performance_test"
   }
 }
