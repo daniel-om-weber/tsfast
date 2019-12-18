@@ -4,16 +4,23 @@ __all__ = ["index", "modules", "custom_doc_links", "git_url"]
 
 index = {"get_hdf_files": "00_core.ipynb",
          "hdf_extensions": "00_core.ipynb",
-         "hdf2sequence": "00_core.ipynb",
+         "df_source_items": "00_core.ipynb",
+         "DfHDFCreateWindows": "00_core.ipynb",
+         "TensorSequences": "00_core.ipynb",
+         "TensorSequencesInput": "00_core.ipynb",
+         "TensorSequencesOutput": "00_core.ipynb",
+         "toTensorSequencesInput": "00_core.ipynb",
+         "toTensorSequencesOutput": "00_core.ipynb",
+         "TensorScalars": "00_core.ipynb",
+         "TensorScalarsInput": "00_core.ipynb",
+         "TensorScalarsOutput": "00_core.ipynb",
+         "HDF2Sequence": "00_core.ipynb",
          "hdf2scalars": "00_core.ipynb",
-         "Hdf2SeqSeq": "00_core.ipynb",
-         "Hdf2SeqScal": "00_core.ipynb",
-         "Hdf2SeqScalSeq": "00_core.ipynb",
-         "Hdf2SeqScalScal": "00_core.ipynb",
          "SequenceItem": "00_core.ipynb",
          "SeqTfm": "00_core.ipynb",
-         "ParentSplitter": "00_core.ipynb",
-         "createWindows": "00_core.ipynb"}
+         "SeqSlice": "00_core.ipynb",
+         "SeqNoiseInjection": "00_core.ipynb",
+         "ParentSplitter": "00_core.ipynb"}
 
 modules = ["core.py"]
 
