@@ -20,7 +20,8 @@ index = {"get_hdf_files": "00_core.ipynb",
          "SeqTfm": "00_core.ipynb",
          "SeqSlice": "00_core.ipynb",
          "SeqNoiseInjection": "00_core.ipynb",
-         "ParentSplitter": "00_core.ipynb"}
+         "ParentSplitter": "00_core.ipynb",
+         "SimpleGRU": "01_model.ipynb"}
 
 modules = ["core.py",
            "model.py"]
