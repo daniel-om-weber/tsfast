@@ -3,6 +3,7 @@
     "Overview": "/",
     "Corefunctions": "/core",
     "Models": "/model",
-    "Title": "/performance_test"
+    "Learner": "/learner",
+    "Title": "/silverbox"
   }
 }

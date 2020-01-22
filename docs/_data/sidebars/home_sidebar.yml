@@ -16,8 +16,11 @@ entries:
       title: Models
       url: /model
     - output: web,pdf
+      title: Learner
+      url: /learner
+    - output: web,pdf
       title: Title
-      url: /performance_test
+      url: /silverbox
     output: web
     title: seqdata
   output: web
