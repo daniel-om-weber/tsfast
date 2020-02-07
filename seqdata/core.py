@@ -94,8 +94,6 @@ class Memoize:
         return self.memo[args]
 
 #Cell
-from functools import lru_cache
-
 class HDF2Sequence(Transform):
 
     def __init__(self, clm_names,clm_shift=None,truncate_sz=None,to_cls=noop,cached=True):

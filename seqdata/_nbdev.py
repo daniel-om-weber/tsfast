@@ -62,12 +62,28 @@ index = {"get_hdf_files": "00_core.ipynb",
          "AR_TCNLearner": "02_learner.ipynb",
          "AR_GRULearner": "02_learner.ipynb",
          "ProDiagTrainer": "11_ProDiag.ipynb",
-         "ProgDiag": "11_ProDiag.ipynb"}
+         "ProgDiag": "11_ProDiag.ipynb",
+         "TensorQuaternions": "11_TensorQuaternions.ipynb",
+         "rad2deg": "11_TensorQuaternions.ipynb",
+         "multiplyQuat": "11_TensorQuaternions.ipynb",
+         "norm_quaternion": "11_TensorQuaternions.ipynb",
+         "conjQuat": "11_TensorQuaternions.ipynb",
+         "diffQuat": "11_TensorQuaternions.ipynb",
+         "safe_acos": "11_TensorQuaternions.ipynb",
+         "inclinationAngle": "11_TensorQuaternions.ipynb",
+         "relativeAngle": "11_TensorQuaternions.ipynb",
+         "ms_inclination": "11_TensorQuaternions.ipynb",
+         "rms_inclination_deg": "11_TensorQuaternions.ipynb",
+         "ms_rel_angle": "11_TensorQuaternions.ipynb",
+         "rms_rel_angle_deg": "11_TensorQuaternions.ipynb",
+         "QuaternionRegularizer": "11_TensorQuaternions.ipynb",
+         "plot_quaternions_single_figure": "11_TensorQuaternions.ipynb"}
 
 modules = ["core.py",
            "model.py",
            "learner.py",
-           "prodiag.py"]
+           "prodiag.py",
+           "quaternions.py"]
 
 git_url = "https://github.com/daniel-om-weber/seqdata/tree/master/"
 
