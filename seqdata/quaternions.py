@@ -2,7 +2,8 @@
 
 __all__ = ['TensorQuaternions', 'rad2deg', 'multiplyQuat', 'norm_quaternion', 'conjQuat', 'diffQuat', 'safe_acos',
            'inclinationAngle', 'relativeAngle', 'ms_inclination', 'rms_inclination_deg', 'ms_rel_angle',
-           'rms_rel_angle_deg', 'QuaternionRegularizer', 'plot_quaternions_single_figure']
+           'rms_rel_angle_deg', 'QuaternionRegularizer', 'plot_quaternions_single_figure',
+           'plot_quaternions_multi_figures']
 
 #Cell
 from .core import *
@@ -121,15 +122,28 @@ def plot_quaternions_single_figure(n_samples,samples,outs):
         out_signals = outs[i][0]
         inner_grid = outer_grid[i].subgridspec(n_targ+1, 1)
         ax = fig.add_subplot(inner_grid[0])
-#         import pdb; pdb.set_trace()
         ax.plot(rad2deg(inclinationAngle(out_signals,targ_signals)))
-        print(rms_inclination_deg(out_signals,targ_signals))
         ax.label_outer()
 
         ax = fig.add_subplot(inner_grid[1])
         ax.plot(in_signals)
     plt.tight_layout()
 
+
+#Cell
+def plot_quaternions_multi_figures(n_samples,samples,outs=None):
+    n_targ = 1
+    for i in range(n_samples):
+        fig = plt.figure(figsize=(9,3))
+        axs = fig.subplots(nrows=n_targ+1,sharex=True)
+        in_signals = samples[i][0]
+        targ_signals = samples[i][1]
+        out_signals = outs[i][0]
+        ax = axs[0]
+        ax.plot(rad2deg(inclinationAngle(out_signals,targ_signals)))
+
+        axs[-1].plot(in_signals)
+        plt.tight_layout()
 
 #Cell
 @typedispatch
@@ -141,5 +155,5 @@ def show_results(x:TensorSequences, y:TensorQuaternions, samples, outs, ctxs=Non
         plot_quaternions_single_figure(n_samples,samples,outs)
     else:
         #if there are less then 3 samples to plot then put each in its own figure
-        plot_quaternions_single_figure(n_samples,samples,outs)
+        plot_quaternions_multi_figures(n_samples,samples,outs)
     return ctxs

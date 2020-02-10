@@ -149,7 +149,7 @@ def hdf2scalars(hdf_path,c_names):
         return None
 
 #Cell
-class TensorSequences(Tensor):#TensorBase
+class TensorSequences(TensorBase):#TensorBase
 #     def __init__(self,x,c_names=None, **kwargs):
 #         super().__init__()
 #         self.c_names = c_names

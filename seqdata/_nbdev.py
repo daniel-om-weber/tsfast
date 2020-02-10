@@ -36,6 +36,8 @@ index = {"get_hdf_files": "00_core.ipynb",
          "SeqLinear": "01_model.ipynb",
          "RNN": "01_model.ipynb",
          "SimpleRNN": "01_model.ipynb",
+         "AWD_RNN": "01_model.ipynb",
+         "SimpleAWDRNN": "01_model.ipynb",
          "SimpleGRU": "01_model.ipynb",
          "SimpleLSTM": "01_model.ipynb",
          "SimpleQRNN": "01_model.ipynb",
@@ -77,7 +79,8 @@ index = {"get_hdf_files": "00_core.ipynb",
          "ms_rel_angle": "11_TensorQuaternions.ipynb",
          "rms_rel_angle_deg": "11_TensorQuaternions.ipynb",
          "QuaternionRegularizer": "11_TensorQuaternions.ipynb",
-         "plot_quaternions_single_figure": "11_TensorQuaternions.ipynb"}
+         "plot_quaternions_single_figure": "11_TensorQuaternions.ipynb",
+         "plot_quaternions_multi_figures": "11_TensorQuaternions.ipynb"}
 
 modules = ["core.py",
            "model.py",
