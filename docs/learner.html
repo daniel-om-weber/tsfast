@@ -33,7 +33,7 @@ summary: "Pytorch Modules for Training Models for sequential data"
                         <span class="n">SequenceBlock</span><span class="o">.</span><span class="n">from_hdf</span><span class="p">([</span><span class="s1">&#39;voltage&#39;</span><span class="p">],</span><span class="n">TensorSequencesOutput</span><span class="p">,</span><span class="n">clm_shift</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">])),</span>
                  <span class="n">get_items</span><span class="o">=</span><span class="n">CreateDict</span><span class="p">([</span><span class="n">DfHDFCreateWindows</span><span class="p">(</span><span class="n">win_sz</span><span class="o">=</span><span class="mi">1000</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="n">stp_sz</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span><span class="n">clm</span><span class="o">=</span><span class="s1">&#39;current&#39;</span><span class="p">)]),</span>
                  <span class="n">splitter</span><span class="o">=</span><span class="n">ApplyToDict</span><span class="p">(</span><span class="n">ParentSplitter</span><span class="p">()))</span>
-<span class="n">db</span> <span class="o">=</span> <span class="n">seq</span><span class="o">.</span><span class="n">databunch</span><span class="p">(</span><span class="n">get_hdf_files</span><span class="p">(</span><span class="s1">&#39;test_data/&#39;</span><span class="p">))</span>
+<span class="n">db</span> <span class="o">=</span> <span class="n">seq</span><span class="o">.</span><span class="n">dataloaders</span><span class="p">(</span><span class="n">get_hdf_files</span><span class="p">(</span><span class="s1">&#39;test_data/&#39;</span><span class="p">))</span>
 </pre></div>
 
     </div>
@@ -46,7 +46,7 @@ summary: "Pytorch Modules for Training Models for sequential data"
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">SimpleGRU</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">SimpleRNN</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
 <span class="n">lrn</span> <span class="o">=</span> <span class="n">Learner</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="n">model</span><span class="p">,</span><span class="n">loss_func</span><span class="o">=</span><span class="n">nn</span><span class="o">.</span><span class="n">MSELoss</span><span class="p">())</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
 </pre></div>
 
@@ -73,9 +73,9 @@ summary: "Pytorch Modules for Training Models for sequential data"
   <tbody>
     <tr>
       <td>0</td>
-      <td>7.043783</td>
-      <td>0.953111</td>
-      <td>00:03</td>
+      <td>13.464315</td>
+      <td>12.680680</td>
+      <td>00:02</td>
     </tr>
   </tbody>
 </table>
@@ -105,7 +105,7 @@ summary: "Pytorch Modules for Training Models for sequential data"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h3 id="SkipFirstNCallback" class="doc_header"><code>class</code> <code>SkipFirstNCallback</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L14" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>SkipFirstNCallback</code>(<strong><code>n_skip</code></strong>=<em><code>0</code></em>) :: <code>Callback</code></p>
+<h3 id="SkipFirstNCallback" class="doc_header"><code>class</code> <code>SkipFirstNCallback</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L15" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>SkipFirstNCallback</code>(<strong><code>n_skip</code></strong>=<em><code>0</code></em>) :: <code>Callback</code></p>
 </blockquote>
 <p><code>Callback</code> skips first n samples from prediction and target, optionally <code>with_loss</code></p>
 
@@ -129,10 +129,55 @@ summary: "Pytorch Modules for Training Models for sequential data"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h3 id="VarySeqLen" class="doc_header"><code>class</code> <code>VarySeqLen</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L29" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>VarySeqLen</code>(<strong><code>min_len</code></strong>=<em><code>50</code></em>) :: <code>Callback</code></p>
+<h3 id="VarySeqLen" class="doc_header"><code>class</code> <code>VarySeqLen</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L30" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>VarySeqLen</code>(<strong><code>min_len</code></strong>=<em><code>50</code></em>) :: <code>Callback</code></p>
 </blockquote>
 <p><code>Callback</code> varies sequence length of every mini batch</p>
 
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">Learner</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="n">model</span><span class="p">,</span><span class="n">loss_func</span><span class="o">=</span><span class="n">nn</span><span class="o">.</span><span class="n">MSELoss</span><span class="p">(),</span><span class="n">cbs</span><span class="o">=</span><span class="n">VarySeqLen</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_html rendered_html output_subarea ">
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: left;">
+      <th>epoch</th>
+      <th>train_loss</th>
+      <th>valid_loss</th>
+      <th>time</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>0</td>
+      <td>11.933402</td>
+      <td>11.059910</td>
+      <td>00:02</td>
+    </tr>
+  </tbody>
+</table>
 </div>
 
 </div>
@@ -156,6 +201,30 @@ summary: "Pytorch Modules for Training Models for sequential data"
 <h3 id="TimeSeriesRegularizer" class="doc_header"><code>class</code> <code>TimeSeriesRegularizer</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L51" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>TimeSeriesRegularizer</code>(<strong><code>alpha</code></strong>=<em><code>0.0</code></em>, <strong><code>beta</code></strong>=<em><code>0.0</code></em>, <strong><code>dim</code></strong>=<em><code>None</code></em>, <strong><code>detach</code></strong>=<em><code>False</code></em>, <strong><code>modules</code></strong>=<em><code>None</code></em>, <strong><code>every</code></strong>=<em><code>None</code></em>, <strong><code>remove_end</code></strong>=<em><code>True</code></em>, <strong><code>is_forward</code></strong>=<em><code>True</code></em>, <strong><code>cpu</code></strong>=<em><code>True</code></em>, <strong><code>hook</code></strong>=<em><code>None</code></em>) :: <code>HookCallback</code></p>
 </blockquote>
 <p>Callback that adds AR and TAR to the loss, calculated by output of provided layer</p>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h3 id="ARInitCB" class="doc_header"><code>class</code> <code>ARInitCB</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L84" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>ARInitCB</code>() :: <code>Callback</code></p>
+</blockquote>
+<p>Adds the target variable to the input tuple for autoregression</p>
 
 </div>
 
@@ -196,36 +265,12 @@ summary: "Pytorch Modules for Training Models for sequential data"
   <tbody>
     <tr>
       <td>0</td>
-      <td>0.226220</td>
-      <td>0.154484</td>
-      <td>00:03</td>
+      <td>9.876295</td>
+      <td>8.491691</td>
+      <td>00:02</td>
     </tr>
   </tbody>
 </table>
-</div>
-
-</div>
-
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-
-<div class="output_markdown rendered_html output_subarea ">
-<h3 id="ProDiagTrainer" class="doc_header"><code>class</code> <code>ProDiagTrainer</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L84" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>ProDiagTrainer</code>(<strong><code>init_size</code></strong>:<code>int</code>=<em><code>50</code></em>, <strong><code>alpha</code></strong>=<em><code>1000000.0</code></em>) :: <code>Callback</code></p>
-</blockquote>
-<p><code>Callback</code> that regroups lr adjustment to seq_len, AR and TAR.</p>
-
 </div>
 
 </div>
@@ -252,7 +297,7 @@ summary: "Pytorch Modules for Training Models for sequential data"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="SkipNLoss" class="doc_header"><code>SkipNLoss</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L108" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>SkipNLoss</code>(<strong><code>fn</code></strong>, <strong><code>n_skip</code></strong>=<em><code>0</code></em>)</p>
+<h4 id="SkipNLoss" class="doc_header"><code>SkipNLoss</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L91" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>SkipNLoss</code>(<strong><code>fn</code></strong>, <strong><code>n_skip</code></strong>=<em><code>0</code></em>)</p>
 </blockquote>
 <p>Loss-Function modifier that skips the first n samples of sequential data</p>
 
@@ -295,9 +340,9 @@ summary: "Pytorch Modules for Training Models for sequential data"
   <tbody>
     <tr>
       <td>0</td>
-      <td>0.037338</td>
-      <td>0.006046</td>
-      <td>00:03</td>
+      <td>6.336886</td>
+      <td>3.078813</td>
+      <td>00:02</td>
     </tr>
   </tbody>
 </table>
@@ -321,7 +366,7 @@ summary: "Pytorch Modules for Training Models for sequential data"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="fun_rmse" class="doc_header"><code>fun_rmse</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L122" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>fun_rmse</code>(<strong><code>inp</code></strong>, <strong><code>targ</code></strong>)</p>
+<h4 id="fun_rmse" class="doc_header"><code>fun_rmse</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L105" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>fun_rmse</code>(<strong><code>inp</code></strong>, <strong><code>targ</code></strong>)</p>
 </blockquote>
 <p>rmse loss function defined as a function not as a AccumMetric</p>
 
@@ -365,10 +410,10 @@ summary: "Pytorch Modules for Training Models for sequential data"
   <tbody>
     <tr>
       <td>0</td>
-      <td>0.044177</td>
-      <td>0.032674</td>
-      <td>0.027098</td>
-      <td>00:03</td>
+      <td>1.272448</td>
+      <td>0.847049</td>
+      <td>0.878865</td>
+      <td>00:02</td>
     </tr>
   </tbody>
 </table>
@@ -392,7 +437,7 @@ summary: "Pytorch Modules for Training Models for sequential data"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="norm_rmse" class="doc_header"><code>norm_rmse</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L127" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>norm_rmse</code>(<strong><code>inp</code></strong>, <strong><code>targ</code></strong>)</p>
+<h4 id="norm_rmse" class="doc_header"><code>norm_rmse</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L110" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>norm_rmse</code>(<strong><code>inp</code></strong>, <strong><code>targ</code></strong>)</p>
 </blockquote>
 <p>rmse loss function defined as a function not as a AccumMetric</p>
 
@@ -436,10 +481,80 @@ summary: "Pytorch Modules for Training Models for sequential data"
   <tbody>
     <tr>
       <td>0</td>
-      <td>0.034259</td>
-      <td>0.025603</td>
-      <td>3.026196</td>
-      <td>00:03</td>
+      <td>0.264848</td>
+      <td>0.119252</td>
+      <td>22.288921</td>
+      <td>00:01</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h4 id="mean_vaf" class="doc_header"><code>mean_vaf</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L115" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>mean_vaf</code>(<strong><code>inp</code></strong>, <strong><code>targ</code></strong>)</p>
+</blockquote>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">Learner</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="n">model</span><span class="p">,</span><span class="n">loss_func</span><span class="o">=</span><span class="n">nn</span><span class="o">.</span><span class="n">MSELoss</span><span class="p">(),</span><span class="n">metrics</span><span class="o">=</span><span class="n">SkipNLoss</span><span class="p">(</span><span class="n">mean_vaf</span><span class="p">,</span><span class="n">n_skip</span><span class="o">=</span><span class="mi">30</span><span class="p">))</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_html rendered_html output_subarea ">
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: left;">
+      <th>epoch</th>
+      <th>train_loss</th>
+      <th>valid_loss</th>
+      <th>mean_vaf</th>
+      <th>time</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>0</td>
+      <td>0.180029</td>
+      <td>0.284145</td>
+      <td>71.502914</td>
+      <td>00:01</td>
     </tr>
   </tbody>
 </table>
@@ -470,7 +585,7 @@ summary: "Pytorch Modules for Training Models for sequential data"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="get_inp_out_size" class="doc_header"><code>get_inp_out_size</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L132" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>get_inp_out_size</code>(<strong><code>db</code></strong>)</p>
+<h4 id="get_inp_out_size" class="doc_header"><code>get_inp_out_size</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L119" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>get_inp_out_size</code>(<strong><code>db</code></strong>)</p>
 </blockquote>
 <p>returns input and output size of a timeseries databunch</p>
 
@@ -497,7 +612,8 @@ summary: "Pytorch Modules for Training Models for sequential data"
 </div>
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<h2 id="GRU-Learner">GRU Learner<a class="anchor-link" href="#GRU-Learner">&#182;</a></h2>
+<h2 id="RNN-Learner">RNN Learner<a class="anchor-link" href="#RNN-Learner">&#182;</a></h2><p>The Learners include model specific optimizations. Removing the first n_skip samples of the loss function of transient time, greatly improves training stability. In</p>
+
 </div>
 </div>
 </div>
@@ -513,7 +629,7 @@ summary: "Pytorch Modules for Training Models for sequential data"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="GRULearner" class="doc_header"><code>GRULearner</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L140" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>GRULearner</code>(<strong><code>db</code></strong>, <strong><code>alpha</code></strong>=<em><code>1</code></em>, <strong><code>beta</code></strong>=<em><code>1</code></em>, <strong><code>early_stop</code></strong>=<em><code>0</code></em>, <strong><code>metrics</code></strong>=<em><code>None</code></em>, <strong><code>n_skip</code></strong>=<em><code>0</code></em>, <strong><code>num_layers</code></strong>=<em><code>1</code></em>, <strong><code>hidden_size</code></strong>=<em><code>100</code></em>, <strong><code>lrn_init_state</code></strong>=<em><code>False</code></em>, <strong>**<code>kwargs</code></strong>)</p>
+<h4 id="RNNLearner" class="doc_header"><code>RNNLearner</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L127" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>RNNLearner</code>(<strong><code>db</code></strong>, <strong><code>loss_func</code></strong>=<em><code>MSELoss()</code></em>, <strong><code>metrics</code></strong>=<em><code>[&lt;function fun_rmse at 0x7f5d51971400&gt;]</code></em>, <strong><code>n_skip</code></strong>=<em><code>0</code></em>, <strong><code>cbs</code></strong>=<em><code>None</code></em>, <strong><code>num_layers</code></strong>=<em><code>1</code></em>, <strong><code>hidden_size</code></strong>=<em><code>100</code></em>, <strong><code>lrn_init_state</code></strong>=<em><code>False</code></em>, <strong><code>hidden_p</code></strong>=<em><code>0.2</code></em>, <strong><code>input_p</code></strong>=<em><code>0.6</code></em>, <strong><code>weight_p</code></strong>=<em><code>0.5</code></em>, <strong><code>rnn_type</code></strong>=<em><code>'gru'</code></em>, <strong><code>ret_full_hidden</code></strong>=<em><code>False</code></em>, <strong>**<code>kwargs</code></strong>)</p>
 </blockquote>
 
 </div>
@@ -529,7 +645,7 @@ summary: "Pytorch Modules for Training Models for sequential data"
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">GRULearner</span><span class="p">(</span><span class="n">db</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">RNNLearner</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="n">rnn_type</span><span class="o">=</span><span class="s1">&#39;qrnn&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mf">3e-2</span><span class="p">)</span>
 </pre></div>
 
     </div>
@@ -549,15 +665,17 @@ summary: "Pytorch Modules for Training Models for sequential data"
       <th>epoch</th>
       <th>train_loss</th>
       <th>valid_loss</th>
+      <th>fun_rmse</th>
       <th>time</th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <td>0</td>
-      <td>13.029135</td>
-      <td>12.524860</td>
-      <td>00:03</td>
+      <td>4.739856</td>
+      <td>3.630998</td>
+      <td>1.895512</td>
+      <td>00:01</td>
     </tr>
   </tbody>
 </table>
@@ -571,7 +689,8 @@ summary: "Pytorch Modules for Training Models for sequential data"
 </div>
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<h2 id="QRNN-Learner">QRNN Learner<a class="anchor-link" href="#QRNN-Learner">&#182;</a></h2>
+<h2 id="TCN-Learner">TCN Learner<a class="anchor-link" href="#TCN-Learner">&#182;</a></h2><p>Performs better on multi input data. Higher beta values allow a way smoother prediction. Way faster then RNNs in prediction.</p>
+
 </div>
 </div>
 </div>
@@ -587,81 +706,7 @@ summary: "Pytorch Modules for Training Models for sequential data"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="QRNNLearner" class="doc_header"><code>QRNNLearner</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L155" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>QRNNLearner</code>(<strong><code>db</code></strong>, <strong><code>alpha</code></strong>=<em><code>1</code></em>, <strong><code>beta</code></strong>=<em><code>1</code></em>, <strong><code>early_stop</code></strong>=<em><code>0</code></em>, <strong><code>metrics</code></strong>=<em><code>None</code></em>, <strong><code>n_skip</code></strong>=<em><code>0</code></em>, <strong><code>hidden_size</code></strong>=<em><code>100</code></em>, <strong><code>n_layers</code></strong>=<em><code>1</code></em>, <strong><code>batch_first</code></strong>=<em><code>True</code></em>, <strong><code>dropout</code></strong>=<em><code>0</code></em>, <strong><code>bidirectional</code></strong>=<em><code>False</code></em>, <strong><code>save_prev_x</code></strong>=<em><code>False</code></em>, <strong><code>zoneout</code></strong>=<em><code>0</code></em>, <strong><code>window</code></strong>=<em><code>None</code></em>, <strong><code>output_gate</code></strong>=<em><code>True</code></em>, <strong>**<code>kwargs</code></strong>)</p>
-</blockquote>
-
-</div>
-
-</div>
-
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-
-<div class="inner_cell">
-    <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">QRNNLearner</span><span class="p">(</span><span class="n">db</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
-</pre></div>
-
-    </div>
-</div>
-</div>
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-
-<div class="output_html rendered_html output_subarea ">
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: left;">
-      <th>epoch</th>
-      <th>train_loss</th>
-      <th>valid_loss</th>
-      <th>time</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>0</td>
-      <td>13.652747</td>
-      <td>13.414914</td>
-      <td>00:02</td>
-    </tr>
-  </tbody>
-</table>
-</div>
-
-</div>
-
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
-<div class="text_cell_render border-box-sizing rendered_html">
-<h2 id="TCN-Learner">TCN Learner<a class="anchor-link" href="#TCN-Learner">&#182;</a></h2>
-</div>
-</div>
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-
-<div class="output_markdown rendered_html output_subarea ">
-<h4 id="TCNLearner" class="doc_header"><code>TCNLearner</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L170" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TCNLearner</code>(<strong><code>db</code></strong>, <strong><code>hl_depth</code></strong>=<em><code>3</code></em>, <strong><code>alpha</code></strong>=<em><code>1</code></em>, <strong><code>beta</code></strong>=<em><code>1</code></em>, <strong><code>early_stop</code></strong>=<em><code>0</code></em>, <strong><code>metrics</code></strong>=<em><code>None</code></em>, <strong><code>n_skip</code></strong>=<em><code>None</code></em>, <strong><code>hl_width</code></strong>=<em><code>10</code></em>, <strong><code>act</code></strong>=<em><code>'MishJit'</code></em>, <strong>**<code>kwargs</code></strong>)</p>
+<h4 id="TCNLearner" class="doc_header"><code>TCNLearner</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L141" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TCNLearner</code>(<strong><code>db</code></strong>, <strong><code>hl_depth</code></strong>=<em><code>3</code></em>, <strong><code>loss_func</code></strong>=<em><code>MSELoss()</code></em>, <strong><code>metrics</code></strong>=<em><code>[&lt;function fun_rmse at 0x7f5d51971400&gt;]</code></em>, <strong><code>n_skip</code></strong>=<em><code>0</code></em>, <strong><code>cbs</code></strong>=<em><code>None</code></em>, <strong><code>hl_width</code></strong>=<em><code>10</code></em>, <strong><code>act</code></strong>=<em><code>'Mish'</code></em>, <strong>**<code>kwargs</code></strong>)</p>
 </blockquote>
 
 </div>
@@ -697,18 +742,161 @@ summary: "Pytorch Modules for Training Models for sequential data"
       <th>epoch</th>
       <th>train_loss</th>
       <th>valid_loss</th>
+      <th>fun_rmse</th>
       <th>time</th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <td>0</td>
-      <td>12.330530</td>
-      <td>12.242436</td>
-      <td>00:02</td>
+      <td>13.422464</td>
+      <td>13.379422</td>
+      <td>3.648993</td>
+      <td>00:01</td>
     </tr>
   </tbody>
 </table>
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="CRNN-Learner">CRNN Learner<a class="anchor-link" href="#CRNN-Learner">&#182;</a></h2>
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h4 id="CRNNLearner" class="doc_header"><code>CRNNLearner</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L156" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>CRNNLearner</code>(<strong><code>db</code></strong>, <strong><code>loss_func</code></strong>=<em><code>MSELoss()</code></em>, <strong><code>metrics</code></strong>=<em><code>[&lt;function fun_rmse at 0x7f5d51971400&gt;]</code></em>, <strong><code>n_skip</code></strong>=<em><code>0</code></em>, <strong><code>cbs</code></strong>=<em><code>None</code></em>, <strong><code>num_ft</code></strong>=<em><code>10</code></em>, <strong><code>num_cnn_layers</code></strong>=<em><code>4</code></em>, <strong><code>num_rnn_layers</code></strong>=<em><code>2</code></em>, <strong><code>hs_cnn</code></strong>=<em><code>10</code></em>, <strong><code>hs_rnn</code></strong>=<em><code>10</code></em>, <strong><code>hidden_p</code></strong>=<em><code>0.2</code></em>, <strong><code>input_p</code></strong>=<em><code>0.0</code></em>, <strong><code>weight_p</code></strong>=<em><code>0.5</code></em>, <strong><code>rnn_type</code></strong>=<em><code>'qrnn'</code></em>, <strong>**<code>kwargs</code></strong>)</p>
+</blockquote>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">CRNNLearner</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="n">rnn_type</span><span class="o">=</span><span class="s1">&#39;qrnn&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mf">3e-2</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_html rendered_html output_subarea ">
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: left;">
+      <th>epoch</th>
+      <th>train_loss</th>
+      <th>valid_loss</th>
+      <th>fun_rmse</th>
+      <th>time</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>0</td>
+      <td>9.123695</td>
+      <td>9.043425</td>
+      <td>2.992613</td>
+      <td>00:01</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">lrn</span> <span class="o">=</span> <span class="n">CRNNLearner</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="n">rnn_type</span><span class="o">=</span><span class="s1">&#39;qrnn&#39;</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="Autoregressive-Learner">Autoregressive Learner<a class="anchor-link" href="#Autoregressive-Learner">&#182;</a></h2>
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h4 id="AR_TCNLearner" class="doc_header"><code>AR_TCNLearner</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L170" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>AR_TCNLearner</code>(<strong><code>db</code></strong>, <strong><code>hl_depth</code></strong>=<em><code>3</code></em>, <strong><code>alpha</code></strong>=<em><code>1</code></em>, <strong><code>beta</code></strong>=<em><code>1</code></em>, <strong><code>early_stop</code></strong>=<em><code>0</code></em>, <strong><code>metrics</code></strong>=<em><code>None</code></em>, <strong><code>n_skip</code></strong>=<em><code>None</code></em>, <strong><code>hl_width</code></strong>=<em><code>10</code></em>, <strong><code>act</code></strong>=<em><code>'Mish'</code></em>, <strong>**<code>kwargs</code></strong>)</p>
+</blockquote>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h4 id="AR_RNNLearner" class="doc_header"><code>AR_RNNLearner</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/learner.py#L189" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>AR_RNNLearner</code>(<strong><code>db</code></strong>, <strong><code>alpha</code></strong>=<em><code>0</code></em>, <strong><code>beta</code></strong>=<em><code>0</code></em>, <strong><code>early_stop</code></strong>=<em><code>0</code></em>, <strong><code>metrics</code></strong>=<em><code>None</code></em>, <strong><code>n_skip</code></strong>=<em><code>0</code></em>, <strong><code>fname</code></strong>=<em><code>'model'</code></em>, <strong><code>num_layers</code></strong>=<em><code>1</code></em>, <strong><code>hidden_size</code></strong>=<em><code>100</code></em>, <strong><code>hidden_p</code></strong>=<em><code>0.2</code></em>, <strong><code>input_p</code></strong>=<em><code>0.6</code></em>, <strong><code>weight_p</code></strong>=<em><code>0.5</code></em>, <strong><code>rnn_type</code></strong>=<em><code>'gru'</code></em>, <strong><code>ret_full_hidden</code></strong>=<em><code>False</code></em>, <strong>**<code>kwargs</code></strong>)</p>
+</blockquote>
+
 </div>
 
 </div>

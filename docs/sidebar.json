@@ -4,6 +4,8 @@
     "Corefunctions": "/core",
     "Models": "/model",
     "Learner": "/learner",
-    "Title": "/silverbox"
+    "ProDiag Models": "/ProDiag",
+    "Tensor Quaternion Module": "/TensorQuaternions",
+    "Population Based Training Module": "/PBT"
   }
 }

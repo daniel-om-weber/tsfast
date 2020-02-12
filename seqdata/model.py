@@ -35,11 +35,11 @@ class RNN(nn.Module):
 
     def __init__(self, input_size,hidden_size, num_layers,
                  hidden_p=0.2, input_p=0.6, weight_p=0.5,
-                 rnn_type='gru',ret_full_hidden=False):
+                 rnn_type='gru',ret_full_hidden=False,**kwargs):
         super().__init__()
         store_attr(self, 'ret_full_hidden,num_layers')
         self.rnns = nn.ModuleList([self._one_rnn(input_size if l == 0 else hidden_size,
-                                                 hidden_size,weight_p,rnn_type) for l in range(num_layers)])
+                                                 hidden_size,weight_p,rnn_type,**kwargs) for l in range(num_layers)])
         self.input_dp = RNNDropout(input_p)
         self.hidden_dps = nn.ModuleList([RNNDropout(hidden_p) for l in range(num_layers)])
 
@@ -52,16 +52,16 @@ class RNN(nn.Module):
             new_hid.append(output if self.ret_full_hidden else h)
         return output, new_hid
 
-    def _one_rnn(self, n_in, n_out, weight_p, rnn_type):
+    def _one_rnn(self, n_in, n_out, weight_p, rnn_type,**kwargs):
         "Return one of the inner rnn"
         if rnn_type == 'gru':
-            rnn = nn.GRU(n_in, n_out,1,batch_first=True)
+            rnn = nn.GRU(n_in, n_out,1,batch_first=True,**kwargs)
             rnn = WeightDropout(rnn,weight_p)
         elif rnn_type == 'lstm':
-            rnn = nn.LSTM(n_in, n_out,1,batch_first=True)
+            rnn = nn.LSTM(n_in, n_out,1,batch_first=True,**kwargs)
             rnn = WeightDropout(rnn,weight_p)
         elif rnn_type == 'qrnn':
-            rnn = QRNNLayer(n_in, n_out,batch_first=True,window=1)
+            rnn = QRNNLayer(n_in, n_out,batch_first=True,**kwargs)
             rnn.linear = WeightDropout(rnn.linear,weight_p,layer_names='weight')
         else:
             raise Exception

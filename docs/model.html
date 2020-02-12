@@ -33,10 +33,60 @@ summary: "Pytorch Models for Sequential Data"
                         <span class="n">SequenceBlock</span><span class="o">.</span><span class="n">from_hdf</span><span class="p">([</span><span class="s1">&#39;voltage&#39;</span><span class="p">],</span><span class="n">TensorSequencesOutput</span><span class="p">,</span><span class="n">clm_shift</span><span class="o">=</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])),</span>
                  <span class="n">get_items</span><span class="o">=</span><span class="n">CreateDict</span><span class="p">([</span><span class="n">DfHDFCreateWindows</span><span class="p">(</span><span class="n">win_sz</span><span class="o">=</span><span class="mi">1000</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="n">stp_sz</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span><span class="n">clm</span><span class="o">=</span><span class="s1">&#39;current&#39;</span><span class="p">)]),</span>
                  <span class="n">splitter</span><span class="o">=</span><span class="n">ApplyToDict</span><span class="p">(</span><span class="n">ParentSplitter</span><span class="p">()))</span>
-<span class="n">db</span> <span class="o">=</span> <span class="n">seq</span><span class="o">.</span><span class="n">databunch</span><span class="p">(</span><span class="n">get_hdf_files</span><span class="p">(</span><span class="s1">&#39;test_data/&#39;</span><span class="p">))</span>
+<span class="n">db</span> <span class="o">=</span> <span class="n">seq</span><span class="o">.</span><span class="n">dataloaders</span><span class="p">(</span><span class="n">get_hdf_files</span><span class="p">(</span><span class="s1">&#39;test_data/&#39;</span><span class="p">))</span>
 </pre></div>
 
     </div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="Linear">Linear<a class="anchor-link" href="#Linear">&#182;</a></h2>
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h3 id="SeqLinear" class="doc_header"><code>class</code> <code>SeqLinear</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/model.py#L13" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>SeqLinear</code>(<strong><code>input_size</code></strong>, <strong><code>output_size</code></strong>, <strong><code>hidden_size</code></strong>=<em><code>100</code></em>, <strong><code>hidden_layer</code></strong>=<em><code>1</code></em>, <strong><code>act</code></strong>=<em><code>'Mish'</code></em>) :: <code>Module</code></p>
+</blockquote>
+<p>Base class for all neural network modules.</p>
+<p>Your models should also subclass this class.</p>
+<p>Modules can also contain other Modules, allowing to nest them in
+a tree structure. You can assign the submodules as regular attributes::</p>
+
+<pre><code>import torch.nn as nn
+import torch.nn.functional as F
+
+class Model(nn.Module):
+    def __init__(self):
+        super(Model, self).__init__()
+        self.conv1 = nn.Conv2d(1, 20, 5)
+        self.conv2 = nn.Conv2d(20, 20, 5)
+
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        return F.relu(self.conv2(x))
+
+</code></pre>
+<p>Submodules assigned in this way will be registered, and will have their
+parameters converted too when you call :meth:<code>to</code>, etc.</p>
+
+</div>
+
+</div>
+
 </div>
 </div>
 
@@ -59,76 +109,10 @@ summary: "Pytorch Models for Sequential Data"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h3 id="SimpleGRU" class="doc_header"><code>class</code> <code>SimpleGRU</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/model.py#L13" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>SimpleGRU</code>(<strong><code>input_size</code></strong>, <strong><code>output_size</code></strong>, <strong><code>num_layers</code></strong>=<em><code>1</code></em>, <strong><code>hidden_size</code></strong>=<em><code>100</code></em>, <strong><code>lrn_init_state</code></strong>=<em><code>False</code></em>, <strong>**<code>kwargs</code></strong>) :: <code>Module</code></p>
+<h3 id="RNN" class="doc_header"><code>class</code> <code>RNN</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/model.py#L33" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>RNN</code>(<strong><code>input_size</code></strong>, <strong><code>hidden_size</code></strong>, <strong><code>num_layers</code></strong>, <strong><code>hidden_p</code></strong>=<em><code>0.2</code></em>, <strong><code>input_p</code></strong>=<em><code>0.6</code></em>, <strong><code>weight_p</code></strong>=<em><code>0.5</code></em>, <strong><code>rnn_type</code></strong>=<em><code>'gru'</code></em>, <strong><code>ret_full_hidden</code></strong>=<em><code>False</code></em>, <strong>**<code>kwargs</code></strong>) :: <code>Module</code></p>
 </blockquote>
-<p>Base class for all neural network modules.</p>
-<p>Your models should also subclass this class.</p>
-<p>Modules can also contain other Modules, allowing to nest them in
-a tree structure. You can assign the submodules as regular attributes::</p>
+<p>inspired by <a href="https://arxiv.org/abs/1708.02182">https://arxiv.org/abs/1708.02182</a></p>
 
-<pre><code>import torch.nn as nn
-import torch.nn.functional as F
-
-class Model(nn.Module):
-    def __init__(self):
-        super(Model, self).__init__()
-        self.conv1 = nn.Conv2d(1, 20, 5)
-        self.conv2 = nn.Conv2d(20, 20, 5)
-
-    def forward(self, x):
-        x = F.relu(self.conv1(x))
-        return F.relu(self.conv2(x))
-
-</code></pre>
-<p>Submodules assigned in this way will be registered, and will have their
-parameters converted too when you call :meth:<code>to</code>, etc.</p>
-
-</div>
-
-</div>
-
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-
-<div class="inner_cell">
-    <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">SimpleGRU</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
-<span class="n">lrn</span> <span class="o">=</span> <span class="n">Learner</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="n">model</span><span class="p">,</span><span class="n">loss_func</span><span class="o">=</span><span class="n">nn</span><span class="o">.</span><span class="n">MSELoss</span><span class="p">())</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
-</pre></div>
-
-    </div>
-</div>
-</div>
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-
-<div class="output_html rendered_html output_subarea ">
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: left;">
-      <th>epoch</th>
-      <th>train_loss</th>
-      <th>valid_loss</th>
-      <th>time</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>0</td>
-      <td>3.603175</td>
-      <td>0.440320</td>
-      <td>00:03</td>
-    </tr>
-  </tbody>
-</table>
 </div>
 
 </div>
@@ -149,7 +133,7 @@ parameters converted too when you call :meth:<code>to</code>, etc.</p>
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h3 id="SimpleLSTM" class="doc_header"><code>class</code> <code>SimpleLSTM</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/model.py#L34" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>SimpleLSTM</code>(<strong><code>input_size</code></strong>, <strong><code>output_size</code></strong>, <strong><code>num_layers</code></strong>=<em><code>1</code></em>, <strong><code>hidden_size</code></strong>=<em><code>100</code></em>, <strong>**<code>kwargs</code></strong>) :: <code>Module</code></p>
+<h3 id="SimpleRNN" class="doc_header"><code>class</code> <code>SimpleRNN</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/model.py#L72" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>SimpleRNN</code>(<strong><code>input_size</code></strong>, <strong><code>output_size</code></strong>, <strong><code>num_layers</code></strong>=<em><code>1</code></em>, <strong><code>hidden_size</code></strong>=<em><code>100</code></em>, <strong><code>lrn_init_state</code></strong>=<em><code>False</code></em>, <strong><code>hidden_p</code></strong>=<em><code>0.2</code></em>, <strong><code>input_p</code></strong>=<em><code>0.6</code></em>, <strong><code>weight_p</code></strong>=<em><code>0.5</code></em>, <strong><code>rnn_type</code></strong>=<em><code>'gru'</code></em>, <strong><code>ret_full_hidden</code></strong>=<em><code>False</code></em>, <strong>**<code>kwargs</code></strong>) :: <code>Module</code></p>
 </blockquote>
 <p>Base class for all neural network modules.</p>
 <p>Your models should also subclass this class.</p>
@@ -186,7 +170,7 @@ parameters converted too when you call :meth:<code>to</code>, etc.</p>
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">SimpleLSTM</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="n">num_layers</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span><span class="n">dropout</span><span class="o">=</span><span class="mf">0.3</span><span class="p">)</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">SimpleRNN</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">3</span><span class="p">)</span>
 <span class="n">lrn</span> <span class="o">=</span> <span class="n">Learner</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="n">model</span><span class="p">,</span><span class="n">loss_func</span><span class="o">=</span><span class="n">nn</span><span class="o">.</span><span class="n">MSELoss</span><span class="p">())</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
 </pre></div>
 
@@ -213,9 +197,9 @@ parameters converted too when you call :meth:<code>to</code>, etc.</p>
   <tbody>
     <tr>
       <td>0</td>
-      <td>3.121614</td>
-      <td>0.236742</td>
-      <td>00:05</td>
+      <td>11.780790</td>
+      <td>8.118497</td>
+      <td>00:04</td>
     </tr>
   </tbody>
 </table>
@@ -228,55 +212,11 @@ parameters converted too when you call :meth:<code>to</code>, etc.</p>
 
 </div>
 <div class="cell border-box-sizing code_cell rendered">
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-
-<div class="output_markdown rendered_html output_subarea ">
-<h3 id="SimpleQRNN" class="doc_header"><code>class</code> <code>SimpleQRNN</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/model.py#L49" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>SimpleQRNN</code>(<strong><code>input_size</code></strong>, <strong><code>output_size</code></strong>, <strong><code>hidden_size</code></strong>=<em><code>100</code></em>, <strong><code>n_layers</code></strong>=<em><code>1</code></em>, <strong><code>batch_first</code></strong>=<em><code>True</code></em>, <strong><code>dropout</code></strong>=<em><code>0</code></em>, <strong><code>bidirectional</code></strong>=<em><code>False</code></em>, <strong><code>save_prev_x</code></strong>=<em><code>False</code></em>, <strong><code>zoneout</code></strong>=<em><code>0</code></em>, <strong><code>window</code></strong>=<em><code>None</code></em>, <strong><code>output_gate</code></strong>=<em><code>True</code></em>, <strong>**<code>kwargs</code></strong>) :: <code>Module</code></p>
-</blockquote>
-<p>Base class for all neural network modules.</p>
-<p>Your models should also subclass this class.</p>
-<p>Modules can also contain other Modules, allowing to nest them in
-a tree structure. You can assign the submodules as regular attributes::</p>
-
-<pre><code>import torch.nn as nn
-import torch.nn.functional as F
-
-class Model(nn.Module):
-    def __init__(self):
-        super(Model, self).__init__()
-        self.conv1 = nn.Conv2d(1, 20, 5)
-        self.conv2 = nn.Conv2d(20, 20, 5)
-
-    def forward(self, x):
-        x = F.relu(self.conv1(x))
-        return F.relu(self.conv2(x))
-
-</code></pre>
-<p>Submodules assigned in this way will be registered, and will have their
-parameters converted too when you call :meth:<code>to</code>, etc.</p>
-
-</div>
-
-</div>
-
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
 <div class="input">
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">SimpleQRNN</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="n">window</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">SimpleRNN</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="n">rnn_type</span><span class="o">=</span><span class="s1">&#39;lstm&#39;</span><span class="p">)</span>
 <span class="n">lrn</span> <span class="o">=</span> <span class="n">Learner</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="n">model</span><span class="p">,</span><span class="n">loss_func</span><span class="o">=</span><span class="n">nn</span><span class="o">.</span><span class="n">MSELoss</span><span class="p">())</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
 </pre></div>
 
@@ -303,8 +243,54 @@ parameters converted too when you call :meth:<code>to</code>, etc.</p>
   <tbody>
     <tr>
       <td>0</td>
-      <td>12.073962</td>
-      <td>7.654397</td>
+      <td>12.369296</td>
+      <td>10.865791</td>
+      <td>00:04</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">SimpleRNN</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="n">rnn_type</span><span class="o">=</span><span class="s1">&#39;qrnn&#39;</span><span class="p">)</span>
+<span class="n">lrn</span> <span class="o">=</span> <span class="n">Learner</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="n">model</span><span class="p">,</span><span class="n">loss_func</span><span class="o">=</span><span class="n">nn</span><span class="o">.</span><span class="n">MSELoss</span><span class="p">())</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_html rendered_html output_subarea ">
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: left;">
+      <th>epoch</th>
+      <th>train_loss</th>
+      <th>valid_loss</th>
+      <th>time</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>0</td>
+      <td>13.649688</td>
+      <td>13.133910</td>
       <td>00:02</td>
     </tr>
   </tbody>
@@ -335,7 +321,7 @@ parameters converted too when you call :meth:<code>to</code>, etc.</p>
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h3 id="CausalConv1d" class="doc_header"><code>class</code> <code>CausalConv1d</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/model.py#L65" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>CausalConv1d</code>(<strong><code>in_channels</code></strong>, <strong><code>out_channels</code></strong>, <strong><code>kernel_size</code></strong>, <strong><code>stride</code></strong>=<em><code>1</code></em>, <strong><code>dilation</code></strong>=<em><code>1</code></em>, <strong><code>groups</code></strong>=<em><code>1</code></em>, <strong><code>bias</code></strong>=<em><code>True</code></em>) :: <code>Conv1d</code></p>
+<h3 id="CausalConv1d" class="doc_header"><code>class</code> <code>CausalConv1d</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/model.py#L94" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>CausalConv1d</code>(<strong><code>in_channels</code></strong>, <strong><code>out_channels</code></strong>, <strong><code>kernel_size</code></strong>, <strong><code>stride</code></strong>=<em><code>1</code></em>, <strong><code>dilation</code></strong>=<em><code>1</code></em>, <strong><code>groups</code></strong>=<em><code>1</code></em>, <strong><code>bias</code></strong>=<em><code>True</code></em>) :: <code>Conv1d</code></p>
 </blockquote>
 <p>Applies a 1D convolution over an input signal composed of several input
 planes.</p>
@@ -461,7 +447,7 @@ a depthwise convolution with a depthwise multiplier `K`, can be constructed by a
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="CConv1D" class="doc_header"><code>CConv1D</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/model.py#L90" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>CConv1D</code>(<strong><code>input_size</code></strong>, <strong><code>output_size</code></strong>, <strong><code>kernel_size</code></strong>=<em><code>2</code></em>, <strong><code>activation</code></strong>=<em><code>'MishJit'</code></em>, <strong><code>bn</code></strong>=<em><code>True</code></em>, <strong><code>stride</code></strong>=<em><code>1</code></em>, <strong><code>dilation</code></strong>=<em><code>1</code></em>, <strong><code>groups</code></strong>=<em><code>1</code></em>, <strong><code>bias</code></strong>=<em><code>True</code></em>, <strong>**<code>kwargs</code></strong>)</p>
+<h4 id="CConv1D" class="doc_header"><code>CConv1D</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/model.py#L119" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>CConv1D</code>(<strong><code>input_size</code></strong>, <strong><code>output_size</code></strong>, <strong><code>kernel_size</code></strong>=<em><code>2</code></em>, <strong><code>activation</code></strong>=<em><code>'Mish'</code></em>, <strong><code>bn</code></strong>=<em><code>True</code></em>, <strong><code>stride</code></strong>=<em><code>1</code></em>, <strong><code>dilation</code></strong>=<em><code>1</code></em>, <strong><code>groups</code></strong>=<em><code>1</code></em>, <strong><code>bias</code></strong>=<em><code>True</code></em>, <strong>**<code>kwargs</code></strong>)</p>
 </blockquote>
 
 </div>
@@ -484,7 +470,7 @@ a depthwise convolution with a depthwise multiplier `K`, can be constructed by a
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h3 id="TCN" class="doc_header"><code>class</code> <code>TCN</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/model.py#L99" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>TCN</code>(<strong><code>input_size</code></strong>, <strong><code>output_size</code></strong>, <strong><code>hl_depth</code></strong>=<em><code>1</code></em>, <strong><code>hl_width</code></strong>=<em><code>10</code></em>, <strong><code>act</code></strong>=<em><code>'MishJit'</code></em>) :: <code>Module</code></p>
+<h3 id="TCN" class="doc_header"><code>class</code> <code>TCN</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/model.py#L128" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>TCN</code>(<strong><code>input_size</code></strong>, <strong><code>output_size</code></strong>, <strong><code>hl_depth</code></strong>=<em><code>1</code></em>, <strong><code>hl_width</code></strong>=<em><code>10</code></em>, <strong><code>act</code></strong>=<em><code>'Mish'</code></em>) :: <code>Module</code></p>
 </blockquote>
 <p>Base class for all neural network modules.</p>
 <p>Your models should also subclass this class.</p>
@@ -548,9 +534,9 @@ parameters converted too when you call :meth:<code>to</code>, etc.</p>
   <tbody>
     <tr>
       <td>0</td>
-      <td>3.169277</td>
-      <td>2.073140</td>
-      <td>00:01</td>
+      <td>13.579419</td>
+      <td>13.804090</td>
+      <td>00:02</td>
     </tr>
   </tbody>
 </table>
@@ -580,7 +566,7 @@ parameters converted too when you call :meth:<code>to</code>, etc.</p>
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="ConvGRU" class="doc_header"><code>ConvGRU</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/model.py#L123" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>ConvGRU</code>(<strong><code>input_size</code></strong>, <strong><code>output_size</code></strong>, <strong><code>num_ft</code></strong>=<em><code>10</code></em>, <strong><code>num_cnn_layers</code></strong>=<em><code>4</code></em>, <strong><code>num_rnn_layers</code></strong>=<em><code>1</code></em>, <strong><code>hs_cnn</code></strong>=<em><code>10</code></em>, <strong><code>hs_rnn</code></strong>=<em><code>100</code></em>)</p>
+<h4 id="CRNN" class="doc_header"><code>CRNN</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/model.py#L152" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>CRNN</code>(<strong><code>input_size</code></strong>, <strong><code>output_size</code></strong>, <strong><code>num_ft</code></strong>=<em><code>10</code></em>, <strong><code>num_cnn_layers</code></strong>=<em><code>4</code></em>, <strong><code>num_rnn_layers</code></strong>=<em><code>2</code></em>, <strong><code>hs_cnn</code></strong>=<em><code>10</code></em>, <strong><code>hs_rnn</code></strong>=<em><code>10</code></em>, <strong><code>hidden_p</code></strong>=<em><code>0.2</code></em>, <strong><code>input_p</code></strong>=<em><code>0.0</code></em>, <strong><code>weight_p</code></strong>=<em><code>0.5</code></em>, <strong><code>rnn_type</code></strong>=<em><code>'qrnn'</code></em>)</p>
 </blockquote>
 
 </div>
@@ -596,7 +582,7 @@ parameters converted too when you call :meth:<code>to</code>, etc.</p>
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">ConvGRU</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">10</span><span class="p">)</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">CRNN</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">10</span><span class="p">)</span>
 <span class="n">lrn</span> <span class="o">=</span> <span class="n">Learner</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="n">model</span><span class="p">,</span><span class="n">loss_func</span><span class="o">=</span><span class="n">nn</span><span class="o">.</span><span class="n">MSELoss</span><span class="p">())</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
 </pre></div>
 
@@ -623,9 +609,9 @@ parameters converted too when you call :meth:<code>to</code>, etc.</p>
   <tbody>
     <tr>
       <td>0</td>
-      <td>3.260091</td>
-      <td>0.239342</td>
-      <td>00:03</td>
+      <td>14.173500</td>
+      <td>14.236246</td>
+      <td>00:02</td>
     </tr>
   </tbody>
 </table>
@@ -638,34 +624,11 @@ parameters converted too when you call :meth:<code>to</code>, etc.</p>
 
 </div>
 <div class="cell border-box-sizing code_cell rendered">
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-
-<div class="output_markdown rendered_html output_subarea ">
-<h4 id="ConvQRNN" class="doc_header"><code>ConvQRNN</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/model.py#L129" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>ConvQRNN</code>(<strong><code>input_size</code></strong>, <strong><code>output_size</code></strong>, <strong><code>num_ft</code></strong>=<em><code>10</code></em>, <strong><code>num_cnn_layers</code></strong>=<em><code>4</code></em>, <strong><code>num_rnn_layers</code></strong>=<em><code>1</code></em>, <strong><code>hs_cnn</code></strong>=<em><code>10</code></em>, <strong><code>hs_rnn</code></strong>=<em><code>100</code></em>)</p>
-</blockquote>
-
-</div>
-
-</div>
-
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
 <div class="input">
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">ConvQRNN</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">10</span><span class="p">)</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">CRNN</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">10</span><span class="p">,</span><span class="n">rnn_type</span><span class="o">=</span><span class="s1">&#39;gru&#39;</span><span class="p">)</span>
 <span class="n">lrn</span> <span class="o">=</span> <span class="n">Learner</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="n">model</span><span class="p">,</span><span class="n">loss_func</span><span class="o">=</span><span class="n">nn</span><span class="o">.</span><span class="n">MSELoss</span><span class="p">())</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
 </pre></div>
 
@@ -692,9 +655,9 @@ parameters converted too when you call :meth:<code>to</code>, etc.</p>
   <tbody>
     <tr>
       <td>0</td>
-      <td>4.018788</td>
-      <td>0.271553</td>
-      <td>00:02</td>
+      <td>13.809017</td>
+      <td>13.273102</td>
+      <td>00:03</td>
     </tr>
   </tbody>
 </table>
@@ -708,7 +671,7 @@ parameters converted too when you call :meth:<code>to</code>, etc.</p>
 </div>
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<h2 id="ProDiag">ProDiag<a class="anchor-link" href="#ProDiag">&#182;</a></h2>
+<h2 id="Autoregressive-Models">Autoregressive Models<a class="anchor-link" href="#Autoregressive-Models">&#182;</a></h2>
 </div>
 </div>
 </div>
@@ -724,7 +687,95 @@ parameters converted too when you call :meth:<code>to</code>, etc.</p>
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h3 id="ProgDiag_GRU" class="doc_header"><code>class</code> <code>ProgDiag_GRU</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/model.py#L135" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>ProgDiag_GRU</code>(<strong><code>input_size</code></strong>, <strong><code>output_size</code></strong>, <strong><code>init_size</code></strong>, <strong><code>hidden_size</code></strong>=<em><code>100</code></em>, <strong><code>hidden_layer</code></strong>=<em><code>1</code></em>) :: <code>Module</code></p>
+<h3 id="Normalizer1D" class="doc_header"><code>class</code> <code>Normalizer1D</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/model.py#L160" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>Normalizer1D</code>(<strong><code>mean</code></strong>, <strong><code>std</code></strong>) :: <code>Module</code></p>
+</blockquote>
+<p>Base class for all neural network modules.</p>
+<p>Your models should also subclass this class.</p>
+<p>Modules can also contain other Modules, allowing to nest them in
+a tree structure. You can assign the submodules as regular attributes::</p>
+
+<pre><code>import torch.nn as nn
+import torch.nn.functional as F
+
+class Model(nn.Module):
+    def __init__(self):
+        super(Model, self).__init__()
+        self.conv1 = nn.Conv2d(1, 20, 5)
+        self.conv2 = nn.Conv2d(20, 20, 5)
+
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        return F.relu(self.conv2(x))
+
+</code></pre>
+<p>Submodules assigned in this way will be registered, and will have their
+parameters converted too when you call :meth:<code>to</code>, etc.</p>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h3 id="AR_Model" class="doc_header"><code>class</code> <code>AR_Model</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/model.py#L175" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>AR_Model</code>(<strong><code>model</code></strong>, <strong><code>ar</code></strong>=<em><code>True</code></em>, <strong><code>rf</code></strong>=<em><code>1</code></em>, <strong><code>hs</code></strong>=<em><code>False</code></em>) :: <code>Module</code></p>
+</blockquote>
+<p>Base class for all neural network modules.</p>
+<p>Your models should also subclass this class.</p>
+<p>Modules can also contain other Modules, allowing to nest them in
+a tree structure. You can assign the submodules as regular attributes::</p>
+
+<pre><code>import torch.nn as nn
+import torch.nn.functional as F
+
+class Model(nn.Module):
+    def __init__(self):
+        super(Model, self).__init__()
+        self.conv1 = nn.Conv2d(1, 20, 5)
+        self.conv2 = nn.Conv2d(20, 20, 5)
+
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        return F.relu(self.conv2(x))
+
+</code></pre>
+<p>Submodules assigned in this way will be registered, and will have their
+parameters converted too when you call :meth:<code>to</code>, etc.</p>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h3 id="AR_RNN" class="doc_header"><code>class</code> <code>AR_RNN</code><a href="https://github.com/daniel-om-weber/seqdata/tree/master/seqdata/model.py#L226" class="source_link" style="float:right">[source]</a></h3><blockquote><p><code>AR_RNN</code>(<strong><code>input_size</code></strong>, <strong><code>output_size</code></strong>, <strong><code>num_layers</code></strong>=<em><code>1</code></em>, <strong><code>hidden_size</code></strong>=<em><code>100</code></em>, <strong><code>hidden_p</code></strong>=<em><code>0.2</code></em>, <strong><code>input_p</code></strong>=<em><code>0.6</code></em>, <strong><code>weight_p</code></strong>=<em><code>0.5</code></em>, <strong><code>rnn_type</code></strong>=<em><code>'gru'</code></em>, <strong><code>ret_full_hidden</code></strong>=<em><code>False</code></em>, <strong>**<code>kwargs</code></strong>) :: <code>Module</code></p>
 </blockquote>
 <p>Base class for all neural network modules.</p>
 <p>Your models should also subclass this class.</p>
@@ -761,43 +812,11 @@ parameters converted too when you call :meth:<code>to</code>, etc.</p>
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">ProgDiag_GRU</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">100</span><span class="p">)</span>
-<span class="n">lrn</span> <span class="o">=</span> <span class="n">Learner</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="n">model</span><span class="p">,</span><span class="n">loss_func</span><span class="o">=</span><span class="n">nn</span><span class="o">.</span><span class="n">MSELoss</span><span class="p">(),</span><span class="n">cbs</span><span class="o">=</span><span class="n">ProDiagTrainer</span><span class="p">(</span><span class="mi">100</span><span class="p">))</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">AR_Model</span><span class="p">(</span><span class="n">AR_RNN</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span><span class="mi">1</span><span class="p">),</span><span class="n">ar</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span><span class="n">hs</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">init_normalize</span><span class="p">(</span><span class="n">db</span><span class="o">.</span><span class="n">one_batch</span><span class="p">())</span>
 </pre></div>
 
     </div>
-</div>
-</div>
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-
-<div class="output_html rendered_html output_subarea ">
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: left;">
-      <th>epoch</th>
-      <th>train_loss</th>
-      <th>valid_loss</th>
-      <th>time</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>0</td>
-      <td>3.266276</td>
-      <td>0.290311</td>
-      <td>00:07</td>
-    </tr>
-  </tbody>
-</table>
-</div>
-
-</div>
-
 </div>
 </div>
 

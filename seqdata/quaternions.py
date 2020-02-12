@@ -3,7 +3,7 @@
 __all__ = ['TensorQuaternionInclination', 'TensorQuaternionAngle', 'rad2deg', 'multiplyQuat', 'norm_quaternion',
            'conjQuat', 'diffQuat', 'safe_acos', 'inclinationAngle', 'relativeAngle', 'ms_inclination',
            'rms_inclination_deg', 'mean_inclination_deg', 'ms_rel_angle', 'rms_rel_angle_deg', 'mean_rel_angle_deg',
-           'QuaternionRegularizer', 'plot_quaternions_single_figure', 'plot_quaternions_multi_figures']
+           'QuaternionRegularizer', 'plot_inclination', 'plot_rel_angle']
 
 #Cell
 from .core import *
@@ -122,51 +122,89 @@ class QuaternionRegularizer(HookCallback):
             self.learn.loss += l_a
 
 #Cell
-def plot_quaternions_single_figure(n_samples,samples,outs):
-    rows=max(1,((n_samples-1) // 3)+1)
-    cols=min(3,n_samples)
-    fig = plt.figure(figsize=(9,2*cols))
-    outer_grid = fig.add_gridspec(rows, cols)
+def plot_inclination(axs,in_sig,targ_sig,out_sig=None):
 #     import pdb; pdb.set_trace()
-    n_targ = 1
-    for i in range(n_samples):
-        in_signals = samples[i][0]
-        targ_signals = samples[i][1]
-        out_signals = outs[i][0]
-        inner_grid = outer_grid[i].subgridspec(n_targ+1, 1)
-        ax = fig.add_subplot(inner_grid[0])
-        ax.plot(rad2deg(inclinationAngle(out_signals,targ_signals)))
-        ax.label_outer()
+    first_targ = targ_sig[0].repeat(targ_sig.shape[0],1)
+    axs[0].plot(rad2deg(inclinationAngle(first_targ,targ_sig)))
+    axs[0].label_outer()
+    axs[0].legend(['y'])
+    axs[0].set_ylabel('inclination[°]')
 
-        ax = fig.add_subplot(inner_grid[1])
-        ax.plot(in_signals)
-    plt.tight_layout()
+    if out_sig is not None:
+        axs[0].plot(rad2deg(inclinationAngle(first_targ,out_sig)))
+        axs[0].legend(['y','ŷ'])
+        axs[1].plot(rad2deg(inclinationAngle(out_sig,targ_sig)))
+        axs[1].label_outer()
+        axs[1].set_ylabel('error[°]')
 
+    axs[-1].plot(in_sig)
 
 #Cell
-def plot_quaternions_multi_figures(n_samples,samples,outs=None):
-    n_targ = 1
-    for i in range(n_samples):
-        fig = plt.figure(figsize=(9,3))
-        axs = fig.subplots(nrows=n_targ+1,sharex=True)
-        in_signals = samples[i][0]
-        targ_signals = samples[i][1]
-        out_signals = outs[i][0]
-        ax = axs[0]
-        ax.plot(rad2deg(inclinationAngle(out_signals,targ_signals)))
+def plot_rel_angle(axs,in_sig,targ_sig,out_sig=None):
+#     import pdb; pdb.set_trace()
+    first_targ = targ_sig[0].repeat(targ_sig.shape[0],1)
+    axs[0].plot(rad2deg(relativeAngle(first_targ,targ_sig)))
+    axs[0].label_outer()
+    axs[0].legend(['y'])
+    axs[0].set_ylabel('angle[°]')
 
-        axs[-1].plot(in_signals)
-        plt.tight_layout()
+    if out_sig is not None:
+        axs[0].plot(rad2deg(relativeAngle(first_targ,out_sig)))
+        axs[0].legend(['y','ŷ'])
+        axs[1].plot(rad2deg(relativeAngle(out_sig,targ_sig)))
+        axs[1].label_outer()
+        axs[1].set_ylabel('error[°]')
+
+    axs[-1].plot(in_sig)
 
 #Cell
 @typedispatch
 def show_results(x:TensorSequences, y:TensorQuaternionInclination, samples, outs, ctxs=None, max_n=2, **kwargs):
     n_samples = min(len(samples), max_n)
-#     import pdb; pdb.set_trace()
+    n_targ = 2
     if n_samples > 3:
         #if there are more then 3 samples to plot then put them in a single figure
-        plot_quaternions_single_figure(n_samples,samples,outs)
+        plot_seqs_single_figure(n_samples,n_targ,samples,plot_inclination,outs)
     else:
         #if there are less then 3 samples to plot then put each in its own figure
-        plot_quaternions_multi_figures(n_samples,samples,outs)
+        plot_seqs_multi_figures(n_samples,n_targ,samples,plot_inclination,outs)
+    return ctxs
+
+#Cell
+@typedispatch
+def show_batch(x:TensorSequences, y:TensorQuaternionInclination, samples, ctxs=None, max_n=6, **kwargs):
+    n_samples = min(len(samples), max_n)
+    n_targ = 1
+    if n_samples > 3:
+        #if there are more then 3 samples to plot then put them in a single figure
+        plot_seqs_single_figure(n_samples,n_targ,samples,plot_inclination)
+    else:
+        #if there are less then 3 samples to plot then put each in its own figure
+        plot_seqs_multi_figures(n_samples,n_targ,samples,plot_inclination)
+    return ctxs
+
+#Cell
+@typedispatch
+def show_results(x:TensorSequences, y:TensorQuaternionAngle, samples, outs, ctxs=None, max_n=2, **kwargs):
+    n_samples = min(len(samples), max_n)
+    n_targ = 2
+    if n_samples > 3:
+        #if there are more then 3 samples to plot then put them in a single figure
+        plot_seqs_single_figure(n_samples,n_targ,samples,plot_rel_angle,outs)
+    else:
+        #if there are less then 3 samples to plot then put each in its own figure
+        plot_seqs_multi_figures(n_samples,n_targ,samples,plot_rel_angle,outs)
+    return ctxs
+
+#Cell
+@typedispatch
+def show_batch(x:TensorSequences, y:TensorQuaternionAngle, samples, ctxs=None, max_n=6, **kwargs):
+    n_samples = min(len(samples), max_n)
+    n_targ = 1
+    if n_samples > 3:
+        #if there are more then 3 samples to plot then put them in a single figure
+        plot_seqs_single_figure(n_samples,n_targ,samples,plot_rel_angle)
+    else:
+        #if there are less then 3 samples to plot then put each in its own figure
+        plot_seqs_multi_figures(n_samples,n_targ,samples,plot_rel_angle)
     return ctxs

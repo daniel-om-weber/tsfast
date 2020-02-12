@@ -19,8 +19,14 @@ entries:
       title: Learner
       url: /learner
     - output: web,pdf
-      title: Title
-      url: /silverbox
+      title: ProDiag Models
+      url: /ProDiag
+    - output: web,pdf
+      title: Tensor Quaternion Module
+      url: /TensorQuaternions
+    - output: web,pdf
+      title: Population Based Training Module
+      url: /PBT
     output: web
     title: seqdata
   output: web
