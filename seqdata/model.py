@@ -119,10 +119,10 @@ class CausalConv1d(torch.nn.Conv1d):
 @delegates(CausalConv1d, keep=True)
 def CConv1D(input_size,output_size,kernel_size=2,activation = Mish, bn = True, **kwargs):
     conv = CausalConv1d(input_size,output_size,kernel_size,**kwargs)
-    if bn:
-        return nn.Sequential(nn.BatchNorm1d(input_size,eps=1e-3, momentum=0.01),conv,activation())
-    else:
-        return nn.Sequential(conv,activation())
+    act = activation() if activation is not None else None
+    bn = nn.BatchNorm1d(input_size) if bn else None
+    m = [m for m in [bn,conv,act] if m is not None]
+    return nn.Sequential(*m)
 
 #Cell
 class TCN(nn.Module):
@@ -133,7 +133,9 @@ class TCN(nn.Module):
         self.hl_depth = hl_depth
 
         self.conv1 = CConv1D(input_size,hl_width)
-        self.conv_layers = nn.ModuleList([CConv1D(hl_width,hl_width,dilation=2**(i+1)) for i in range(hl_depth-1)])
+        self.conv_layers = nn.ModuleList([CConv1D(hl_width,hl_width,dilation=2**(i+1),
+                                                  activation=act if i < hl_depth-2 else None)
+                                          for i in range(hl_depth-1)])
 
         self.final = nn.Conv1d(hl_width,output_size,kernel_size=1)
 
