@@ -44,7 +44,7 @@ class RNN(nn.Module):
         self.hidden_dps = nn.ModuleList([RNNDropout(hidden_p) for l in range(num_layers)])
 
     def forward(self, inp, h_init=None):
-        output = inp
+        output = self.input_dp(inp)
         new_hid = []
         for l, (rnn,hid_dp) in enumerate(zip(self.rnns, self.hidden_dps)):
             output, h = rnn(output, None if h_init is None else h_init[l])

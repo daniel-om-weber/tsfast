@@ -2,9 +2,10 @@
 
 __all__ = ['TensorQuaternionInclination', 'TensorQuaternionAngle', 'rad2deg', 'multiplyQuat', 'norm_quaternion',
            'conjQuat', 'diffQuat', 'safe_acos', 'inclinationAngle', 'relativeAngle', 'inclinationAngleAbs',
-           'ms_inclination', 'rms_inclination_deg', 'mean_inclination_deg', 'ms_rel_angle', 'rms_rel_angle_deg',
-           'mean_rel_angle_deg', 'QuaternionRegularizer', 'HDF2Inclination', 'InclinationBlock', 'plot_inclination',
-           'plot_rel_angle']
+           'inclination_loss', 'inclination_loss_diff', 'ms_inclination', 'rms_inclination_deg', 'mean_inclination_deg',
+           'ms_rel_angle', 'rms_rel_angle_deg', 'mean_rel_angle_deg', 'deg_rmse', 'QuaternionRegularizer',
+           'TensorInclination', 'HDF2Inclination', 'InclinationBlock', 'plot_scalar_inclination',
+           'plot_quaternion_inclination', 'plot_quaternion_rel_angle']
 
 #Cell
 from .core import *
@@ -75,6 +76,17 @@ def inclinationAngleAbs(q):
     return 2*safe_acos((q[..., 3]**2 + q[..., 0]**2).sqrt())
 
 #Cell
+def inclination_loss(q1,q2):
+    q = diffQuat(q1,q2)
+    q_abs = (q[..., 3]**2 + q[..., 0]**2).sqrt()
+    return ((q_abs-1)**2).mean().sqrt()
+
+#Cell
+def inclination_loss_diff(q1,q2):
+    q = diffQuat(q1,q2)
+    return (q[..., 1:].norm(dim=-1)**2).mean()
+
+#Cell
 def ms_inclination(q1,q2):
     inclination = inclinationAngle(q1,q2)
     return  (inclination**2).mean()
@@ -105,6 +117,10 @@ def mean_rel_angle_deg(q1,q2):
     return  rad2deg(rel_angle.mean())
 
 #Cell
+def deg_rmse(inp, targ):
+    return rad2deg(fun_rmse(inp, targ))
+
+#Cell
 from fastai2.callback.hook import *
 @delegates()
 class QuaternionRegularizer(HookCallback):
@@ -130,6 +146,9 @@ class QuaternionRegularizer(HookCallback):
             self.learn.loss += l_a
 
 #Cell
+class TensorInclination(TensorSequences): pass
+
+#Cell
 import h5py
 class HDF2Inclination(HDF2Sequence):
 
@@ -138,7 +157,7 @@ class HDF2Inclination(HDF2Sequence):
             ds = f if dataset is None else f[dataset]
             l_array = [ds[n][l_slc:r_slc] for n in self.clm_names]
             seq = np.vstack(l_array).T
-            seq = array(rad2deg(inclinationAngleAbs(tensor(seq))[:,None]))
+            seq = array(inclinationAngleAbs(tensor(seq))[:,None])
             return seq
 
 #Cell
@@ -155,25 +174,46 @@ class InclinationBlock(TransformBlock):
 
 
 #Cell
-def plot_inclination(axs,in_sig,targ_sig,out_sig=None):
+def plot_scalar_inclination(axs,in_sig,targ_sig,out_sig=None, **kwargs):
 #     import pdb; pdb.set_trace()
     first_targ = targ_sig[0].repeat(targ_sig.shape[0],1)
-    axs[0].plot(rad2deg(inclinationAngle(first_targ,targ_sig)))
+    axs[0].plot(rad2deg(targ_sig))
     axs[0].label_outer()
-    axs[0].legend(['y'])
     axs[0].set_ylabel('inclination[°]')
 
     if out_sig is not None:
-        axs[0].plot(rad2deg(inclinationAngle(first_targ,out_sig)))
+        axs[0].plot(rad2deg(out_sig))
         axs[0].legend(['y','ŷ'])
-        axs[1].plot(rad2deg(inclinationAngle(out_sig,targ_sig)))
+        axs[1].plot(rad2deg(targ_sig-out_sig))
         axs[1].label_outer()
         axs[1].set_ylabel('error[°]')
 
     axs[-1].plot(in_sig)
 
 #Cell
-def plot_rel_angle(axs,in_sig,targ_sig,out_sig=None):
+def plot_quaternion_inclination(axs,in_sig,targ_sig,out_sig=None, **kwargs):
+#     import pdb; pdb.set_trace()
+    axs[0].plot(rad2deg(inclinationAngleAbs(targ_sig)))
+    axs[0].label_outer()
+    axs[0].legend(['y'])
+    axs[0].set_ylabel('inclination[°]')
+
+    if out_sig is not None:
+        axs[0].plot(rad2deg(inclinationAngleAbs(out_sig)))
+        axs[0].legend(['y','ŷ'])
+        axs[1].plot(rad2deg(inclinationAngle(out_sig,targ_sig)))
+        axs[1].label_outer()
+        axs[1].set_ylabel('error[°]')
+        if 'ref' in kwargs:
+#             axs[0].plot(rad2deg(inclinationAngleAbs(kwargs['ref'])))
+#             axs[0].legend(['y','ŷ','y_ref'])
+            axs[1].plot(rad2deg(inclinationAngle(targ_sig,kwargs['ref'])))
+            axs[1].legend(['ŷ','y_ref'])
+
+    axs[-1].plot(in_sig)
+
+#Cell
+def plot_quaternion_rel_angle(axs,in_sig,targ_sig,out_sig=None, **kwargs):
 #     import pdb; pdb.set_trace()
     first_targ = targ_sig[0].repeat(targ_sig.shape[0],1)
     axs[0].plot(rad2deg(relativeAngle(first_targ,targ_sig)))
@@ -192,15 +232,42 @@ def plot_rel_angle(axs,in_sig,targ_sig,out_sig=None):
 
 #Cell
 @typedispatch
-def show_results(x:TensorSequences, y:TensorQuaternionInclination, samples, outs, ctxs=None, max_n=2, **kwargs):
+def show_results(x:TensorSequences, y:TensorInclination, samples, outs, ctxs=None, max_n=2, **kwargs):
     n_samples = min(len(samples), max_n)
     n_targ = 2
     if n_samples > 3:
         #if there are more then 3 samples to plot then put them in a single figure
-        plot_seqs_single_figure(n_samples,n_targ,samples,plot_inclination,outs)
+        plot_seqs_single_figure(n_samples,n_targ,samples,plot_scalar_inclination,outs, **kwargs)
     else:
         #if there are less then 3 samples to plot then put each in its own figure
-        plot_seqs_multi_figures(n_samples,n_targ,samples,plot_inclination,outs)
+        plot_seqs_multi_figures(n_samples,n_targ,samples,plot_scalar_inclination,outs, **kwargs)
+    return ctxs
+
+#Cell
+@typedispatch
+def show_batch(x:TensorSequences, y:TensorInclination, samples, ctxs=None, max_n=6, **kwargs):
+    n_samples = min(len(samples), max_n)
+    n_targ = 1
+    if n_samples > 3:
+        #if there are more then 3 samples to plot then put them in a single figure
+        plot_seqs_single_figure(n_samples,n_targ,samples,plot_scalar_inclination, **kwargs)
+    else:
+        #if there are less then 3 samples to plot then put each in its own figure
+        plot_seqs_multi_figures(n_samples,n_targ,samples,plot_scalar_inclination, **kwargs)
+    return ctxs
+
+#Cell
+@typedispatch
+def show_results(x:TensorSequences, y:TensorQuaternionInclination, samples, outs, ctxs=None, max_n=2, **kwargs):
+    if 'quat' in kwargs: return show_results(x,TensorSequencesOutput(y), samples,outs, ctxs, max_n , **kwargs)
+    n_samples = min(len(samples), max_n)
+    n_targ = 2
+    if n_samples > 3:
+        #if there are more then 3 samples to plot then put them in a single figure
+        plot_seqs_single_figure(n_samples,n_targ,samples,plot_quaternion_inclination,outs,**kwargs)
+    else:
+        #if there are less then 3 samples to plot then put each in its own figure
+        plot_seqs_multi_figures(n_samples,n_targ,samples,plot_quaternion_inclination,outs,**kwargs)
     return ctxs
 
 #Cell
@@ -210,10 +277,10 @@ def show_batch(x:TensorSequences, y:TensorQuaternionInclination, samples, ctxs=N
     n_targ = 1
     if n_samples > 3:
         #if there are more then 3 samples to plot then put them in a single figure
-        plot_seqs_single_figure(n_samples,n_targ,samples,plot_inclination)
+        plot_seqs_single_figure(n_samples,n_targ,samples,plot_quaternion_inclination)
     else:
         #if there are less then 3 samples to plot then put each in its own figure
-        plot_seqs_multi_figures(n_samples,n_targ,samples,plot_inclination)
+        plot_seqs_multi_figures(n_samples,n_targ,samples,plot_quaternion_inclination)
     return ctxs
 
 #Cell
@@ -223,10 +290,10 @@ def show_results(x:TensorSequences, y:TensorQuaternionAngle, samples, outs, ctxs
     n_targ = 2
     if n_samples > 3:
         #if there are more then 3 samples to plot then put them in a single figure
-        plot_seqs_single_figure(n_samples,n_targ,samples,plot_rel_angle,outs)
+        plot_seqs_single_figure(n_samples,n_targ,samples,plot_quaternion_rel_angle,outs, **kwargs)
     else:
         #if there are less then 3 samples to plot then put each in its own figure
-        plot_seqs_multi_figures(n_samples,n_targ,samples,plot_rel_angle,outs)
+        plot_seqs_multi_figures(n_samples,n_targ,samples,plot_quaternion_rel_angle,outs, **kwargs)
     return ctxs
 
 #Cell
@@ -236,8 +303,8 @@ def show_batch(x:TensorSequences, y:TensorQuaternionAngle, samples, ctxs=None, m
     n_targ = 1
     if n_samples > 3:
         #if there are more then 3 samples to plot then put them in a single figure
-        plot_seqs_single_figure(n_samples,n_targ,samples,plot_rel_angle)
+        plot_seqs_single_figure(n_samples,n_targ,samples,plot_quaternion_rel_angle, **kwargs)
     else:
         #if there are less then 3 samples to plot then put each in its own figure
-        plot_seqs_multi_figures(n_samples,n_targ,samples,plot_rel_angle)
+        plot_seqs_multi_figures(n_samples,n_targ,samples,plot_quaternion_rel_angle, **kwargs)
     return ctxs
