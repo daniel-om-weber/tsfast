@@ -34,7 +34,7 @@ class RNN(nn.Module):
     "inspired by https://arxiv.org/abs/1708.02182"
 
     def __init__(self, input_size,hidden_size, num_layers,
-                 hidden_p=0.2, input_p=0.6, weight_p=0.5,
+                 hidden_p=0.0, input_p=0.0, weight_p=0.0,
                  rnn_type='gru',ret_full_hidden=False,stateful=False,**kwargs):
         super().__init__()
         store_attr(self, 'ret_full_hidden,num_layers,rnn_type,hidden_size,stateful')

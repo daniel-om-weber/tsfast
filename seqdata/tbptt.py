@@ -5,8 +5,7 @@ __all__ = []
 #Cell
 from .core import *
 from .model import *
+from .learner import *
 from fastai2.basics import *
-from fastai2.callback.progress import *
-from fastai2.callback.tracker import *
 
 import math
