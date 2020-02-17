@@ -99,6 +99,7 @@ index = {"obj_in_lst": "00_core.ipynb",
 modules = ["core.py",
            "model.py",
            "learner.py",
+           "tbptt.py",
            "prodiag.py",
            "quaternions.py",
            "pbt.py"]
