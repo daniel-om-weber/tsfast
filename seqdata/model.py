@@ -37,7 +37,7 @@ class RNN(nn.Module):
                  hidden_p=0.0, input_p=0.0, weight_p=0.0,
                  rnn_type='gru',ret_full_hidden=False,stateful=False,**kwargs):
         super().__init__()
-        store_attr(self, 'ret_full_hidden,num_layers,rnn_type,hidden_size,stateful')
+        store_attr(self, 'ret_full_hidden,num_layers,rnn_type,hidden_size,stateful,input_p')
         self.bs = 1
         self.rnns = nn.ModuleList([self._one_rnn(input_size if l == 0 else hidden_size,
                                                  hidden_size,weight_p,rnn_type,**kwargs) for l in range(num_layers)])
@@ -47,11 +47,9 @@ class RNN(nn.Module):
 
     def forward(self, inp, h_init=None):
         bs = inp.shape[0]
-        if bs!=self.bs: self._change_hidden(bs)
+        if h_init is None and self.stateful: h_init = self._get_hidden(bs)
 
-        if h_init is None and self.stateful: h_init = self._get_hidden()
-
-        output = self.input_dp(inp)
+        output = self.input_dp(inp) if self.input_p > 0 else inp
         full_hid,new_hidden = [],[]
         for l, (rnn,hid_dp) in enumerate(zip(self.rnns, self.hidden_dps)):
             output, h = rnn(output,h_init[l] if h_init is not None else None)
@@ -60,22 +58,16 @@ class RNN(nn.Module):
             new_hidden.append(h)
 
         self.hidden =  to_detach(new_hidden, cpu=False, gather=False)
-        if self.rnn_type != 'lstm': self.hidden = [tuple([h]) for h in self.hidden]
 
         return output, output if self.ret_full_hidden else new_hidden
 
-    def _get_hidden(self):
+    def _get_hidden(self,bs):
         '''retrieve internal hidden state, check if model device has changed'''
-        slf_device = one_param(self).device
-        if self.hidden[0][0].device != slf_device:
-#             import pdb; pdb.set_trace()
-            self.hidden = [tuple([to_device(t,slf_device) for t in h])
-                            for h in self.hidden]
+        if self.hidden is None: return None
+        if bs!=self.bs: return None
+        if self.hidden[0][0].device != one_param(self).device: return None
 
-        if self.rnn_type == 'lstm':
-            return self.hidden
-        else:
-            return [h[0] for h in self.hidden]
+        return self.hidden
 
     def _one_rnn(self, n_in, n_out, weight_p, rnn_type,**kwargs):
         "Return one of the inner rnn"
@@ -92,29 +84,10 @@ class RNN(nn.Module):
             raise Exception
         return rnn
 
-    def _change_hidden(self, bs):
-        '''change hiddenstate if batchsize has changed'''
-        self.hidden = [self._change_one_hidden(l, bs) for l in range(self.num_layers)]
-        self.bs = bs
-    def _change_one_hidden(self, l, bs):
-        if self.bs < bs:
-            return tuple(torch.cat([h, h.new_zeros(1, bs-self.bs, self.hidden_size)],
-                                   dim=1) for h in self.hidden[l])
-        if self.bs > bs:
-            return tuple([h[:,:bs] for h in self.hidden[l]])
-        return self.hidden[l]
-
     def reset(self):
         "Reset the hidden states"
         [r.reset() for r in self.rnns if hasattr(r, 'reset')]
-        self.hidden = [self._one_hidden(l) for l in range(self.num_layers)]
-    def _one_hidden(self, l):
-        "Return one hidden state"
-        hid = one_param(self).new_zeros(1, self.bs, self.hidden_size)
-        if self.rnn_type == 'lstm':
-            return tuple([hid,hid.clone()])
-        else:
-            return tuple([hid])
+        self.hidden = None
 
 
 #Cell
