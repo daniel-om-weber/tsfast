@@ -94,6 +94,8 @@ class PBTOpt():
     def optimize(self,opt_name,num_samples,config,mut_conf,freq=2,
                  stop={"training_iteration": 40 },
                  resources_per_trial={"gpu": 1 },
+                 resample_probability=0.25,
+                 quantile_fraction=0.25,
                  **kwargs):
         self.mut_conf = mut_conf
 
@@ -108,6 +110,8 @@ class PBTOpt():
         metric="mean_loss",
         mode="min",
         perturbation_interval=freq,
+        resample_probability=resample_probability,
+        quantile_fraction=quantile_fraction,
         hyperparam_mutations=mut_conf)
 
         self.analysis = tune.run(

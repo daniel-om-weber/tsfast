@@ -14,38 +14,40 @@ import math
 @delegates()
 class TbpttDl(TfmdDL):
 
-    def __init__(self, dataset, sub_seq_len=None, seq_len = None ,shuffle=True,num_workers=0, **kwargs):
-        self.n_sub_seq = None
+    def __init__(self, dataset, sub_seq_len=None,max_batches=None, seq_len = None ,shuffle=True,num_workers=0, **kwargs):
+        store_attr(self,'sub_seq_len,max_batches,seq_len')
         super().__init__(dataset=dataset, shuffle=shuffle, num_workers=num_workers, **kwargs)
-        store_attr(self,'sub_seq_len')
 
-        if sub_seq_len is not None:
-            if seq_len is None: seq_len = self.do_item(0)[0].shape[0]
-            self.n_sub_seq = math.ceil(seq_len / sub_seq_len)
-
-        self.rnn_reset = self.n_sub_seq is None #always reset stateful rnns if there are no subsequences
+        self.rnn_reset = sub_seq_len is None #always reset stateful rnns if there are no subsequences
+    @property
+    def n_sub_seq(self):
+        if self.seq_len is None: self.seq_len = self.do_item(0)[0].shape[0]
+        return math.ceil(self.seq_len / self.sub_seq_len)
 
     def __len__(self):
-        if self.n_sub_seq is None:
-            return super().__len__()
-        else:
-            return super().__len__()*self.n_sub_seq
+        l = super().__len__()
+        if self.sub_seq_len is not None: l *= self.n_sub_seq
+        if self.max_batches is not None: l = min(l,self.max_batches)
+        return l
 
     def create_batches(self, samps):
-        batch_iter = super().create_batches(samps)
-        if self.n_sub_seq is None:
-            return batch_iter
-        else:
-            return self._tbptt_generator(batch_iter)
+        yield from self._tbptt_generator(super().create_batches(samps))
 
     def _tbptt_generator(self,batch_iter):
-        for b in batch_iter:
-            tmp_b = b
-            for i in range(self.n_sub_seq):
-                self.rnn_reset = i == 0
-                #it is importan to retain the tuple type, or future transforms may now work
-                trunc_b = tuple([retain_type(x[:,i*self.sub_seq_len:(i+1)*self.sub_seq_len],x) for x in b])
-                yield trunc_b
+        '''generator function that splits batches in smaller windows and truncates batch count if max_batches is set'''
+        for idx,b in enumerate(batch_iter):
+            if self.sub_seq_len is None:
+                self.rnn_reset = True
+                if self.max_batches is not None and idx >= self.max_batches: return
+                yield b
+            else:
+                for i in range(self.n_sub_seq):
+                    if self.max_batches is not None and ((idx*self.n_sub_seq)+i) >= self.max_batches: return
+                    self.rnn_reset = i == 0
+                    #it is importan to retain the tuple type, or future transforms may now work
+                    trunc_b = tuple([retain_type(x[:,i*self.sub_seq_len:(i+1)*self.sub_seq_len],x) for x in b])
+                    yield trunc_b
+
 
 #Cell
 class TbpttResetCB(Callback):
@@ -55,3 +57,6 @@ class TbpttResetCB(Callback):
         dl = self.learn.dls.train if self.training else self.learn.dls.valid
 #         if not self.training: import pdb; pdb.set_trace()
         if hasattr(dl,'rnn_reset')and dl.rnn_reset: self.model.reset()
+
+    def after_fit(self):
+        self.model.reset()
