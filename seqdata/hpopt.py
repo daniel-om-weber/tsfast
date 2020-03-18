@@ -75,12 +75,17 @@ class LearnerTrainable(tune.Trainable):
 def learner_optimize(config):
         create_lrn = config['create_lrn']
         dls = ray.get(config['dls'])
-        fit_method = config['fit_method']
+
+        #Scheduling Parameters for training the Model
+        lrn_kwargs = {'n_epoch':100,'pct_start':0.5}
+        for attr in ['n_epoch','pct_start']:
+            if attr in config: lrn_kwargs[attr] = config[attr]
 
         lrn = create_lrn(dls,config)
+        lrn.lr = config['lr'] if 'lr' in config else 3e-3
         lrn.add_cb(CBRayReporter())
         with lrn.no_bar():
-            fit_method(lrn)
+            config['fit_method'](lrn,**lrn_kwargs)
 
 # Cell
 def sample_config(config):
@@ -119,12 +124,12 @@ class HPOptimizer():
 
 
     @delegates(tune.run, keep=True)
-    def optimize(self,config,fit_method=partial(Learner.fit_flat_cos,n_epoch=100,lr=3e-3,pct_start=0.5)
-                 ,resources_per_trial={"gpu": 1.0},verbose=1,**kwargs):
+    def optimize(self,config,resources_per_trial={"gpu": 1.0},verbose=1,**kwargs):
         config['create_lrn'] = self.create_lrn
         #dls are large objects, letting ray handle the copying process makes it much faster
         config['dls'] = ray.put(self.dls)
-        config['fit_method'] = fit_method
+
+        if 'fit_method' not in config: config['fit_method'] = Learner.fit_flat_cos
 
         self.analysis = tune.run(
             learner_optimize,
