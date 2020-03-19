@@ -56,7 +56,8 @@ class TbpttResetCB(Callback):
     def begin_batch(self):
         dl = self.learn.dls.train if self.training else self.learn.dls.valid
 #         if not self.training: import pdb; pdb.set_trace()
-        if hasattr(dl,'rnn_reset')and dl.rnn_reset: self.model.reset()
+        if hasattr(dl,'rnn_reset')and dl.rnn_reset and hasattr(self.model,'reset'):
+            self.model.reset()
 
     def after_fit(self):
-        self.model.reset()
+        if hasattr(self.model,'reset'): self.model.reset()
