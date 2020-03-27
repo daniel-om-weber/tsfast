@@ -58,7 +58,7 @@ def diffQuat(q1,q2,norm=True):
 # Cell
 def safe_acos(t):
     '''numericaly stable variant of arcuscosine'''
-    eps = 3e-8 #minimum value for acos(1) != 0
+    eps = 4e-8 #minimum value for acos(1) != 0
     return t.clamp(-1.0 + eps, 1.0 - eps).acos()
 
 # Cell
