@@ -2,11 +2,12 @@
 
 __all__ = ['TensorQuaternionInclination', 'TensorQuaternionAngle', 'rad2deg', 'multiplyQuat', 'norm_quaternion',
            'conjQuat', 'diffQuat', 'safe_acos', 'inclinationAngle', 'relativeAngle', 'inclinationAngleAbs', 'rand_quat',
-           'rot_vec', 'inclination_loss', 'inclination_loss_abs', 'inclination_loss_squared', 'ms_inclination',
-           'rms_inclination_deg', 'mean_inclination_deg', 'angle_loss', 'angle_loss_opt', 'ms_rel_angle',
-           'rms_rel_angle_deg', 'mean_rel_angle_deg', 'deg_rmse', 'QuaternionRegularizer', 'augmentation_groups',
-           'QuaternionAugmentation', 'TensorInclination', 'HDF2Inclination', 'InclinationBlock',
-           'plot_scalar_inclination', 'plot_quaternion_inclination', 'plot_quaternion_rel_angle']
+           'rot_vec', 'inclination_loss', 'inclination_loss_abs', 'inclination_loss_squared', 'inclination_loss_smooth',
+           'abs_inclination', 'ms_inclination', 'rms_inclination', 'smooth_inclination', 'rms_inclination_deg',
+           'mean_inclination_deg', 'angle_loss', 'angle_loss_opt', 'ms_rel_angle', 'rms_rel_angle_deg',
+           'mean_rel_angle_deg', 'deg_rmse', 'QuaternionRegularizer', 'augmentation_groups', 'QuaternionAugmentation',
+           'TensorInclination', 'HDF2Inclination', 'InclinationBlock', 'plot_scalar_inclination',
+           'plot_quaternion_inclination', 'plot_quaternion_rel_angle']
 
 # Cell
 from .core import *
@@ -91,25 +92,46 @@ def rot_vec(v,q):
 # Cell
 def inclination_loss(q1,q2):
     q = diffQuat(q1,q2)
-    q_abs = (q[..., 3]**2 + q[..., 0]**2).sqrt()
-    return ((q_abs-1)**2).mean().sqrt()
+    q_abs = (q[..., 3]**2 + q[..., 0]**2).sqrt()-1
+    return (q_abs**2).mean().sqrt()
 
 # Cell
 def inclination_loss_abs(q1,q2):
     q = diffQuat(q1,q2)
-    q_abs = (q[..., 3]**2 + q[..., 0]**2).sqrt()
-    return ((q_abs-1).abs()).mean()
+    q_abs = (q[..., 3]**2 + q[..., 0]**2).sqrt()-1
+    return q_abs.abs().mean()
 
 # Cell
 def inclination_loss_squared(q1,q2):
     q = diffQuat(q1,q2)
-    q_abs = (q[..., 3]**2 + q[..., 0]**2).sqrt()
-    return ((q_abs-1)**2).mean()
+    q_abs = (q[..., 3]**2 + q[..., 0]**2).sqrt()-1
+    return (q_abs**2).mean()
+
+# Cell
+def inclination_loss_smooth(q1,q2):
+    q = diffQuat(q1,q2)
+    q_abs = (q[..., 3]**2 + q[..., 0]**2).sqrt()-1
+    return F.smooth_l1_loss(q_abs,torch.zeros_like(q_abs))
+
+# Cell
+def abs_inclination(q1,q2):
+    inclination = inclinationAngle(q1,q2)
+    return  inclination.abs().mean()
 
 # Cell
 def ms_inclination(q1,q2):
     inclination = inclinationAngle(q1,q2)
     return  (inclination**2).mean()
+
+# Cell
+def rms_inclination(q1,q2):
+    inclination = inclinationAngle(q1,q2)
+    return (inclination**2).mean().sqrt()
+
+# Cell
+def smooth_inclination(q1,q2):
+    inclination = inclinationAngle(q1,q2)
+    return F.smooth_l1_loss(inclination,torch.zeros_like(inclination))
 
 # Cell
 def rms_inclination_deg(q1,q2):
