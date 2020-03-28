@@ -27,23 +27,24 @@ def rad2deg(t):
     return 180. * t / _pi.to(t.device).type(t.dtype)
 
 # Cell
+@torch.jit.script
 def multiplyQuat(q1, q2):
     """quat1*quat2"""
-    output = torch.zeros_like(q1 if q1.ndim >= q2.ndim else q2)
-    output[..., 0] = q1[..., 0] * q2[..., 0] - q1[..., 1] * q2[..., 1] - q1[..., 2] * q2[..., 2] - q1[..., 3] * q2[..., 3]
-    output[..., 1] = q1[..., 0] * q2[..., 1] + q1[..., 1] * q2[..., 0] + q1[..., 2] * q2[..., 3] - q1[..., 3] * q2[..., 2]
-    output[..., 2] = q1[..., 0] * q2[..., 2] - q1[..., 1] * q2[..., 3] + q1[..., 2] * q2[..., 0] + q1[..., 3] * q2[..., 1]
-    output[..., 3] = q1[..., 0] * q2[..., 3] + q1[..., 1] * q2[..., 2] - q1[..., 2] * q2[..., 1] + q1[..., 3] * q2[..., 0]
-    return output
+    o1 = q1[..., 0] * q2[..., 0] - q1[..., 1] * q2[..., 1] - q1[..., 2] * q2[..., 2] - q1[..., 3] * q2[..., 3]
+    o2 = q1[..., 0] * q2[..., 1] + q1[..., 1] * q2[..., 0] + q1[..., 2] * q2[..., 3] - q1[..., 3] * q2[..., 2]
+    o3 = q1[..., 0] * q2[..., 2] - q1[..., 1] * q2[..., 3] + q1[..., 2] * q2[..., 0] + q1[..., 3] * q2[..., 1]
+    o4 = q1[..., 0] * q2[..., 3] + q1[..., 1] * q2[..., 2] - q1[..., 2] * q2[..., 1] + q1[..., 3] * q2[..., 0]
+    return torch.stack([o1,o2,o3,o4],dim=-1)
 
 # Cell
 def norm_quaternion(q):
-    return q / q.norm(dim=-1)[...,None]
+    return q / q.norm( p=2,dim=-1)[...,None]
 
 # Cell
 _conjugate_quaternion = tensor([1,-1,-1,-1])
+
 def conjQuat(q):
-    return q * _conjugate_quaternion.to(q.device).type(q.dtype)
+    return q*_conjugate_quaternion.to(q.device).type(q.dtype)
 
 # Cell
 def diffQuat(q1,q2,norm=True):
