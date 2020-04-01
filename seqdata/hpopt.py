@@ -83,7 +83,7 @@ def learner_optimize(config):
 
         lrn = create_lrn(dls,config)
         lrn.lr = config['lr'] if 'lr' in config else 3e-3
-        lrn.add_cb(CBRayReporter())
+        lrn.add_cb(CBRayReporter() if 'reporter' not in config else config['reporter']())
         with lrn.no_bar():
             config['fit_method'](lrn,**lrn_kwargs)
 
