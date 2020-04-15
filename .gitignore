@@ -9,6 +9,12 @@ _tmp*
 tmp*
 tags
 
+
+fastai2/
+fastcore/
+models/
+*.prof
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

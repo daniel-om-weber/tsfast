@@ -4,9 +4,9 @@ __all__ = ['obj_in_lst', 'count_parameters', 'get_hdf_files', 'hdf_extensions', 
            'DfHDFCreateWindows', 'DfFilterQuery', 'calc_shift_offsets', 'running_mean', 'downsample_mean',
            'hdf_extract_sequence', 'Memoize', 'HDF2Sequence', 'hdf2scalars', 'TensorSequences', 'TensorSequencesInput',
            'TensorSequencesOutput', 'toTensorSequencesInput', 'toTensorSequencesOutput', 'TensorScalars',
-           'TensorScalarsInput', 'TensorScalarsOutput', 'SeqSlice', 'SeqNoiseInjection', 'encodes', 'decodes',
-           'ParentSplitter', 'PercentageSplitter', 'ApplyToDict', 'pad_sequence', 'SequenceBlock', 'Seq2SeqDS',
-           'Seq2SeqDataloaders', 'plot_sequence', 'plot_seqs_single_figure', 'plot_seqs_multi_figures']
+           'TensorScalarsInput', 'TensorScalarsOutput', 'SeqSlice', 'SeqNoiseInjection', 'SeqBiasInjection', 'encodes',
+           'decodes', 'ParentSplitter', 'PercentageSplitter', 'ApplyToDict', 'pad_sequence', 'SequenceBlock',
+           'Seq2SeqDS', 'Seq2SeqDataloaders', 'plot_sequence', 'plot_seqs_single_figure', 'plot_seqs_multi_figures']
 
 # Cell
 from fastai2.data.all import *
@@ -247,6 +247,27 @@ class SeqNoiseInjection(Transform):
         #expand creates a view on a tensor and is therefore very fast compared to copy
         return o+torch.normal(mean=self.mean.expand_as(o),
                               std=self.std.expand_as(o))
+
+# Cell
+class SeqBiasInjection(Transform):
+    split_idx=0
+    '''Adds a normal distributed offset to the tensor sequence with seperate mean and std for every signal'''
+    def __init__(self, std=1e-1,mean=0.):
+        self.std,self.mean = tensor(std),tensor(mean)
+
+    def setups(self, dl:DataLoader):
+        #check the tensor type of your input
+        #TODO: include scalar type case
+        x,*_ = dl.one_batch()
+        self.std = to_device(self.std,x.device)
+        self.mean = to_device(self.mean,x.device)
+
+    def encodes(self, o:TensorSequencesInput):
+        #expand creates a view on a tensor and is therefore very fast compared to copy
+        mean=self.mean.repeat((o.shape[0],1,1)).expand((o.shape[0],1,o.shape[2]))
+        std= self.std.repeat((o.shape[0],1,1)).expand((o.shape[0],1,o.shape[2]))
+        n = torch.normal(mean=mean, std=std).expand_as(o)
+        return o+n
 
 # Cell
 @Normalize
