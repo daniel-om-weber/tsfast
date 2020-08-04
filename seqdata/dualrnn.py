@@ -6,7 +6,7 @@ __all__ = ['ProDiagTrainer', 'DualRNN', 'DualCRNN']
 from .core import *
 from .model import *
 from .learner import *
-from .tbptt import *
+from .dataloaders import *
 from fastai2.basics import *
 from fastai2.callback.progress import *
 from fastai2.callback.schedule import *
