@@ -74,13 +74,13 @@ def WeightedDL_Factory(cls):
     assert issubclass(cls, TfmdDL)
 
     class WeightedDL(cls):
-        def __init__(self, dataset, wgts=None,shuffle=True, **kwargs):
+        def __init__(self, dataset, wgts=None, **kwargs):
 #             import pdb;pdb.set_trace()
 
             if wgts is None:
                 self.wgts = array([1/(len(dataset))]*len(dataset))
                 #self.items need to be assigned, but super.init needs wgts allready assigned
-                super().__init__(dataset=dataset, shuffle=True, **kwargs)
+                super().__init__(dataset=dataset, **kwargs)
                 if  (type(self.items) is list and
                     type(self.items[0]) is dict and
                     'p_sample' in self.items[0].keys()):
@@ -90,7 +90,7 @@ def WeightedDL_Factory(cls):
                     print('No wgts provided for WeightedDL. Was that intentional?')
             else:
                 self.wgts = wgts/np.sum(wgts)
-                super().__init__(dataset=dataset, shuffle=True, **kwargs)
+                super().__init__(dataset=dataset, **kwargs)
 
         def get_idxs(self):
             if self.n==0: return []
