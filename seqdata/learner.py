@@ -145,8 +145,10 @@ def ignore_nan(func):
     '''remove nan values from tensors before function execution, reduces tensor to a flat array, apply to functions such as mse'''
     @functools.wraps(func)
     def ignore_nan_decorator(*args, **kwargs):
-        mask = ~torch.isnan(args[-1]) #nan mask of target tensor
-        args = tuple([x[mask] for x in args]) #remove nan values
+#         mask = ~torch.isnan(args[-1]) #nan mask of target tensor
+#         args = tuple([x[mask] for x in args]) #remove nan values
+        mask = ~torch.isnan(args[-1][...,-1]) #nan mask of target tensor
+        args = tuple([x[mask,:] for x in args]) #remove nan values
         return func(*args, **kwargs)
     return ignore_nan_decorator
 
