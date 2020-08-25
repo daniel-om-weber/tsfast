@@ -303,12 +303,17 @@ class SeqBiasInjection(Transform):
 # Cell
 @Normalize
 def encodes(self, x:TensorSequencesInput):
+    if x.device != self.mean.device:
+        self.mean = self.mean.to(x.device)
+        self.std = self.std.to(x.device)
     return (x-self.mean) / self.std
 
 @Normalize
 def decodes(self, x:TensorSequencesInput):
-    f = to_cpu if x.device.type=='cpu' else noop
-    return (x*f(self.std) + f(self.mean))
+    if x.device != self.mean.device:
+        self.mean = self.mean.to(x.device)
+        self.std = self.std.to(x.device)
+    return (x*self.std + self.mean)
 
 # Cell
 def _parent_idxs(items, name): return mask2idxs(Path(o).parent.name == name for o in items)

@@ -92,16 +92,16 @@ class RNN(nn.Module):
         "Return one of the inner rnn"
         if rnn_type == 'gru':
             rnn = nn.GRU(n_in, n_out,1,batch_first=True,**kwargs)
-            rnn = WeightDropout(rnn,weight_p)
+#             rnn = WeightDropout(rnn,weight_p)
         elif rnn_type == 'lstm':
             rnn = nn.LSTM(n_in, n_out,1,batch_first=True,**kwargs)
-            rnn = WeightDropout(rnn,weight_p)
+#             rnn = WeightDropout(rnn,weight_p)
         elif rnn_type == 'rnn':
             rnn = nn.RNN(n_in, n_out,1,batch_first=True,**kwargs)
-            rnn = WeightDropout(rnn,weight_p)
+#             rnn = WeightDropout(rnn,weight_p)
         elif rnn_type == 'qrnn':
             rnn = QRNN(n_in, n_out,1,batch_first=True,**kwargs)
-            rnn.layers[0].linear = WeightDropout(rnn.layers[0].linear,weight_p,layer_names='weight')
+#             rnn.layers[0].linear = WeightDropout(rnn.layers[0].linear,weight_p,layer_names='weight')
         else:
             raise Exception
         return rnn
