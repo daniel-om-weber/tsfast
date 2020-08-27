@@ -181,7 +181,7 @@ class HDF2Sequence(Transform):
             ds = f if dataset is None else f[dataset]
             l_array = [(ds[n][l_slc:r_slc]) for n in self.clm_names]
             seq = np.stack(l_array,axis=-1)
-            return seq.astype('f8')#workaround for random bug, that mitigates convergence if the numpy array is an f4 array. Seems to make no sense because the result does not change.
+            return seq
 
     def _extract_dict_sequence(self,item):
         if isinstance(item,dict):
@@ -206,7 +206,7 @@ class HDF2Sequence(Transform):
             seq = seq[truncate_sz:]
 
         #it is important to slice first and then do the class conversion
-        return self.to_cls(seq)
+        return self.to_cls(seq.astype('f8'))#workaround for random bug, that mitigates convergence if the numpy array is an f4 array. Seems to make no sense because the result does not change.
 
     def encodes(self, item)->None:
         return self._extract_dict_sequence(item)
