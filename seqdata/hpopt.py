@@ -72,7 +72,8 @@ class LearnerTrainable(tune.Trainable):
         return True
 
 # Cell
-def learner_optimize(config):
+from fastai2.callback.tracker import SaveModelCallback
+def learner_optimize(config, checkpoint_dir=None):
         create_lrn = config['create_lrn']
         dls = ray.get(config['dls'])
 
@@ -84,6 +85,7 @@ def learner_optimize(config):
         lrn = create_lrn(dls,config)
         lrn.lr = config['lr'] if 'lr' in config else 3e-3
         lrn.add_cb(CBRayReporter() if 'reporter' not in config else config['reporter']())
+        lrn.add_cb(SaveModelCallback())
         with lrn.no_bar():
             config['fit_method'](lrn,**lrn_kwargs)
 
@@ -100,7 +102,7 @@ class CBRayReporter(Callback):
 
     def after_epoch(self):
         train_loss,valid_loss,rmse = self.learn.recorder.values[-1]
-        tune.track.log(train_loss=train_loss,
+        tune.report(train_loss=train_loss,
                         valid_loss=valid_loss,
                         mean_loss=rmse)
 

@@ -76,11 +76,10 @@ def WeightedDL_Factory(cls):
     class WeightedDL(cls):
         def __init__(self, dataset, wgts=None, **kwargs):
 #             import pdb;pdb.set_trace()
-
+            self.wgts = None
+            #self.items need to be assigned, but super.init needs wgts allready assigned
+            super().__init__(dataset=dataset, **kwargs)
             if wgts is None:
-                self.wgts = array([1/(len(dataset))]*len(dataset))
-                #self.items need to be assigned, but super.init needs wgts allready assigned
-                super().__init__(dataset=dataset, **kwargs)
                 if  (type(self.items) is list and
                     type(self.items[0]) is dict and
                     'p_sample' in self.items[0].keys()):
@@ -90,11 +89,10 @@ def WeightedDL_Factory(cls):
                     print('No wgts provided for WeightedDL. Was that intentional?')
             else:
                 self.wgts = wgts/np.sum(wgts)
-                super().__init__(dataset=dataset, **kwargs)
 
         def get_idxs(self):
             if self.n==0: return []
-            if not self.shuffle: return super().get_idxs()
+            if not self.shuffle or self.wgts is None: return super().get_idxs()
             return list(np.random.choice(self.n, self.n, p=self.wgts))
     return WeightedDL
 
