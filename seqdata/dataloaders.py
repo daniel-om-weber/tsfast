@@ -11,42 +11,91 @@ from fastai2.basics import *
 import math
 
 # Cell
+from torch.utils.data.dataloader import _MultiProcessingDataLoaderIter,_SingleProcessDataLoaderIter,_DatasetKind
+_loaders = (_MultiProcessingDataLoaderIter,_SingleProcessDataLoaderIter)
 @delegates()
 class TbpttDl(TfmdDL):
 
     def __init__(self, dataset, sub_seq_len=None,max_batches=None, seq_len = None ,shuffle=True,num_workers=0, **kwargs):
+#         assert sub_seq_len is not None
         store_attr(self,'sub_seq_len,max_batches,seq_len')
         super().__init__(dataset=dataset, shuffle=shuffle, num_workers=num_workers, **kwargs)
-
-        self.rnn_reset = sub_seq_len is None #always reset stateful rnns if there are no subsequences
+        self.rnn_reset = False
     @property
     def n_sub_seq(self):
+        if self.sub_seq_len is None: return 1
         if self.seq_len is None: self.seq_len = self.do_item(0)[0].shape[0]
         return math.ceil(self.seq_len / self.sub_seq_len)
 
     def __len__(self):
-        l = super().__len__()
-        if self.sub_seq_len is not None: l *= self.n_sub_seq
+        l = super().__len__() * self.n_sub_seq
         if self.max_batches is not None: l = min(l,self.max_batches)
         return l
+
+    def _next_worker(self,w_id):
+        w_id += 1
+        if w_id > self.fake_l.num_workers-1: w_id = 0
+        return w_id
+
+    def __iter__(self):
+        '''iterator that handles multiprocessing by caching samples that are generated out of order'''
+        self.randomize()
+        self.before_iter()
+        n_buffer = self.fake_l.num_workers*self.n_sub_seq
+        queue = {n:[] for n in range(self.fake_l.num_workers)}
+        current_worker = None
+        idx = 0
+        for loaded_b,w_id in _loaders[self.fake_l.num_workers==0](self.fake_l):
+            if self.max_batches is not None and idx >= self.max_batches: break #check if batch limit has been reached
+#             import pdb; pdb.set_trace()
+            if w_id is None:
+                self.rnn_reset=True
+                b= loaded_b
+                self.rnn_reset = (idx % self.n_sub_seq) == 0
+                yield self.after_batch(b if self.device is None else to_device(b, self.device))
+                idx += 1 #idx increments after every yield, not every loop
+            else:
+                if current_worker is None:
+                    current_worker = w_id
+
+                #retrieve queued elements from worker
+                while len(queue[current_worker]) > 0:
+                    b = queue[current_worker].pop(0)
+                    self.rnn_reset = (idx % self.n_sub_seq) == 0
+                    yield self.after_batch(b if self.device is None else to_device(b, self.device))
+                    idx += 1
+                    if (idx % self.n_sub_seq) == 0:
+                        current_worker = self._next_worker(current_worker) #next worker, stay in loop for the queue
+
+
+                #retrieve fresh elements from worker
+                if w_id != current_worker: #not active worker
+                    queue[w_id] += [loaded_b]
+                    continue
+                else:#active worker
+                    b = loaded_b
+                    self.rnn_reset = (idx % self.n_sub_seq) == 0
+                    yield self.after_batch(b if self.device is None else to_device(b, self.device))
+                    idx += 1 #idx increments after every yield, not every loop
+                    if (idx % self.n_sub_seq) == 0:
+                        current_worker = self._next_worker(current_worker)
+
+        self.after_iter()
+        if hasattr(self, 'it'): delattr(self, 'it')
 
     def create_batches(self, samps):
         yield from self._tbptt_generator(super().create_batches(samps))
 
     def _tbptt_generator(self,batch_iter):
-        '''generator function that splits batches in smaller windows and truncates batch count if max_batches is set'''
+        '''generator function that splits batches in smaller windows and truncates batch count if max_batches is set, yields mini_batch and worker id'''
         for idx,b in enumerate(batch_iter):
-            if self.sub_seq_len is None:
-                self.rnn_reset = True
-                if self.max_batches is not None and idx >= self.max_batches: return
-                yield b
-            else:
-                for i in range(self.n_sub_seq):
-                    if self.max_batches is not None and ((idx*self.n_sub_seq)+i) >= self.max_batches: return
-                    self.rnn_reset = i == 0
-                    #it is importan to retain the tuple type, or future transforms may now work
+            for i in range(self.n_sub_seq):
+                #it is importan to retain the tuple type, or future transforms may now work
+                if self.sub_seq_len is None:
+                    trunc_b = b
+                else:
                     trunc_b = tuple([retain_type(x[:,i*self.sub_seq_len:(i+1)*self.sub_seq_len],x) for x in b])
-                    yield trunc_b
+                yield trunc_b, (None if torch.utils.data.get_worker_info() is None else torch.utils.data.get_worker_info().id)
 
 
 # Cell
