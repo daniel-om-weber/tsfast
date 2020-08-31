@@ -78,7 +78,8 @@ def learner_optimize(config, checkpoint_dir=None):
         dls = ray.get(config['dls'])
 
         #Scheduling Parameters for training the Model
-        lrn_kwargs = {'n_epoch':100,'pct_start':0.5}
+        lrn_kwargs = {'n_epoch':100}
+        if config['fit_method'] == Learner.fit_flat_cos: lrn_kwargs['pct_start'] = 0.5
         for attr in ['n_epoch','pct_start']:
             if attr in config: lrn_kwargs[attr] = config[attr]
 
