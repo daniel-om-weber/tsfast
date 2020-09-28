@@ -4,7 +4,7 @@ __all__ = ['TbpttDl', 'TbpttResetCB', 'WeightedDL_Factory', 'uniform_p_of_catego
 
 # Cell
 from .core import *
-from .model import *
+from .models.core import *
 from .learner import *
 from fastai2.basics import *
 
@@ -16,7 +16,7 @@ _loaders = (_MultiProcessingDataLoaderIter,_SingleProcessDataLoaderIter)
 @delegates()
 class TbpttDl(TfmdDL):
 
-    def __init__(self, dataset, sub_seq_len=None, seq_len = None ,shuffle=True,num_workers=0, **kwargs):
+    def __init__(self, dataset, sub_seq_len=None, seq_len = None ,shuffle=True,num_workers=2, **kwargs):
 #         assert sub_seq_len is not None
         store_attr(self,'sub_seq_len,seq_len')
         super().__init__(dataset=dataset, shuffle=shuffle, num_workers=num_workers, **kwargs)
@@ -102,7 +102,7 @@ class TbpttResetCB(Callback):
     def begin_batch(self):
         dl = self.learn.dls.train if self.training else self.learn.dls.valid
 #         if not self.training: import pdb; pdb.set_trace()
-        if hasattr(dl,'rnn_reset')and dl.rnn_reset and hasattr(self.model,'reset'):
+        if (hasattr(dl,'rnn_reset') and dl.rnn_reset and hasattr(self.model,'reset')) or not hasattr(dl,'rnn_reset'):
             self.model.reset()
 
     def after_fit(self):

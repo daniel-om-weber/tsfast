@@ -12,7 +12,7 @@ __all__ = ['TensorQuaternionInclination', 'TensorQuaternionAngle', 'rad2deg', 'm
 
 # Cell
 from .core import *
-from .model import *
+from .models.core import *
 from .learner import *
 from fastai2.basics import *
 from fastai2.callback.progress import *

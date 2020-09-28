@@ -4,7 +4,7 @@ __all__ = ['ProDiagTrainer', 'DualRNN', 'DualCRNN']
 
 # Cell
 from .core import *
-from .model import *
+from .models.core import *
 from .learner import *
 from .dataloaders import *
 from fastai2.basics import *

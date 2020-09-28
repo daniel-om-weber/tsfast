@@ -4,7 +4,7 @@ __all__ = ['log_uniform', 'LearnerTrainable', 'learner_optimize', 'sample_config
 
 # Cell
 from .core import *
-from .model import *
+from .models.core import *
 from .learner import *
 from fastai2.basics import *
 from fastai2.callback.schedule import *
@@ -30,7 +30,7 @@ def log_uniform(min_bound, max_bound, base=10):
 class LearnerTrainable(tune.Trainable):
 
     def _setup(self, config):
-        self.create_lrn = config['create_lrn']
+        self.create_lrn = ray.get(config['create_lrn'])
         self.dls = ray.get(config['dls'])
 
         self.lrn = self.create_lrn(self.dls,config)
@@ -74,21 +74,20 @@ class LearnerTrainable(tune.Trainable):
 # Cell
 from fastai2.callback.tracker import SaveModelCallback
 def learner_optimize(config, checkpoint_dir=None):
-        create_lrn = config['create_lrn']
+        create_lrn = ray.get(config['create_lrn'])
         dls = ray.get(config['dls'])
 
         #Scheduling Parameters for training the Model
-        lrn_kwargs = {'n_epoch':100}
-        if config['fit_method'] == Learner.fit_flat_cos: lrn_kwargs['pct_start'] = 0.5
+        lrn_kwargs = {'n_epoch':100,'pct_start':0.5}
         for attr in ['n_epoch','pct_start']:
             if attr in config: lrn_kwargs[attr] = config[attr]
 
         lrn = create_lrn(dls,config)
         lrn.lr = config['lr'] if 'lr' in config else 3e-3
-        lrn.add_cb(CBRayReporter() if 'reporter' not in config else config['reporter']())
+        lrn.add_cb(CBRayReporter() if 'reporter' not in config else ray.get(config['reporter'])())
         lrn.add_cb(SaveModelCallback())
         with lrn.no_bar():
-            config['fit_method'](lrn,**lrn_kwargs)
+            ray.get(config['fit_method'])(lrn,**lrn_kwargs)
 
 # Cell
 def sample_config(config):
@@ -127,15 +126,14 @@ class HPOptimizer():
 
 
     @delegates(tune.run, keep=True)
-    def optimize(self,config,resources_per_trial={"gpu": 1.0},verbose=1,**kwargs):
-        config['create_lrn'] = self.create_lrn
+    def optimize(self,config,optimize_func=learner_optimize,resources_per_trial={"gpu": 1.0},verbose=1,**kwargs):
+        config['create_lrn'] = ray.put(self.create_lrn)
         #dls are large objects, letting ray handle the copying process makes it much faster
         config['dls'] = ray.put(self.dls)
-
-        if 'fit_method' not in config: config['fit_method'] = Learner.fit_flat_cos
+        if 'fit_method' not in config: config['fit_method'] = ray.put(Learner.fit_flat_cos)
 
         self.analysis = tune.run(
-            learner_optimize,
+            optimize_func,
             config=config,
             resources_per_trial=resources_per_trial,
             verbose=verbose,
@@ -151,9 +149,10 @@ class HPOptimizer():
                  **kwargs):
         self.mut_conf = mut_conf
 
-        config['create_lrn'] = self.create_lrn
+        config['create_lrn'] = ray.put(self.create_lrn)
         #dls are large objects, letting ray handle the copying process makes it much faster
         config['dls'] = ray.put(self.dls)
+
 
 
 
