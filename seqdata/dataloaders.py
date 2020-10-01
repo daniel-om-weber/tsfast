@@ -97,16 +97,20 @@ class TbpttDl(TfmdDL):
 
 # Cell
 class TbpttResetCB(Callback):
-    "`Callback` resets the rnn model with every new sequence for tbptt"
+    "`Callback` resets the rnn model with every new sequence for tbptt, calls `reset_state` in every module of the model"
+
+    def reset_model_state(self):
+        for m in self.learn.model.modules():
+            if hasattr(m,'reset_state'): m.reset_state()
 
     def begin_batch(self):
         dl = self.learn.dls.train if self.training else self.learn.dls.valid
 #         if not self.training: import pdb; pdb.set_trace()
-        if (hasattr(dl,'rnn_reset') and dl.rnn_reset and hasattr(self.model,'reset')) or not hasattr(dl,'rnn_reset'):
-            self.model.reset()
+        if (hasattr(dl,'rnn_reset') and dl.rnn_reset) or not hasattr(dl,'rnn_reset'):
+            self.reset_model_state()
 
     def after_fit(self):
-        if hasattr(self.model,'reset'): self.model.reset()
+        self.reset_model_state()
 
 # Cell
 def WeightedDL_Factory(cls):
