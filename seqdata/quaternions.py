@@ -7,8 +7,8 @@ __all__ = ['TensorQuaternionInclination', 'TensorQuaternionAngle', 'rad2deg', 'm
            'abs_inclination', 'ms_inclination', 'rms_inclination', 'smooth_inclination', 'rms_inclination_deg',
            'rms_pitch_deg', 'rms_roll_deg', 'mean_inclination_deg', 'angle_loss', 'angle_loss_opt', 'ms_rel_angle',
            'rms_rel_angle_deg', 'mean_rel_angle_deg', 'deg_rmse', 'QuaternionRegularizer', 'augmentation_groups',
-           'QuaternionAugmentation', 'TensorInclination', 'HDF2Inclination', 'InclinationBlock',
-           'plot_scalar_inclination', 'plot_quaternion_inclination', 'plot_quaternion_rel_angle']
+           'QuaternionAugmentation', 'Quaternion_ResamplingModel', 'TensorInclination', 'HDF2Inclination',
+           'InclinationBlock', 'plot_scalar_inclination', 'plot_quaternion_inclination', 'plot_quaternion_rel_angle']
 
 # Cell
 from .core import *
@@ -139,10 +139,7 @@ def quatFromAngleAxis(angle, axis):
         axis = axis[None, :]
 
     axis = axis/torch.norm(axis, dim=1)[:, None]
-
-    quat = torch.zeros((N, 4))
-    quat[:, 0] = torch.cos(angle/2)
-    quat[:, 1:] = axis*torch.sin(angle/2)[:, None]
+    quat = torch.cat([torch.cos(angle/2)[:,None],axis*torch.sin(angle/2)[:, None]],dim=-1)
     return quat
 
 # Cell
@@ -153,32 +150,32 @@ def quatInterp(quat, ind, extend=False):
 
     See also csg_bigdata.dp.utils.vecInterp.
 
-    :param quat: array of input quaternions (Nx4)
+    :param quat: array of input quaternions (N(xB)x4)
     :param ind: vector containing the sampling indices, shape (M,)
     :param extend: if true, the input data is virtually extended by the first/last value
     :return: interpolated quaternions (Mx4)
     """
     N = quat.shape[0]
     M = ind.shape[0]
-    assert quat.shape == (N, 4)
+    assert quat.shape[-1] == 4
     assert ind.shape == (M,)
 
+    ind = ind.to(quat.device)
     ind0 = torch.clamp(torch.floor(ind).type(torch.long), 0, N-1)
     ind1 = torch.clamp(torch.ceil(ind).type(torch.long), 0, N-1)
 
-    quat = quat.type(torch.float64)
-    q0 = quat[ind0]
-    q1 = quat[ind1]
+    q0 = quat[ind0].type(torch.float64)
+    q1 = quat[ind1].type(torch.float64)
     q_1_0 = diffQuat(q0, q1)
 
     # normalize the quaternion for positive w component to ensure
     # that the angle will be [0, 180°]
-    invert_sign_ind = q_1_0[:, 0] < 0
+    invert_sign_ind = q_1_0[..., 0] < 0
     q_1_0[invert_sign_ind] = -q_1_0[invert_sign_ind]
 
 #     angle = 2 * torch.acos(torch.clamp(q_1_0[:, 0], -1, 1))
-    angle = 2*safe_acos_double((q_1_0[..., 0]))
-    axis = q_1_0[:, 1:]
+    angle = 2*safe_acos_double((q_1_0[..., 0]))#.type_as(quat)
+    axis = q_1_0[..., 1:]
 
     # copy over (almost) direct hits
 #     with np.errstate(invalid='ignore'):
@@ -189,6 +186,7 @@ def quatInterp(quat, ind, extend=False):
 
     interp_ind = ~direct_ind
     t01 = ind - ind0
+    if len(quat.shape) == 3: t01 = t01[:,None] #extend shape if batches are part of the tensor
     q_t_0 = quatFromAngleAxis((t01*angle)[interp_ind], axis[interp_ind])
     quat_out[interp_ind] = multiplyQuat(q0[interp_ind], q_t_0)
 
@@ -197,7 +195,8 @@ def quatInterp(quat, ind, extend=False):
         quat_out[ind > N - 1] = np.nan
 #     import pdb;pdb.set_trace()
 
-    return quat_out
+
+    return quat_out.type_as(quat)
 
 # Cell
 def inclination_loss(q1,q2):
@@ -356,6 +355,41 @@ class QuaternionAugmentation(Transform):
 
     def encodes(self, x:(TensorQuaternionInclination,TensorQuaternionAngle)):
         return multiplyQuat(x,self.r_quat)
+
+# Cell
+class Quaternion_ResamplingModel(nn.Module):
+    '''
+        Module that resamples the signal before and after the prediction of its model.
+        Usefull for using models on datasets with different samplingrates.
+
+        sampling_method: method used for resampling ['resample','interpolate']
+    '''
+
+    def __init__(self,model,fs_targ,fs_mean=0,fs_std=1,quaternion_sampling=True):
+        super().__init__()
+        self.model =model
+        self.fs_targ =fs_targ
+        self.fs_mean =fs_mean
+        self.fs_std =fs_std
+        self.quaternion_sampling = quaternion_sampling
+
+    def forward(self, x):
+        dt = (x[0,0,-1]*self.fs_std)+self.fs_mean
+        fs_src = 1/dt
+        x_len = x.shape[1]
+        res_len = int(x.shape[1]*self.fs_targ/fs_src)
+        x_raw = x[...,:-1]
+        if x_len == res_len:
+            res = self.model(x_raw)
+        else:
+            x_new = nn.functional.interpolate(x_raw.transpose(1,2), size=res_len, mode='linear',align_corners=False).transpose(1,2)
+            res = self.model(x_new)
+            if self.quaternion_sampling:
+                res = quatInterp(res.transpose(0,1),torch.linspace(0,res.shape[1]-1,x_len)).transpose(0,1)
+            else:
+                res = nn.functional.interpolate(res.transpose(1,2), size=x_len, mode='linear',align_corners=False).transpose(1,2)
+
+        return res
 
 # Cell
 class TensorInclination(TensorSequences): pass

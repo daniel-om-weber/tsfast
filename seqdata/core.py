@@ -5,9 +5,10 @@ __all__ = ['obj_in_lst', 'count_parameters', 'get_hdf_files', 'hdf_extensions', 
            'running_mean', 'downsample_mean', 'hdf_extract_sequence', 'Memoize', 'HDF2Sequence', 'hdf2scalars',
            'TensorSequences', 'TensorSequencesInput', 'TensorSequencesOutput', 'toTensorSequencesInput',
            'toTensorSequencesOutput', 'TensorScalars', 'TensorScalarsInput', 'TensorScalarsOutput', 'SeqSlice',
-           'SeqNoiseInjection', 'SeqBiasInjection', 'encodes', 'decodes', 'ParentSplitter', 'PercentageSplitter',
-           'ApplyToDict', 'valid_clm_splitter', 'pad_sequence', 'SequenceBlock', 'Seq2SeqDS', 'Seq2SeqDataloaders',
-           'plot_sequence', 'plot_seqs_single_figure', 'plot_seqs_multi_figures']
+           'SeqNoiseInjection', 'SeqNoiseInjection_Varying', 'SeqNoiseInjection_Grouped', 'SeqBiasInjection', 'encodes',
+           'decodes', 'ParentSplitter', 'PercentageSplitter', 'ApplyToDict', 'valid_clm_splitter', 'pad_sequence',
+           'SequenceBlock', 'Seq2SeqDS', 'Seq2SeqDataloaders', 'plot_sequence', 'plot_seqs_single_figure',
+           'plot_seqs_multi_figures']
 
 # Cell
 from fastai2.data.all import *
@@ -265,35 +266,61 @@ class SeqNoiseInjection(Transform):
     split_idx=0
     '''Adds normal distributed noise to the tensor sequence with seperate mean and std for every signal'''
     def __init__(self, std=1e-1,mean=0.):
-        self.std,self.mean = tensor(std),tensor(mean)
-
-    def setups(self, dl:DataLoader):
-        #check the tensor type of your input
-        #TODO: include scalar type case
-        x,*_ = dl.one_batch()
-        self.std = to_device(self.std,x.device)
-        self.mean = to_device(self.mean,x.device)
+        self.std = tensor(std).type(torch.float)
+        self.mean = tensor(mean).type(torch.float)
 
     def encodes(self, o:TensorSequencesInput):
+        if o.device != self.mean.device:
+            self.std = self.std.to(o.device)
+            self.mean = self.mean.to(o.device)
         #expand creates a view on a tensor and is therefore very fast compared to copy
         return o+torch.normal(mean=self.mean.expand_as(o),
                               std=self.std.expand_as(o))
+
+# Cell
+class SeqNoiseInjection_Varying(Transform):
+    split_idx=0
+    '''Adds normal distributed noise to the tensor sequence with a normal distributed standard deviation for every application'''
+    def __init__(self, std_std=0.1):
+        self.std_std = tensor(std_std).type(torch.float)
+
+    def encodes(self, o:TensorSequencesInput):
+        if o.device != self.std_std.device:
+            self.std_std = self.std_std.to(o.device)
+
+        #expand creates a view on a tensor and is therefore very fast compared to copy
+        std = torch.normal(mean=0,std=self.std_std).abs()
+        return o+torch.normal(mean=0,std=std.expand_as(o))
+
+# Cell
+class SeqNoiseInjection_Grouped(Transform):
+    split_idx=0
+    '''Adds normal distributed noise to the tensor sequence with a normal distributed standard deviation for every application, every group gert'''
+    def __init__(self, std_std,std_idx):
+        self.std_std = tensor(std_std).type(torch.float)
+        self.std_idx = tensor(std_idx).type(torch.long)
+
+    def encodes(self, o:TensorSequencesInput):
+        if o.device != self.std_std.device:
+            self.std_std = self.std_std.to(o.device)
+
+        #expand creates a view on a tensor and is therefore very fast compared to copy
+        std = torch.normal(mean=0,std=self.std_std).abs()[self.std_idx]
+        return o+torch.normal(mean=0,std=std.expand_as(o))
 
 # Cell
 class SeqBiasInjection(Transform):
     split_idx=0
     '''Adds a normal distributed offset to the tensor sequence with seperate mean and std for every signal'''
     def __init__(self, std=1e-1,mean=0.):
-        self.std,self.mean = tensor(std),tensor(mean)
-
-    def setups(self, dl:DataLoader):
-        #check the tensor type of your input
-        #TODO: include scalar type case
-        x,*_ = dl.one_batch()
-        self.std = to_device(self.std,x.device)
-        self.mean = to_device(self.mean,x.device)
+        self.std = tensor(std).type(torch.float)
+        self.mean = tensor(mean).type(torch.float)
 
     def encodes(self, o:TensorSequencesInput):
+        if o.device != self.mean.device:
+            self.std = self.std.to(o.device)
+            self.mean = self.mean.to(o.device)
+
         #expand creates a view on a tensor and is therefore very fast compared to copy
         mean=self.mean.repeat((o.shape[0],1,1)).expand((o.shape[0],1,o.shape[2]))
         std= self.std.repeat((o.shape[0],1,1)).expand((o.shape[0],1,o.shape[2]))
