@@ -12,7 +12,6 @@ tags
 
 fastai2/
 fastcore/
-models/
 *.prof
 
 # Byte-compiled / optimized / DLL files
