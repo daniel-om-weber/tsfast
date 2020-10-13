@@ -367,10 +367,10 @@ def ApplyToDict(fn,key='path'):
 valid_clm_splitter =  FuncSplitter(lambda o:o['valid'])
 
 # Cell
-def pad_sequence(batch):
+def pad_sequence(batch,sorting = False):
     '''collate_fn for padding of sequences of different lengths, use in before_batch of databunch, still quite slow'''
     #takes list of tuples as input, returns list of tuples
-    sorted_batch = sorted(batch, key=lambda x: x[0].shape[0], reverse=True)
+    sorted_batch = sorted(batch, key=lambda x: x[0].shape[0], reverse=True) if sorting else batch
 
     pad_func = partial(torch.nn.utils.rnn.pad_sequence,batch_first=True)
     padded_tensors = [pad_func([x[tup] for x in sorted_batch]) for tup in range(len(batch[0]))]
