@@ -18,8 +18,6 @@ import torch.nn as nn
 from torch.autograd import Function
 
 from torch.nn import Parameter
-from cupy.cuda import function
-from pynvrtc.compiler import Program
 from collections import namedtuple
 
 # Cell
@@ -102,6 +100,15 @@ extern "C" {
 """
 
 # Cell
+import warnings
+
+
+try:
+    from cupy.cuda import function
+    from pynvrtc.compiler import Program
+except ImportError:
+    warnings.warn('Failed to import pynvrtc and cupy for indrnn model', ImportWarning)
+
 def _get_indrnn_cuda(device):
     if not hasattr(_get_indrnn_cuda, '_DEVICE2FUNC'):_get_indrnn_cuda._DEVICE2FUNC = {}
     res = _get_indrnn_cuda._DEVICE2FUNC.get(device, None)
