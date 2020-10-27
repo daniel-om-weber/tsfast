@@ -114,7 +114,7 @@ def reset_model_state(model):
 class TbpttResetCB(Callback):
     "`Callback` resets the rnn model with every new sequence for tbptt, calls `reset_state` in every module of the model"
 
-    def begin_batch(self):
+    def before_batch(self):
         dl = self.learn.dls.train if self.training else self.learn.dls.valid
 #         if not self.training: import pdb; pdb.set_trace()
         if (hasattr(dl,'rnn_reset') and dl.rnn_reset) or not hasattr(dl,'rnn_reset'):

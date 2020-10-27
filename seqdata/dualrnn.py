@@ -21,11 +21,11 @@ class ProDiagTrainer(Callback):
     def _has_main_init(self):
         return hasattr(self.learn.model,'main_init_prop')
 
-    def begin_fit(self):
+    def before_fit(self):
         if self._has_main_init():
             self.main_init_prop=self.learn.model.main_init_prop
 
-    def begin_batch(self):
+    def before_batch(self):
         if not self.training or self.p_own_state == 0: return
         main_init_prop = random.random()< self.p_own_state
         self.learn.model.main_init_prop = main_init_prop
@@ -42,7 +42,7 @@ class ProDiagTrainer(Callback):
                        (self.est_hidden.norm()+self.pred_hidden.norm())).pow(2).mean()
         self.learn.loss = self.learn.loss+self.alpha * hidden_loss
 
-    def begin_validate(self):
+    def before_validate(self):
         '''Set Dual RNN to reuse the prediction state after each mini batch on validation'''
         if self._has_main_init():
             self.learn.model.main_init_prop = True

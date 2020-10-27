@@ -54,7 +54,7 @@ class VarySeqLen(Callback):
     def __init__(self, min_len = 50):
         self.min_len = min_len
 
-    def begin_batch(self):
+    def before_batch(self):
 #         import pdb; pdb.set_trace()
         lx = self.xb[0].shape[1]
         ly = self.yb[0].shape[1]
@@ -105,7 +105,7 @@ class TimeSeriesRegularizer(HookCallback):
 # Cell
 class ARInitCB(Callback):
     '''Adds the target variable to the input tuple for autoregression'''
-    def begin_batch(self):
+    def before_batch(self):
 #         import pdb; pdb.set_trace()
         self.learn.xb = tuple([*self.xb,*self.yb])
 
