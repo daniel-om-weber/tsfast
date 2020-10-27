@@ -8,9 +8,9 @@ __all__ = ['GradientClipping', 'WeightClipping', 'SkipFirstNCallback', 'VarySeqL
 # Cell
 from .core import *
 from .models.core import *
-from fastai2.basics import *
-from fastai2.callback.progress import *
-from fastai2.callback.tracker import *
+from fastai.basics import *
+from fastai.callback.progress import *
+from fastai.callback.tracker import *
 
 # Cell
 class GradientClipping(Callback):
@@ -68,14 +68,14 @@ class VarySeqLen(Callback):
         self.learn.yb = tuple([y[:,:lim] for y in self.yb])
 
 # Cell
-from fastai2.callback.hook import *
+from fastai.callback.hook import *
 @delegates()
 class TimeSeriesRegularizer(HookCallback):
     "Callback that adds AR and TAR to the loss, calculated by output of provided layer"
     run_before=TrainEvalCallback
     def __init__(self,alpha=0.0, beta=0.0,dim = None,detach=False, **kwargs):
         super().__init__(detach=detach,**kwargs)
-        store_attr(self,'alpha,beta,dim')
+        store_attr('alpha,beta,dim')
 
     def hook(self, m, i, o):
 #         import pdb; pdb.set_trace()
@@ -143,11 +143,14 @@ def plot_grad_flow(named_parameters):
                 Line2D([0], [0], color="k", lw=4)], ['max-gradient', 'mean-gradient', 'zero-gradient'])
 
 # Cell
+
 class CB_PlotGradient(Callback):
     '''Plot the Gradient Distribution for every trainable parameter'''
-    def begin_fit(self,n_draws=20):
+
+    def __init__(self, n_draws=20): self.n_draws = n_draws
+
+    def begin_fit(self):
         '''Create a new figure to plot in'''
-        self.n_draws =n_draws
         plt.figure()
         plt.tight_layout()
 
@@ -185,7 +188,7 @@ def float64_func(func):
     @functools.wraps(func)
     def float64_func_decorator(*args, **kwargs):
         typ = args[0].dtype
-        args = tuple([x.type(torch.float64) if issubclass(type(x),Tensor ) else x for x in args]) #remove nan values
+        args = tuple([x.double() if issubclass(type(x),Tensor ) else x for x in args]) #remove nan values
         return func(*args, **kwargs).type(typ)
     return float64_func_decorator
 

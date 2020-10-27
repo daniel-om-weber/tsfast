@@ -6,10 +6,10 @@ __all__ = ['log_uniform', 'LearnerTrainable', 'learner_optimize', 'sample_config
 from .core import *
 from .models.core import *
 from .learner import *
-from fastai2.basics import *
-from fastai2.callback.schedule import *
-from fastai2.callback.rnn import *
-from fastai2.callback.tracker import *
+from fastai.basics import *
+from fastai.callback.schedule import *
+from fastai.callback.rnn import *
+from fastai.callback.tracker import *
 
 import ray
 from ray import tune
@@ -72,7 +72,7 @@ class LearnerTrainable(tune.Trainable):
         return True
 
 # Cell
-from fastai2.callback.tracker import SaveModelCallback
+from fastai.callback.tracker import SaveModelCallback
 def learner_optimize(config, checkpoint_dir=None):
         create_lrn = ray.get(config['create_lrn'])
         dls = ray.get(config['dls'])

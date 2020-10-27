@@ -14,9 +14,9 @@ __all__ = ['TensorQuaternionInclination', 'TensorQuaternionAngle', 'rad2deg', 'm
 from .core import *
 from .models.core import *
 from .learner import *
-from fastai2.basics import *
-from fastai2.callback.progress import *
-from fastai2.callback.schedule import *
+from fastai.basics import *
+from fastai.callback.progress import *
+from fastai.callback.schedule import *
 
 # Cell
 class TensorQuaternionInclination(TensorSequences): pass
@@ -296,14 +296,14 @@ def deg_rmse(inp, targ):
     return rad2deg(fun_rmse(inp, targ))
 
 # Cell
-from fastai2.callback.hook import *
+from fastai.callback.hook import *
 @delegates()
 class QuaternionRegularizer(HookCallback):
     "Callback that adds AR and TAR to the loss, calculated by output of provided layer"
     run_before=TrainEvalCallback
     def __init__(self,reg_unit=0.0,detach=False, **kwargs):
         super().__init__(detach=detach,**kwargs)
-        store_attr(self,'reg_unit')
+        store_attr('reg_unit')
 
     def hook(self, m, i, o):
         if type(o) is torch.Tensor:

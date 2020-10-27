@@ -11,7 +11,7 @@ __all__ = ['obj_in_lst', 'count_parameters', 'get_hdf_files', 'hdf_extensions', 
            'plot_seqs_multi_figures']
 
 # Cell
-from fastai2.data.all import *
+from fastai.data.all import *
 import h5py
 
 # Cell
@@ -175,7 +175,7 @@ class HDF2Sequence(Transform):
 
         self._exseq = Memoize(self._hdf_extract_sequence) if cached else self._hdf_extract_sequence
 
-        store_attr(self,'clm_names,clm_shift,truncate_sz,to_cls,cached')
+        store_attr('clm_names,clm_shift,truncate_sz,to_cls,cached')
 
     def _hdf_extract_sequence(self,hdf_path,dataset = None, l_slc = None, r_slc= None):
         with h5py.File(hdf_path,'r') as f:
@@ -400,7 +400,7 @@ class Seq2SeqDS(Dataset):
 
     def __init__(self, hdf_file, u_clms,y_clms, win_sz,stp_sz):
         super().__init__()
-        store_attr(self,'u_clms,y_clms,win_sz,stp_sz')
+        store_attr('u_clms,y_clms,win_sz,stp_sz')
 
         self.u = hdf_extract_sequence(hdf_file,u_clms)
         self.y = hdf_extract_sequence(hdf_file,y_clms)

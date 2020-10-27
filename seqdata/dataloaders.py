@@ -7,21 +7,24 @@ __all__ = ['TbpttDl', 'reset_model_state', 'TbpttResetCB', 'WeightedDL_Factory',
 from .core import *
 from .models.core import *
 from .learner import *
-from fastai2.basics import *
+from fastai.basics import *
 
 import math
 
 # Cell
 from torch.utils.data.dataloader import _MultiProcessingDataLoaderIter,_SingleProcessDataLoaderIter,_DatasetKind
 _loaders = (_MultiProcessingDataLoaderIter,_SingleProcessDataLoaderIter)
+
+@log_args(but_as=TfmdDL.__init__)
 @delegates()
 class TbpttDl(TfmdDL):
 
     def __init__(self, dataset, sub_seq_len=None, seq_len = None ,shuffle=True,num_workers=2, **kwargs):
 #         assert sub_seq_len is not None
-        store_attr(self,'sub_seq_len,seq_len')
-        super().__init__(dataset=dataset, shuffle=shuffle, num_workers=num_workers, **kwargs)
+        store_attr('sub_seq_len,seq_len')
         self.rnn_reset = False
+        super().__init__(dataset=dataset, shuffle=shuffle, num_workers=num_workers, **kwargs)
+
     @property
     def n_sub_seq(self):
         if self.sub_seq_len is None: return 1
@@ -36,10 +39,16 @@ class TbpttDl(TfmdDL):
         if w_id > self.fake_l.num_workers-1: w_id = 0
         return w_id
 
+    def sample(self):
+        #replaced new fastai sample formulation that store __idxs in main process, lead to attribute error
+        #return (b for i,b in enumerate(self.__idxs) if i//(self.bs or 1)%self.num_workers==self.offs)
+        return (b for i,b in enumerate(self.get_idxs()) if i//(self.bs or 1)%self.num_workers==self.offs)
+
     def __iter__(self):
         '''iterator that handles multiprocessing by caching samples that are generated out of order'''
         self.randomize()
         self.before_iter()
+
         n_buffer = self.fake_l.num_workers*self.n_sub_seq
         queue = {n:[] for n in range(self.fake_l.num_workers)}
         current_worker = None
@@ -79,7 +88,7 @@ class TbpttDl(TfmdDL):
                         current_worker = self._next_worker(current_worker)
 
         self.after_iter()
-        if hasattr(self, 'it'): delattr(self, 'it')
+        if hasattr(self, 'it'): del(self.it)
 
     def create_batches(self, samps):
         yield from self._tbptt_generator(super().create_batches(samps))

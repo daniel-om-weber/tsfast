@@ -7,15 +7,15 @@ from .core import *
 from .models.core import *
 from .learner import *
 from .dataloaders import *
-from fastai2.basics import *
-from fastai2.callback.progress import *
-from fastai2.callback.schedule import *
+from fastai.basics import *
+from fastai.callback.progress import *
+from fastai.callback.schedule import *
 
 # Cell
 class ProDiagTrainer(Callback):
     "`Callback` that regroups lr adjustment to seq_len, AR and TAR."
     def __init__(self, alpha=1e6,beta=1,p_own_state=0):
-        store_attr(self,'alpha,beta,p_own_state')
+        store_attr('alpha,beta,p_own_state')
         self.main_init_prop = None
 
     def _has_main_init(self):
@@ -63,7 +63,7 @@ class DualRNN(nn.Module):
     def __init__(self,main_input_size,co_input_size,output_size,init_sz=100,hidden_size=100,
                  rnn_layer=1,linear_layer = 1,main_init_est = True,main_init_prop = True,**kwargs):
         super().__init__()
-        store_attr(self,'main_input_size,co_input_size,main_init_est,main_init_prop,init_sz')
+        store_attr('main_input_size,co_input_size,main_init_est,main_init_prop,init_sz')
 
         rnn_kwargs = dict(hidden_size=hidden_size,num_layers=rnn_layer,stateful=True,ret_full_hidden=True)
         rnn_kwargs = dict(rnn_kwargs, **kwargs)
@@ -75,8 +75,9 @@ class DualRNN(nn.Module):
         self.main_estimator = SeqLinear(hidden_size,output_size,hidden_layer=linear_layer)
 
     def forward(self, x,init_state = None):
+        bs = x.shape[0]
         if init_state is None:
-            init_state = self.main_rnn.hidden if self.main_init_prop else self.co_rnn.hidden
+            init_state = self.main_rnn._get_hidden(bs) if self.main_init_prop else self.co_rnn._get_hidden(bs)
 
 
         x_co = x[...,:self.co_input_size]
@@ -118,7 +119,7 @@ class DualCRNN(nn.Module):
     def __init__(self,main_input_size,co_input_size,output_size,init_sz=100,tcn_hidden_size=100,tcn_layer=8,rnn_hidden_size=100,
                  rnn_layer=1,linear_layer = 1,main_init_est = True,main_init_prop = True,**kwargs):
         super().__init__()
-        store_attr(self,'main_input_size,co_input_size,main_init_est,main_init_prop,init_sz')
+        store_attr('main_input_size,co_input_size,main_init_est,main_init_prop,init_sz')
 
         rnn_kwargs = dict(hidden_size=rnn_hidden_size,num_layers=rnn_layer,stateful=True,ret_full_hidden=True)
         rnn_kwargs = dict(rnn_kwargs, **kwargs)
@@ -133,8 +134,9 @@ class DualCRNN(nn.Module):
         self.main_estimator = SeqLinear(rnn_hidden_size,output_size,hidden_layer=linear_layer)
 
     def forward(self, x,init_state = None):
+        bs = x.shape[0]
         if init_state is None:
-            init_state = self.main_rnn.hidden if self.main_init_prop else self.co_rnn.hidden
+            init_state = self.main_rnn._get_hidden(bs) if self.main_init_prop else self.co_rnn._get_hidden(bs)
 
 
         x_co = x[...,:self.co_input_size]

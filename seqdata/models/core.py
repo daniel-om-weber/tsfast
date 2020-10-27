@@ -6,9 +6,8 @@ __all__ = ['BatchNorm_1D_Stateful', 'SeqLinear', 'RNN', 'Sequential_RNN', 'Simpl
 
 # Cell
 from ..core import *
-from fastai2.basics import *
-from fastai2.callback.progress import *
-from fastai2.text.models.qrnn import *
+from fastai.basics import *
+from fastai.callback.progress import *
 from torch.nn.utils import weight_norm
 from torch.nn import Parameter
 
@@ -144,7 +143,7 @@ class SeqLinear(nn.Module):
         return out
 
 # Cell
-from fastai2.text.models.awdlstm import *
+from fastai.text.models.awdlstm import *
 from .indrnn import IndRNN
 class RNN(nn.Module):
     "inspired by https://arxiv.org/abs/1708.02182"
@@ -154,7 +153,7 @@ class RNN(nn.Module):
                  rnn_type='gru',ret_full_hidden=False,stateful=False,
                  normalization='',**kwargs):
         super().__init__()
-        store_attr(self, 'ret_full_hidden,num_layers,rnn_type,hidden_size,stateful,input_p,normalization')
+        store_attr('ret_full_hidden,num_layers,rnn_type,hidden_size,stateful,input_p,normalization')
         self.bs = 1
 
         self.rnns = nn.ModuleList([self._one_rnn(input_size if l == 0 else hidden_size,

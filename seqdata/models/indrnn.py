@@ -5,7 +5,7 @@ __all__ = ['IndRNN_CODE', 'IndRNN_Compute_GPU', 'IndRNN_onlyrecurrent', 'Linear_
 
 # Cell
 from ..core import *
-from fastai2.basics import *
+from fastai.basics import *
 
 import sys
 import time
