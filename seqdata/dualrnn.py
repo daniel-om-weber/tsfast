@@ -54,7 +54,7 @@ class ProDiagTrainer(Callback):
 
 
     def after_fit(self):
-        self.learn.model.reset()
+        reset_model_state(self.learn.model)
 
 # Cell
 class DualRNN(nn.Module):
@@ -110,10 +110,6 @@ class DualRNN(nn.Module):
 
 #         import pdb; pdb.set_trace()
         return est_main,est_co, out_co,out_main
-
-    def reset(self):
-        self.co_rnn.reset()
-        self.main_rnn.reset()
 
 # Cell
 class DualCRNN(nn.Module):
@@ -198,10 +194,3 @@ class DualCRNN(nn.Module):
         simple_rnn_model.final = self.main_estimator
         crnn_model.rnn = simple_rnn_model
         return crnn_model
-
-
-    def reset(self):
-        self.co_rnn.reset()
-        self.main_rnn.reset()
-        self.co_tcn.reset()
-        self.main_tcn.reset()
