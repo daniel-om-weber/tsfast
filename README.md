@@ -19,4 +19,7 @@ seqdata is a library for fast and flexible datagrabbing of sequential datasets f
 
 ## Install
 
+First install the required libraries:
+`pip install torch==1.6 fastai ray`
+Then install seqdata from github
 `pip install git+https://github.com/daniel-om-weber/seqdata.git`

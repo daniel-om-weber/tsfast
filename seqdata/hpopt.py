@@ -29,26 +29,26 @@ def log_uniform(min_bound, max_bound, base=10):
 # Cell
 class LearnerTrainable(tune.Trainable):
 
-    def _setup(self, config):
+    def setup(self, config):
         self.create_lrn = ray.get(config['create_lrn'])
         self.dls = ray.get(config['dls'])
 
         self.lrn = self.create_lrn(self.dls,config)
 
-    def _train(self):
+    def step(self):
         with self.lrn.no_bar(): self.lrn.fit(1)
         train_loss,valid_loss,rmse = self.lrn.recorder.values[-1]
         return {'train_loss': train_loss,
                 'valid_loss': valid_loss,
                 'mean_loss': rmse}
 
-    def _save(self, checkpoint_dir):
-        checkpoint_path = os.path.join(checkpoint_dir, "model.pth")
+    def save_checkpoint(self, tmp_checkpoint_dir):
+        checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.pth")
         torch.save(self.lrn.model.state_dict(), checkpoint_path)
         return checkpoint_path
 
-    def _restore(self, checkpoint_path):
-        self.lrn.model.load_state_dict(torch.load(checkpoint_path))
+    def load_checkpoint(self, tmp_checkpoint_dir):
+        self.lrn.model.load_state_dict(torch.load(tmp_checkpoint_dir))
 
     def _export_model(self, export_formats, export_dir):
         if export_formats == [ExportFormat.MODEL]:
@@ -184,6 +184,6 @@ class HPOptimizer():
     def best_model(self):
         if self.analysis is None: raise Exception
         model = self.create_lrn(self.dls,sample_config(self.mut_conf)).model
-        f_path = self.analysis.get_best_trial('mean_loss').checkpoint.value
+        f_path = self.analysis.get_best_trial('mean_loss',mode='min').checkpoint.value
         model.load_state_dict(torch.load(f_path))
         return model
