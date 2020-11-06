@@ -161,10 +161,22 @@ def WeightedDL_Factory(cls):
 def uniform_p_of_category(cat_name):
     '''Scales sampling weights for an even distribution between every category'''
     def _inner(df):
-        counts = df[cat_name].value_counts()
+        if 'p_sample' in df:
+            df_targ = df.drop('p_sample',axis='columns')
+        else:
+            df_targ = df
+
+        counts = df_targ[cat_name].value_counts()
         sample_prob =  1/counts
         sample_prob.name = 'p_sample'
-        return df.merge(sample_prob,left_on=cat_name,right_index=True)
+        df_res = df_targ.merge(sample_prob,left_on=cat_name,right_index=True)
+
+        if 'p_sample' in df:
+            df_res.p_sample = df_res.p_sample* df.p_sample.values
+
+        df_res.p_sample /= df_res.p_sample.sum()
+
+        return df_res
 
     return _inner
 
@@ -172,11 +184,24 @@ def uniform_p_of_category(cat_name):
 def uniform_p_of_float(var_name,bins = 10):
     '''Scales sampling weights for an even distribution of the continous variable by creating equi sized bins'''
     def _inner(df):
-        df['bins'] = pd.cut(df[var_name], bins)
-        counts = df['bins'].value_counts()
+        if 'p_sample' in df:
+            df_targ = df.drop('p_sample',axis='columns')
+        else:
+            df_targ = df
+
+        df_targ['bins'] = pd.cut(df_targ[var_name], bins)
+        counts = df_targ['bins'].value_counts()
         sample_prob =  1/counts
         sample_prob.name = 'p_sample'
-        return df.merge(sample_prob,left_on='bins',right_index=True)
+        df_res = df_targ.merge(sample_prob,left_on='bins',right_index=True)
+        df_res.drop(['bins'],axis='columns',inplace=True)
+
+        if 'p_sample' in df:
+            df_res.p_sample = df_res.p_sample* df.p_sample.values
+
+        df_res.p_sample /= df_res.p_sample.sum()
+
+        return df_res
 
     return _inner
 
@@ -184,16 +209,27 @@ def uniform_p_of_float(var_name,bins = 10):
 def uniform_p_of_float_with_gaps(var_name,bins = 100):
     '''Scales sampling weights for an even distribution of the continous variable by creating equi sized bins'''
     def _inner(df):
-        l = df[var_name].max()-df[var_name].min() #value range
-        df['bins'] = pd.qcut(df[var_name],bins,duplicates='drop') #bins with rougly the same size
-        df['p_sample'] =  df['bins'].apply(lambda x: x.length).astype('f8')/l #sample_prob by bin width
-        sample_prob =  1/df['bins'].value_counts() #correct uneven bin distribution
+        if 'p_sample' in df:
+            df_targ = df.drop('p_sample',axis='columns')
+        else:
+            df_targ = df
+
+        l = df_targ[var_name].max()-df_targ[var_name].min() #value range
+        df_targ['bins'] = pd.qcut(df_targ[var_name],bins,duplicates='drop') #bins with rougly the same size
+        df_targ['p_sample'] =  df_targ['bins'].apply(lambda x: x.length).astype('f8')/l #sample_prob by bin width
+        sample_prob =  1/df_targ['bins'].value_counts() #correct uneven bin distribution
         sample_prob.name = 'p_sample_correction'
-        df = df.merge(sample_prob,left_on='bins',right_index=True)
-        df['p_sample'] *= df['p_sample_correction']
-        df['p_sample'] /= df['p_sample'].sum()
-#         df.drop(['bins','p_sample_correction'],axis='columns',inplace=True)
-        return df
+        df_res = df_targ.merge(sample_prob,left_on='bins',right_index=True)
+
+        df_res.p_sample *= df_res.p_sample_correction
+        df_res.drop(['bins','p_sample_correction'],axis='columns',inplace=True)
+
+        if 'p_sample' in df:
+            df_res.p_sample = df_res.p_sample* df.p_sample.values
+
+        df_res.p_sample /= df_res.p_sample.sum()
+
+        return df_res
 
     return _inner
 
