@@ -67,8 +67,8 @@ class LearnerTrainable(tune.Trainable):
 #         import pdb; pdb.set_trace()
         self.lrn = self.create_lrn(self.dls,new_config)
 
-        #restore trainable parameters, keeping the new hyperparameters in the model like dropout
-        self.lrn.model.load_state_dict(model_state)
+#         #restore trainable parameters, keeping the new hyperparameters in the model like dropout
+#         self.lrn.model.load_state_dict(model_state)
 
         self.config = new_config
         return True

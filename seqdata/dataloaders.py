@@ -15,7 +15,6 @@ import math
 from torch.utils.data.dataloader import _MultiProcessingDataLoaderIter,_SingleProcessDataLoaderIter,_DatasetKind
 _loaders = (_MultiProcessingDataLoaderIter,_SingleProcessDataLoaderIter)
 
-@log_args(but_as=TfmdDL.__init__)
 @delegates()
 class TbpttDl(TfmdDL):
 
@@ -142,6 +141,7 @@ def WeightedDL_Factory(cls):
             super().__init__(dataset=dataset, **kwargs)
             if wgts is None:
                 if  (type(self.items) is list and
+                    len(self.items) > 0 and
                     type(self.items[0]) is dict and
                     'p_sample' in self.items[0].keys()):
                     self.wgts = np.array([x['p_sample'] for x in self.items])
@@ -154,7 +154,7 @@ def WeightedDL_Factory(cls):
         def get_idxs(self):
             if self.n==0: return []
             if not self.shuffle or self.wgts is None: return super().get_idxs()
-            return list(np.random.choice(self.n, self.n, p=self.wgts))
+            return list(np.random.choice(self.n, size=len(self)*self.bs, p=self.wgts))
     return WeightedDL
 
 # Cell

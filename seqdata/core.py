@@ -12,6 +12,7 @@ __all__ = ['obj_in_lst', 'count_parameters', 'get_hdf_files', 'hdf_extensions', 
 
 # Cell
 from fastai.data.all import *
+from fastai.vision.augment import RandTransform
 import h5py
 
 # Cell
@@ -263,10 +264,11 @@ class SeqSlice(Transform):
     def encodes(self, o): return o[self.l_slc:self.r_slc]
 
 # Cell
-class SeqNoiseInjection(Transform):
+class SeqNoiseInjection(RandTransform):
     split_idx=0
     '''Adds normal distributed noise to the tensor sequence with seperate mean and std for every signal'''
-    def __init__(self, std=1e-1,mean=0.):
+    def __init__(self, std=1e-1,mean=0.,p=1.0):
+        super().__init__(p=p)
         self.std = tensor(std).type(torch.float)
         self.mean = tensor(mean).type(torch.float)
 
@@ -279,10 +281,11 @@ class SeqNoiseInjection(Transform):
                               std=self.std.expand_as(o))
 
 # Cell
-class SeqNoiseInjection_Varying(Transform):
+class SeqNoiseInjection_Varying(RandTransform):
     split_idx=0
     '''Adds normal distributed noise to the tensor sequence with a normal distributed standard deviation for every application'''
-    def __init__(self, std_std=0.1):
+    def __init__(self, std_std=0.1,p=1.0):
+        super().__init__(p=p)
         self.std_std = tensor(std_std).type(torch.float)
 
     def encodes(self, o:TensorSequencesInput):
@@ -294,10 +297,11 @@ class SeqNoiseInjection_Varying(Transform):
         return o+torch.normal(mean=0,std=std.expand_as(o))
 
 # Cell
-class SeqNoiseInjection_Grouped(Transform):
+class SeqNoiseInjection_Grouped(RandTransform):
     split_idx=0
     '''Adds normal distributed noise to the tensor sequence with a normal distributed standard deviation for every application, every group gert'''
-    def __init__(self, std_std,std_idx):
+    def __init__(self, std_std,std_idx,p=1.0):
+        super().__init__(p=p)
         self.std_std = tensor(std_std).type(torch.float)
         self.std_idx = tensor(std_idx).type(torch.long)
 
@@ -310,10 +314,11 @@ class SeqNoiseInjection_Grouped(Transform):
         return o+torch.normal(mean=0,std=std.expand_as(o))
 
 # Cell
-class SeqBiasInjection(Transform):
+class SeqBiasInjection(RandTransform):
     split_idx=0
     '''Adds a normal distributed offset to the tensor sequence with seperate mean and std for every signal'''
-    def __init__(self, std=1e-1,mean=0.):
+    def __init__(self, std=1e-1,mean=0.,p=1.0):
+        super().__init__(p=p)
         self.std = tensor(std).type(torch.float)
         self.mean = tensor(mean).type(torch.float)
 
