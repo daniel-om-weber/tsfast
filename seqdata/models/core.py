@@ -239,10 +239,10 @@ class Sequential_RNN(RNN):
 class SimpleRNN(nn.Module):
 
     @delegates(RNN, keep=True)
-    def __init__(self,input_size,output_size,num_layers=1,hidden_size=100,lrn_init=False,**kwargs):
+    def __init__(self,input_size,output_size,num_layers=1,hidden_size=100,lrn_init=False,linear_layers=1,**kwargs):
         super().__init__()
         self.rnn = RNN(input_size=input_size,hidden_size=hidden_size,num_layers=num_layers,**kwargs)
-        self.final = SeqLinear(hidden_size,output_size,hidden_size=hidden_size)
+        self.final = SeqLinear(hidden_size,output_size,hidden_size=hidden_size,hidden_layer=linear_layers,act=nn.LeakyReLU)
 
         self.init_p = (nn.ParameterList([nn.Parameter(torch.randn(size=(1,1,hidden_size)),requires_grad=True)
                         for f in range(num_layers)]) if lrn_init else None)

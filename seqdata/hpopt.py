@@ -50,7 +50,8 @@ class LearnerTrainable(tune.Trainable):
         return tmp_checkpoint_dir
 
     def load_checkpoint(self, tmp_checkpoint_dir):
-        self.lrn.model.load_state_dict(torch.load(tmp_checkpoint_dir))
+        checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.pth")
+        self.lrn.model.load_state_dict(torch.load(checkpoint_path))
 
     def _export_model(self, export_formats, export_dir):
         if export_formats == [ExportFormat.MODEL]:
@@ -63,13 +64,7 @@ class LearnerTrainable(tune.Trainable):
     # the learner class will be recreated with every perturbation, saving the model
     # that way the new hyperparameter will be applied
     def reset_config(self, new_config):
-        model_state = self.lrn.model.state_dict()
-#         import pdb; pdb.set_trace()
         self.lrn = self.create_lrn(self.dls,new_config)
-
-#         #restore trainable parameters, keeping the new hyperparameters in the model like dropout
-#         self.lrn.model.load_state_dict(model_state)
-
         self.config = new_config
         return True
 
