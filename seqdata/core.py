@@ -32,9 +32,12 @@ def get_hdf_files(path,recurse=True, folders=None):
     return get_files(path, extensions=hdf_extensions, recurse=recurse, folders=folders)
 
 # Cell
-def apply_df_tfms(f_list,pd_tfms = None):
+def apply_df_tfms(src,pd_tfms = None):
     '''Create Pandas Dataframe out of a list of items, with a list of df transforms applied'''
-    df = pd.DataFrame(data=f_list.items,columns=['path'],dtype=str)
+    if type(src) is pd.DataFrame:
+        df = src
+    else:
+        df = pd.DataFrame(data=src.items,columns=['path'],dtype=str)
     if pd_tfms is not None:
         for t in pd_tfms:
             df = t(df)
