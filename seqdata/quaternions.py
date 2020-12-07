@@ -347,7 +347,7 @@ class QuaternionAugmentation(Transform):
         #import pdb; pdb.set_trace()
         for g in self.inp_groups:
             tmp = x[...,g[0]:g[1]+1]
-            if tmp.shape[1] == 3:
+            if tmp.shape[-1] == 3:
                 x[...,g[0]:g[1]+1] = rot_vec(tmp,self.r_quat)
             else:
                 x[...,g[0]:g[1]+1] = multiplyQuat(tmp,self.r_quat)

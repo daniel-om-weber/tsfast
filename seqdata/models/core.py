@@ -333,7 +333,7 @@ class DenseNet_RNN(nn.Sequential):
 class SeperateRNN(nn.Module):
 
     @delegates(RNN, keep=True)
-    def __init__(self,input_list,output_size,num_layers=1,hidden_size=100,**kwargs):
+    def __init__(self,input_list,output_size,num_layers=1,hidden_size=100,linear_layers=1,**kwargs):
         super().__init__()
         self.input_list = input_list
 
@@ -344,7 +344,7 @@ class SeperateRNN(nn.Module):
 
         self.rnn =RNN(input_size=rnn_width*len(input_list),hidden_size=hidden_size,
                       num_layers=num_layers,**kwargs)
-        self.final = SeqLinear(hidden_size,output_size,hidden_size=hidden_size)
+        self.final = SeqLinear(hidden_size,output_size,hidden_size=hidden_size,hidden_layer=linear_layers)
 
     def forward(self, x):
         rnn_out = [rnn(x[...,group])[0] for rnn,group in zip(self.rnns,self.input_list)]
