@@ -82,8 +82,9 @@ class CBRaySaveModel(SaveModelCallback):
             self.last_saved_path = file
             self.idx_checkpoint += 1
 
-    #do not try to restore model
-    def after_fit(self, **kwargs): pass
+    #final checkpoint
+    def after_fit(self, **kwargs):
+        self._save(f'{self.fname}')
 
 # Cell
 def learner_optimize(config, checkpoint_dir=None):
