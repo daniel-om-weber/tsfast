@@ -7,8 +7,9 @@ __all__ = ['TensorQuaternionInclination', 'TensorQuaternionAngle', 'rad2deg', 'm
            'abs_inclination', 'ms_inclination', 'rms_inclination', 'smooth_inclination', 'rms_inclination_deg',
            'rms_pitch_deg', 'rms_roll_deg', 'mean_inclination_deg', 'angle_loss', 'angle_loss_opt', 'ms_rel_angle',
            'rms_rel_angle_deg', 'mean_rel_angle_deg', 'deg_rmse', 'QuaternionRegularizer', 'augmentation_groups',
-           'QuaternionAugmentation', 'Quaternion_ResamplingModel', 'TensorInclination', 'HDF2Inclination',
-           'InclinationBlock', 'plot_scalar_inclination', 'plot_quaternion_inclination', 'plot_quaternion_rel_angle']
+           'QuaternionAugmentation', 'Quaternion_ResamplingModel', 'HDF2Quaternion', 'QuaternionBlock',
+           'TensorInclination', 'HDF2Inclination', 'InclinationBlock', 'plot_scalar_inclination',
+           'plot_quaternion_inclination', 'plot_quaternion_rel_angle']
 
 # Cell
 from .core import *
@@ -390,6 +391,176 @@ class Quaternion_ResamplingModel(nn.Module):
                 res = nn.functional.interpolate(res.transpose(1,2), size=x_len, mode='linear',align_corners=False).transpose(1,2)
 
         return res
+
+# Internal Cell
+def relativeQuat_np(q1, q2):
+    """inv(quat1)*quat2"""
+    if isinstance(q1, np.ndarray) and q1.shape == (4,):
+        q1 = q1[np.newaxis]  # convert to 1x4 matrix
+        shape = q2.shape
+    elif isinstance(q1, np.ndarray) and q1.shape == (1, 4):
+        shape = q2.shape
+    elif isinstance(q2, np.ndarray) and q2.shape == (4,):
+        q2 = q2[np.newaxis]  # convert to 1x4 matrix
+        shape = q1.shape
+    elif isinstance(q2, np.ndarray) and q2.shape == (1, 4):
+        shape = q1.shape
+    else:
+        assert q1.shape == q2.shape
+        shape = q1.shape
+    output = np.zeros(shape=shape)
+    output[:, 0] = q1[:, 0] * q2[:, 0] + q1[:, 1] * q2[:, 1] + q1[:, 2] * q2[:, 2] + q1[:, 3] * q2[:, 3]
+    output[:, 1] = q1[:, 0] * q2[:, 1] - q1[:, 1] * q2[:, 0] - q1[:, 2] * q2[:, 3] + q1[:, 3] * q2[:, 2]
+    output[:, 2] = q1[:, 0] * q2[:, 2] + q1[:, 1] * q2[:, 3] - q1[:, 2] * q2[:, 0] - q1[:, 3] * q2[:, 1]
+    output[:, 3] = q1[:, 0] * q2[:, 3] - q1[:, 1] * q2[:, 2] + q1[:, 2] * q2[:, 1] - q1[:, 3] * q2[:, 0]
+    return output
+def quatFromAngleAxis_np(angle, axis):
+    angle = np.asarray(angle, np.float)
+    axis = np.asarray(axis, np.float)
+    if len(axis.shape) == 2:
+        N = max(angle.shape[0], axis.shape[0])
+        assert angle.shape in ((1,), (N,))
+        assert axis.shape == (N, 3) or axis.shape == (1, 3)
+    else:
+        N = angle.shape[0]
+        assert angle.shape == (N,)
+        assert axis.shape == (3,)
+        axis = axis[None, :]
+
+    axis = axis/np.linalg.norm(axis, axis=1)[:, None]
+
+    quat = np.zeros((N, 4))
+    quat[:, 0] = np.cos(angle/2)
+    quat[:, 1:] = axis*np.sin(angle/2)[:, None]
+    return quat
+
+def multiplyQuat_np(q1, q2):
+    """quat1*quat2"""
+    if isinstance(q1, np.ndarray) and q1.shape == (4,):
+        q1 = q1[np.newaxis]  # convert to 1x4 matrix
+        shape = q2.shape
+    elif isinstance(q1, np.ndarray) and q1.shape == (1, 4):
+        shape = q2.shape
+    elif isinstance(q2, np.ndarray) and q2.shape == (4,):
+        q2 = q2[np.newaxis]  # convert to 1x4 matrix
+        shape = q1.shape
+    elif isinstance(q2, np.ndarray) and q2.shape == (1, 4):
+        shape = q1.shape
+    else:
+        assert q1.shape == q2.shape
+        shape = q1.shape
+    output = np.zeros(shape=shape)
+    output[:, 0] = q1[:, 0] * q2[:, 0] - q1[:, 1] * q2[:, 1] - q1[:, 2] * q2[:, 2] - q1[:, 3] * q2[:, 3]
+    output[:, 1] = q1[:, 0] * q2[:, 1] + q1[:, 1] * q2[:, 0] + q1[:, 2] * q2[:, 3] - q1[:, 3] * q2[:, 2]
+    output[:, 2] = q1[:, 0] * q2[:, 2] - q1[:, 1] * q2[:, 3] + q1[:, 2] * q2[:, 0] + q1[:, 3] * q2[:, 1]
+    output[:, 3] = q1[:, 0] * q2[:, 3] + q1[:, 1] * q2[:, 2] - q1[:, 2] * q2[:, 1] + q1[:, 3] * q2[:, 0]
+    return output
+
+
+def quatInterp_np(quat, ind, extend=False):
+    """
+    Interpolates an array of quaternions of (non-integer) indices using Slerp. Sampling indices are in the range
+    0..N-1, for values outside of this range, depending on "extend", the first/last element or NaN is returned.
+
+    See also csg_bigdata.dp.utils.vecInterp.
+
+    :param quat: array of input quaternions (Nx4)
+    :param ind: vector containing the sampling indices, shape (M,)
+    :param extend: if true, the input data is virtually extended by the first/last value
+    :return: interpolated quaternions (Mx4)
+    """
+    quat = quat.astype(np.float64)
+
+    ind = np.atleast_1d(ind)
+    N = quat.shape[0]
+    M = ind.shape[0]
+    assert quat.shape == (N, 4)
+    assert ind.shape == (M,)
+
+    ind0 = np.clip(np.floor(ind).astype(int), 0, N-1)
+    ind1 = np.clip(np.ceil(ind).astype(int), 0, N-1)
+
+    q0 = quat[ind0]
+    q1 = quat[ind1]
+    q_1_0 = relativeQuat_np(q0, q1)
+
+    # normalize the quaternion for positive w component to ensure
+    # that the angle will be [0, 180°]
+    invert_sign_ind = q_1_0[:, 0] < 0
+    q_1_0[invert_sign_ind] = -q_1_0[invert_sign_ind]
+
+    angle = 2 * np.arccos(np.clip(q_1_0[:, 0], -1, 1))
+    axis = q_1_0[:, 1:]
+
+    # copy over (almost) direct hits
+    with np.errstate(invalid='ignore'):
+        direct_ind = angle < 1e-06
+    quat_out = np.empty_like(q0)
+    # print(quat_out.shape, direct_ind.shape, q0.shape)
+    quat_out[direct_ind] = q0[direct_ind]
+
+    interp_ind = ~direct_ind
+    t01 = ind - ind0
+    q_t_0 = quatFromAngleAxis_np((t01*angle)[interp_ind], axis[interp_ind])
+    quat_out[interp_ind] = multiplyQuat_np(q0[interp_ind], q_t_0)
+
+    if not extend:
+        quat_out[ind < 0] = np.nan
+        quat_out[ind > N - 1] = np.nan
+
+    return quat_out.astype(np.float32)
+
+# Cell
+class HDF2Quaternion(HDF2Sequence):
+
+    def _hdf_extract_sequence(self,hdf_path,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, resampling_idx =None,resampling_inverse =False):
+        '''
+        extracts a sequence with the shape [seq_len x num_features]
+        quaternion variation of the resampling method
+
+        hdf_path: file path of hdf file, may be a string or path type
+        dataset: dataset root for clms. Useful for multiples sequences stored in one file.
+        l_slc: left boundary for extraction of a window of the whole sequence
+        r_slc: right boundary for extraction of a window of the whole sequence
+        resampling_factor: scaling factor for the sequence length, uses 'resample_interp' for resampling
+        resampling_idx: clms list idx of fs entry in sequence. Will be scaled by resampling_factor after resampling
+        resampling_inverse: if 'True' the fs entry given by 'resampling_idx' will be scaled by the inverse of 'resampling_factor'. Useful for dt scaling with fs factor
+        '''
+        if resampling_factor is not None:
+            seq_len = r_slc-l_slc if l_slc is not None and r_slc is not None else None #calculate seq_len for later slicing, necesary because of rounding errors in resampling
+            if l_slc is not None: l_slc= math.floor(l_slc/resampling_factor)
+            if r_slc is not None: r_slc= math.ceil(r_slc/resampling_factor)
+
+        with h5py.File(hdf_path,'r') as f:
+            ds = f if dataset is None else f[dataset]
+            l_array = [(ds[n][l_slc:r_slc]) for n in self.clm_names]
+            seq = np.stack(l_array,axis=-1)
+
+        if resampling_factor is not None:
+#             res_seq = resample_interp(seq,resampling_factor)
+            res_seq = quatInterp_np(seq,np.linspace(0,seq.shape[0]-1,int(seq.shape[0]*resampling_factor)))
+            if resampling_idx is not None:
+                if not resampling_inverse:
+                    res_seq[resampling_idx] = seq[resampling_idx] * resampling_factor
+                else:
+                    res_seq[resampling_idx] = seq[resampling_idx] / resampling_factor
+            seq = res_seq
+            if seq_len is not None: seq = seq[:seq_len] #cut the part of the sequence that is too long because of resampling rounding errors
+
+        return seq
+
+# Cell
+class QuaternionBlock(TransformBlock):
+    def __init__(self, seq_extract,padding=False):
+        return super().__init__(type_tfms=[seq_extract],
+                                batch_tfms=[Normalize(axes=[0,1])],
+                                dls_kwargs={} if not padding else {'before_batch': pad_sequence})
+
+    @classmethod
+    @delegates(HDF2Quaternion, keep=True)
+    def from_hdf(cls, clm_names, seq_cls=TensorQuaternionInclination,padding=False, **kwargs):
+        return cls(HDF2Quaternion(clm_names,to_cls=seq_cls,**kwargs), padding)
+
 
 # Cell
 class TensorInclination(TensorSequences): pass
