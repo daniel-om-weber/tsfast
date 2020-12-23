@@ -2,13 +2,13 @@
 
 __all__ = ['obj_in_lst', 'count_parameters', 'get_hdf_files', 'hdf_extensions', 'apply_df_tfms', 'CreateDict',
            'ValidClmContains', 'ValidClmIs', 'FilterClm', 'get_hdf_seq_len', 'df_get_hdf_seq_len', 'DfHDFGetSeqLen',
-           'DfHDFCreateWindows', 'DfFilterQuery', 'DfDropClmExcept', 'calc_shift_offsets', 'running_mean',
-           'downsample_mean', 'hdf_extract_sequence', 'Memoize', 'HDF2Sequence', 'hdf2scalars', 'TensorSequences',
-           'TensorSequencesInput', 'TensorSequencesOutput', 'toTensorSequencesInput', 'toTensorSequencesOutput',
-           'TensorScalars', 'TensorScalarsInput', 'TensorScalarsOutput', 'SeqSlice', 'SeqNoiseInjection',
-           'SeqNoiseInjection_Varying', 'SeqNoiseInjection_Grouped', 'SeqBiasInjection', 'encodes', 'decodes',
-           'ParentSplitter', 'PercentageSplitter', 'ApplyToDict', 'valid_clm_splitter', 'pad_sequence', 'SequenceBlock',
-           'Seq2SeqDS', 'Seq2SeqDataloaders', 'plot_sequence', 'plot_seqs_single_figure', 'plot_seqs_multi_figures']
+           'DfResamplingFactor', 'DfHDFCreateWindows', 'DfFilterQuery', 'DfDropClmExcept', 'calc_shift_offsets',
+           'running_mean', 'downsample_mean', 'resample_interp', 'hdf_extract_sequence', 'Memoize', 'HDF2Sequence',
+           'hdf2scalars', 'TensorSequences', 'TensorSequencesInput', 'TensorSequencesOutput', 'toTensorSequencesInput',
+           'toTensorSequencesOutput', 'TensorScalars', 'TensorScalarsInput', 'TensorScalarsOutput', 'SeqSlice',
+           'SeqNoiseInjection', 'SeqNoiseInjection_Varying', 'SeqNoiseInjection_Grouped', 'SeqBiasInjection', 'encodes',
+           'decodes', 'ParentSplitter', 'PercentageSplitter', 'ApplyToDict', 'valid_clm_splitter', 'pad_sequence',
+           'SequenceBlock', 'plot_sequence', 'plot_seqs_single_figure', 'plot_seqs_multi_figures']
 
 # Cell
 from fastai.data.all import *
@@ -103,6 +103,32 @@ def DfHDFGetSeqLen(clm):
     return _inner
 
 # Cell
+import numbers
+def DfResamplingFactor(src_fs,lst_targ_fs):
+    if not isinstance(src_fs, numbers.Number) and not type(src_fs) is str:
+        raise ValueError('src_fs has to be a column name or a fixed number')
+
+    def _inner(df):
+        np_targ_fs = array(lst_targ_fs)
+        pd.options.mode.chained_assignment = None #every row is a reference so we need to suppress the warning messages while copying
+
+        #repeat entries for every target fs
+        res_df = df.iloc[np.repeat(np.arange(len(df)),len(np_targ_fs))]
+        targ_fs = np.tile(np_targ_fs,len(df))
+
+        if isinstance(src_fs, numbers.Number):
+            #src_fs is a fixed number
+            res_df['resampling_factor'] = targ_fs/src_fs
+        else:
+            #src_fs is a column name of the df
+            res_df['resampling_factor'] = targ_fs/res_df[src_fs]
+
+        pd.options.mode.chained_assignment = 'warn'
+
+        return res_df
+    return _inner
+
+# Cell
 def DfHDFCreateWindows(win_sz,stp_sz, clm, fixed_start = False, fixed_end = False):
     '''create windows of sequences, splits sequence into multiple items'''
     def _inner(df):
@@ -112,6 +138,8 @@ def DfHDFCreateWindows(win_sz,stp_sz, clm, fixed_start = False, fixed_end = Fals
             np_f_len = df.seq_len.values
         else:
             np_f_len = np.array([get_hdf_seq_len(row.path,clm) for (idx, row) in df.iterrows()])
+
+        if 'resampling_factor' in df: np_f_len =(np_f_len*df.resampling_factor.values).astype(int)
 
         n_win = ((np_f_len-win_sz)//stp_sz)+1
         n_win = np.clip(n_win,a_min=0,a_max=None) #remove negative values at instances where the winsize is smaller than the seq_len
@@ -170,12 +198,76 @@ def downsample_mean(x,N):
     return x[:trunc,:].reshape((-1,N,x.shape[-1])).mean(axis=1)
 
 # Cell
-def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None):
+from scipy.signal import butter, lfilter, lfilter_zi
+def resample_interp(x,resampling_factor,sequence_first=True, lowpass_cut=0.5, upsample_cubic_cut = None):
+    '''signal resampling using linear or cubic interpolation
+
+    x: signal to resample with shape: features x resampling_dimension or resampling_dimension x  features if sequence_first=True
+    resampling_factor: Factor > 0 that scales the signal
+    lowpass_cut: Upper boundary for resampling_factor that activates the lowpassfilter, low values exchange accuracy for performance
+    upsample_cubic_cut: Lower boundary for resampling_factor that activates cubic interpolation at high upsampling values.
+                        Improves signal dynamics in exchange of performance. None deactivates cubic interpolation
+    '''
+
+    if sequence_first:
+        x = x.T
+
+    fs_n = resampling_factor
+    #if downsampling rate is too high, lowpass filter before interpolation
+    if fs_n < lowpass_cut:
+        b,a = butter(4, fs_n/2)
+        zi = lfilter_zi(b,a)*x[:,:1] #initialize filter with steady state at first time step value
+        x,_ = lfilter(b,a,x,axis=-1,zi=zi)
+
+    x_int = tensor(x)[None,...]
+    targ_size = int(x.shape[-1]*fs_n)
+
+    #if upsampling rate is too high, switch from linear to cubic interpolation
+    if upsample_cubic_cut is None or fs_n <= upsample_cubic_cut:
+        x = array(nn.functional.interpolate(x_int, size=targ_size, mode='linear',align_corners=False)[0])
+    else:
+        x = array(nn.functional.interpolate(x_int[None,...], size=[1,targ_size], mode='bicubic',align_corners=False)[0,0])
+
+    if sequence_first:
+        x = x.T
+
+    return x
+
+# Cell
+def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, resampling_idx =None,resampling_inverse =False):
+    '''
+    extracts a sequence with the shape [seq_len x num_features]
+
+    hdf_path: file path of hdf file, may be a string or path type
+    clms: list of dataset names of sequences in hdf file
+    dataset: dataset root for clms. Useful for multiples sequences stored in one file.
+    l_slc: left boundary for extraction of a window of the whole sequence
+    r_slc: right boundary for extraction of a window of the whole sequence
+    resampling_factor: scaling factor for the sequence length, uses 'resample_interp' for resampling
+    resampling_idx: clms list idx of fs entry in sequence. Will be scaled by resampling_factor after resampling
+    resampling_inverse: if 'True' the fs entry given by 'resampling_idx' will be scaled by the inverse of 'resampling_factor'. Useful for dt scaling with fs factor
+    '''
+    if resampling_factor is not None:
+        seq_len = r_slc-l_slc if l_slc is not None and r_slc is not None else None #calculate seq_len for later slicing, necesary because of rounding errors in resampling
+        if l_slc is not None: l_slc= math.floor(l_slc/resampling_factor)
+        if r_slc is not None: r_slc= math.ceil(r_slc/resampling_factor)
+
     with h5py.File(hdf_path,'r') as f:
         ds = f if dataset is None else f[dataset]
-        l_array = [ds[n][l_slc:r_slc] for n in clms]
+        l_array = [(ds[n][l_slc:r_slc]) for n in clms]
         seq = np.stack(l_array,axis=-1)
-        return seq
+
+    if resampling_factor is not None:
+        res_seq = resample_interp(seq,resampling_factor)
+        if resampling_idx is not None:
+            if not resampling_inverse:
+                res_seq[resampling_idx] = seq[resampling_idx] * resampling_factor
+            else:
+                res_seq[resampling_idx] = seq[resampling_idx] / resampling_factor
+        seq = res_seq
+        if seq_len is not None: seq = seq[:seq_len] #cut the part of the sequence that is too long because of resampling rounding errors
+
+    return seq
 
 # Cell
 class Memoize:
@@ -191,21 +283,48 @@ class Memoize:
 # Cell
 class HDF2Sequence(Transform):
 
-    def __init__(self, clm_names,clm_shift=None,truncate_sz=None,to_cls=noop,cached=False):
+    def __init__(self, clm_names,clm_shift=None,truncate_sz=None,to_cls=noop,cached=False, resampling_idx =None,resampling_inverse =False):
         if not clm_shift is None:
             assert len(clm_shift)==len(clm_names) and all(isinstance(n, int) for n in clm_shift)
             self.l_shift,self.r_shift,_ = calc_shift_offsets(clm_shift)
 
         self._exseq = Memoize(self._hdf_extract_sequence) if cached else self._hdf_extract_sequence
 
-        store_attr('clm_names,clm_shift,truncate_sz,to_cls,cached')
+        store_attr('clm_names,clm_shift,truncate_sz,to_cls,cached,resampling_idx,resampling_inverse')
 
-    def _hdf_extract_sequence(self,hdf_path,dataset = None, l_slc = None, r_slc= None):
+    def _hdf_extract_sequence(self,hdf_path,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, resampling_idx =None,resampling_inverse =False):
+        '''
+        extracts a sequence with the shape [seq_len x num_features]
+
+        hdf_path: file path of hdf file, may be a string or path type
+        dataset: dataset root for clms. Useful for multiples sequences stored in one file.
+        l_slc: left boundary for extraction of a window of the whole sequence
+        r_slc: right boundary for extraction of a window of the whole sequence
+        resampling_factor: scaling factor for the sequence length, uses 'resample_interp' for resampling
+        resampling_idx: clms list idx of fs entry in sequence. Will be scaled by resampling_factor after resampling
+        resampling_inverse: if 'True' the fs entry given by 'resampling_idx' will be scaled by the inverse of 'resampling_factor'. Useful for dt scaling with fs factor
+        '''
+        if resampling_factor is not None:
+            seq_len = r_slc-l_slc if l_slc is not None and r_slc is not None else None #calculate seq_len for later slicing, necesary because of rounding errors in resampling
+            if l_slc is not None: l_slc= math.floor(l_slc/resampling_factor)
+            if r_slc is not None: r_slc= math.ceil(r_slc/resampling_factor)
+
         with h5py.File(hdf_path,'r') as f:
             ds = f if dataset is None else f[dataset]
             l_array = [(ds[n][l_slc:r_slc]) for n in self.clm_names]
             seq = np.stack(l_array,axis=-1)
-            return seq
+
+        if resampling_factor is not None:
+            res_seq = resample_interp(seq,resampling_factor)
+            if resampling_idx is not None:
+                if not resampling_inverse:
+                    res_seq[resampling_idx] = seq[resampling_idx] * resampling_factor
+                else:
+                    res_seq[resampling_idx] = seq[resampling_idx] / resampling_factor
+            seq = res_seq
+            if seq_len is not None: seq = seq[:seq_len] #cut the part of the sequence that is too long because of resampling rounding errors
+
+        return seq
 
     def _extract_dict_sequence(self,item):
         if isinstance(item,dict):
@@ -213,13 +332,14 @@ class HDF2Sequence(Transform):
             dataset = item['dataset'] if 'dataset' in item else None
             l_slc = item['l_slc'] if 'l_slc' in item else None
             r_slc = item['r_slc'] if 'r_slc' in item else None
+            resampling_factor = item['resampling_factor'] if 'resampling_factor' in item else None
 
             if self.cached:
-                seq = self._exseq(path,dataset,None,None)[l_slc:r_slc]
+                seq = self._exseq(path,dataset,None,None,resampling_factor,self.resampling_idx,self.resampling_inverse)[l_slc:r_slc]
             else:
-                seq = self._exseq(path,dataset,l_slc,r_slc)
+                seq = self._exseq(path,dataset,l_slc,r_slc,resampling_factor,self.resampling_idx,self.resampling_inverse)
         else:
-            seq = self._exseq(str(item),None,None,None)
+            seq = self._exseq(str(item),None,None,None,None)
 
         #shift clms of result by given value
         if not self.clm_shift is None:
@@ -420,49 +540,6 @@ class SequenceBlock(TransformBlock):
     def from_hdf(cls, clm_names, seq_cls=TensorSequencesInput,padding=False, **kwargs):
         return cls(HDF2Sequence(clm_names,to_cls=seq_cls,**kwargs), padding)
 
-
-# Cell
-from torch.utils.data import Dataset,ConcatDataset
-class Seq2SeqDS(Dataset):
-    #Datensatz aus HDF5 Datei
-
-    def __init__(self, hdf_file, u_clms,y_clms, win_sz,stp_sz):
-        super().__init__()
-        store_attr('u_clms,y_clms,win_sz,stp_sz')
-
-        self.u = hdf_extract_sequence(hdf_file,u_clms)
-        self.y = hdf_extract_sequence(hdf_file,y_clms)
-
-#         if clm_shift is not None:
-#             assert len(clm_shift[0])==len(u_clms) and len(clm_shift[1])==len(y_clms)
-#             l_shift,r_shift,dim_red = calc_shift_offsets(clm_shift)
-
-        self.len = (self.u.shape[0]-self.win_sz)//self.stp_sz or 1
-
-    def __len__(self):
-        return self.len
-
-    def __getitem__(self, idx):
-        if not (0 <= idx < len(self)): raise IndexError
-#         import pdb; pdb.set_trace()
-        i = idx*self.stp_sz + self.win_sz
-        return (TensorSequencesInput(self.u[(i-self.win_sz+1):i+1]),
-                TensorSequencesOutput(self.y[(i-self.win_sz+1):i+1]))
-
-# Cell
-@delegates(TfmdDL, keep=True)
-def Seq2SeqDataloaders(items,u_clms,y_clms, win_sz,stp_sz=1,splitter=None,**kwargs):
-    if splitter is None:
-        lst_items = [items]
-    else:
-        lst_items = [items[idx] for idx in splitter(items)]
-
-    dss = [ConcatDataset([Seq2SeqDS(f,u_clms,y_clms, win_sz,stp_sz) for f in itms])
-          for itms in lst_items]
-    if not 'after_batch' in kwargs: kwargs['after_batch'] = [to_device,Normalize(axes=[0,1])]
-
-    dls = [TfmdDL(ds,shuffle=(i == 0),**kwargs) for i,ds in enumerate(dss)]
-    return DataLoaders(*dls)
 
 # Cell
 def plot_sequence(axs,in_sig,targ_sig,out_sig=None,**kwargs):
