@@ -115,6 +115,7 @@ def DfResamplingFactor(src_fs,lst_targ_fs):
         #repeat entries for every target fs
         res_df = df.iloc[np.repeat(np.arange(len(df)),len(np_targ_fs))]
         targ_fs = np.tile(np_targ_fs,len(df))
+        res_df['targ_fs'] = targ_fs
 
         if isinstance(src_fs, numbers.Number):
             #src_fs is a fixed number
@@ -169,7 +170,7 @@ def DfFilterQuery(query):
     return _inner
 
 # Cell
-def DfDropClmExcept(clms = ['path','l_slc','r_slc','p_sample']):
+def DfDropClmExcept(clms = ['path','l_slc','r_slc','p_sample','resampling_factor']):
     '''drop unused dataframe columns as a last optional step to accelerate dictionary conversion'''
     def _inner(df):
         return df[[c for c in clms if c in df]]
@@ -234,7 +235,7 @@ def resample_interp(x,resampling_factor,sequence_first=True, lowpass_cut=0.5, up
     return x
 
 # Cell
-def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, resampling_idx =None,resampling_inverse =False):
+def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, fs_idx =None,dt_idx =False):
     '''
     extracts a sequence with the shape [seq_len x num_features]
 
@@ -244,9 +245,10 @@ def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None
     l_slc: left boundary for extraction of a window of the whole sequence
     r_slc: right boundary for extraction of a window of the whole sequence
     resampling_factor: scaling factor for the sequence length, uses 'resample_interp' for resampling
-    resampling_idx: clms list idx of fs entry in sequence. Will be scaled by resampling_factor after resampling
-    resampling_inverse: if 'True' the fs entry given by 'resampling_idx' will be scaled by the inverse of 'resampling_factor'. Useful for dt scaling with fs factor
+    fs_idx: clms list idx of fs entry in sequence. Will be scaled by resampling_factor after resampling
+    dt_idx: clms list idx of dt entry in sequence. Will be scaled by resampling_factor after resampling
     '''
+
     if resampling_factor is not None:
         seq_len = r_slc-l_slc if l_slc is not None and r_slc is not None else None #calculate seq_len for later slicing, necesary because of rounding errors in resampling
         if l_slc is not None: l_slc= math.floor(l_slc/resampling_factor)
@@ -259,12 +261,10 @@ def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None
 
     if resampling_factor is not None:
         res_seq = resample_interp(seq,resampling_factor)
-        if resampling_idx is not None:
-            if not resampling_inverse:
-                res_seq[resampling_idx] = seq[resampling_idx] * resampling_factor
-            else:
-                res_seq[resampling_idx] = seq[resampling_idx] / resampling_factor
+        if fs_idx is not None: res_seq[:,fs_idx] = seq[0,fs_idx] * resampling_factor
+        if dt_idx is not None: res_seq[:,dt_idx] = seq[0,dt_idx] / resampling_factor
         seq = res_seq
+
         if seq_len is not None: seq = seq[:seq_len] #cut the part of the sequence that is too long because of resampling rounding errors
 
     return seq
@@ -283,27 +283,29 @@ class Memoize:
 # Cell
 class HDF2Sequence(Transform):
 
-    def __init__(self, clm_names,clm_shift=None,truncate_sz=None,to_cls=noop,cached=False, resampling_idx =None,resampling_inverse =False):
+    def __init__(self, clm_names,clm_shift=None,truncate_sz=None,to_cls=noop,cached=False, fs_idx =None,dt_idx =False):
         if not clm_shift is None:
             assert len(clm_shift)==len(clm_names) and all(isinstance(n, int) for n in clm_shift)
             self.l_shift,self.r_shift,_ = calc_shift_offsets(clm_shift)
 
         self._exseq = Memoize(self._hdf_extract_sequence) if cached else self._hdf_extract_sequence
 
-        store_attr('clm_names,clm_shift,truncate_sz,to_cls,cached,resampling_idx,resampling_inverse')
+        store_attr('clm_names,clm_shift,truncate_sz,to_cls,cached,fs_idx,dt_idx')
 
-    def _hdf_extract_sequence(self,hdf_path,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, resampling_idx =None,resampling_inverse =False):
+    def _hdf_extract_sequence(self,hdf_path,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, fs_idx =None,dt_idx =False):
         '''
         extracts a sequence with the shape [seq_len x num_features]
 
         hdf_path: file path of hdf file, may be a string or path type
+        clms: list of dataset names of sequences in hdf file
         dataset: dataset root for clms. Useful for multiples sequences stored in one file.
         l_slc: left boundary for extraction of a window of the whole sequence
         r_slc: right boundary for extraction of a window of the whole sequence
         resampling_factor: scaling factor for the sequence length, uses 'resample_interp' for resampling
-        resampling_idx: clms list idx of fs entry in sequence. Will be scaled by resampling_factor after resampling
-        resampling_inverse: if 'True' the fs entry given by 'resampling_idx' will be scaled by the inverse of 'resampling_factor'. Useful for dt scaling with fs factor
+        fs_idx: clms list idx of fs entry in sequence. Will be scaled by resampling_factor after resampling
+        dt_idx: clms list idx of dt entry in sequence. Will be scaled by resampling_factor after resampling
         '''
+
         if resampling_factor is not None:
             seq_len = r_slc-l_slc if l_slc is not None and r_slc is not None else None #calculate seq_len for later slicing, necesary because of rounding errors in resampling
             if l_slc is not None: l_slc= math.floor(l_slc/resampling_factor)
@@ -316,12 +318,10 @@ class HDF2Sequence(Transform):
 
         if resampling_factor is not None:
             res_seq = resample_interp(seq,resampling_factor)
-            if resampling_idx is not None:
-                if not resampling_inverse:
-                    res_seq[resampling_idx] = seq[resampling_idx] * resampling_factor
-                else:
-                    res_seq[resampling_idx] = seq[resampling_idx] / resampling_factor
+            if fs_idx is not None: res_seq[:,fs_idx] = seq[0,fs_idx] * resampling_factor
+            if dt_idx is not None: res_seq[:,dt_idx] = seq[0,dt_idx] / resampling_factor
             seq = res_seq
+
             if seq_len is not None: seq = seq[:seq_len] #cut the part of the sequence that is too long because of resampling rounding errors
 
         return seq
@@ -335,9 +335,9 @@ class HDF2Sequence(Transform):
             resampling_factor = item['resampling_factor'] if 'resampling_factor' in item else None
 
             if self.cached:
-                seq = self._exseq(path,dataset,None,None,resampling_factor,self.resampling_idx,self.resampling_inverse)[l_slc:r_slc]
+                seq = self._exseq(path,dataset,None,None,resampling_factor,self.fs_idx,self.dt_idx)[l_slc:r_slc]
             else:
-                seq = self._exseq(path,dataset,l_slc,r_slc,resampling_factor,self.resampling_idx,self.resampling_inverse)
+                seq = self._exseq(path,dataset,l_slc,r_slc,resampling_factor,self.fs_idx,self.dt_idx)
         else:
             seq = self._exseq(str(item),None,None,None,None)
 

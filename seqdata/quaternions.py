@@ -415,24 +415,65 @@ def relativeQuat_np(q1, q2):
     output[:, 3] = q1[:, 0] * q2[:, 3] - q1[:, 1] * q2[:, 2] + q1[:, 2] * q2[:, 1] - q1[:, 3] * q2[:, 0]
     return output
 def quatFromAngleAxis_np(angle, axis):
+    """
+        Get quaternion from angle and axis.
+
+        If angle is 0, the output will be an identity quaternion.
+        If axis is zero vector, a ValueError will be raised unless corresponding angle is 0.
+        If  Nx3 axis or N angle are given, the output will be row-wise broadcasted into Nx4:
+
+        >>> q = csgimu.quatFromAngleAxis([0, 1, 2], [1, 0, 0])
+        >>> q
+        array([[1.        , 0.        , 0.        , 0.        ],
+               [0.87758256, 0.47942554, 0.        , 0.        ],
+               [0.54030231, 0.84147098, 0.        , 0.        ]])
+
+        :param angle: scalar or N angle in rad input
+        :param axis: Nx3 or 1x3 vector input array
+        :param debug: enables debug output
+        :param plot: enables debug plot
+        :return:
+            - output: Nx4 or 1x4 quaternion output array
+            - debug: dict with debug values (only if debug==True)
+
+        """
+
     angle = np.asarray(angle, np.float)
     axis = np.asarray(axis, np.float)
-    if len(axis.shape) == 2:
-        N = max(angle.shape[0], axis.shape[0])
-        assert angle.shape in ((1,), (N,))
-        assert axis.shape == (N, 3) or axis.shape == (1, 3)
-    else:
-        N = angle.shape[0]
-        assert angle.shape == (N,)
-        assert axis.shape == (3,)
-        axis = axis[None, :]
 
-    axis = axis/np.linalg.norm(axis, axis=1)[:, None]
+    is1D = (angle.shape == tuple() or angle.shape == (1,)) and axis.shape == (3,)
 
-    quat = np.zeros((N, 4))
-    quat[:, 0] = np.cos(angle/2)
-    quat[:, 1:] = axis*np.sin(angle/2)[:, None]
-    return quat
+    if angle.shape == tuple():
+        angle = angle.reshape(1)  # equivalent to np.atleast_1d
+    if axis.shape == (3,):
+        axis = axis.reshape((1, 3))
+
+    N = max(angle.shape[0], axis.shape[0])
+
+    # for (1x1) case
+    if angle.shape == (1, 1):
+        angle = angle.ravel()
+
+    assert angle.shape == (N,) or angle.shape == (1,), f'invalid angle shape: {angle.shape}'
+    assert axis.shape == (N, 3) or axis.shape == (1, 3), f'invalid axis shape: {axis.shape}'
+
+    angle_brodcasted = np.broadcast_to(angle, (N,))
+    axis_brodcasted = np.broadcast_to(axis, (N, 3))
+
+    norm = np.linalg.norm(axis_brodcasted, axis=1)
+
+    identity = norm < np.finfo(np.float).eps
+
+    q = np.zeros((N, 4), np.float)
+    q[identity] = np.array([1, 0, 0, 0])
+    q[~identity] = np.concatenate((np.cos(angle_brodcasted[~identity][:, np.newaxis] / 2), axis_brodcasted[~identity]
+                                 * np.array(np.sin(angle_brodcasted[~identity] / 2.0) / norm[~identity])[:, np.newaxis]),
+                                axis=1)
+
+    if is1D:
+        q = q.reshape((4,))
+
+    return q
 
 def multiplyQuat_np(q1, q2):
     """quat1*quat2"""
@@ -457,20 +498,22 @@ def multiplyQuat_np(q1, q2):
     return output
 
 
-def quatInterp_np(quat, ind, extend=False):
+def quatInterp_np(quat, ind, extend=True):
     """
-    Interpolates an array of quaternions of (non-integer) indices using Slerp. Sampling indices are in the range
-    0..N-1, for values outside of this range, depending on "extend", the first/last element or NaN is returned.
+    Interpolates an array of quaternions (Nx4) of (non-integer) indices using Slerp. Sampling indices are in the range
+    0..N-1. For values outside of this range, depending on "extend", the first/last element or NaN is returned.
+    If the input consists 2 quaternions and ind =[0.5], the result should be (1,4) and be the 50/50 interpolation
+    between the two input quaternions.
 
-    See also csg_bigdata.dp.utils.vecInterp.
+    >>> a=csgimu.quatInterp(np.array([[1,0,0,0],[0,0,1,0]]), np.array([0.5]), extend=True,debug=False,plot=False)
+    >>> a
+        array([[0, 0, 0, 0]])
 
     :param quat: array of input quaternions (Nx4)
-    :param ind: vector containing the sampling indices, shape (M,)
+    :param ind: vector containing the sampling indices for desired output, shape (M,)
     :param extend: if true, the input data is virtually extended by the first/last value
     :return: interpolated quaternions (Mx4)
     """
-    quat = quat.astype(np.float64)
-
     ind = np.atleast_1d(ind)
     N = quat.shape[0]
     M = ind.shape[0]
@@ -508,9 +551,14 @@ def quatInterp_np(quat, ind, extend=False):
         quat_out[ind < 0] = np.nan
         quat_out[ind > N - 1] = np.nan
 
-    return quat_out.astype(np.float32)
+    quat_out_norm = np.linalg.norm(quat_out, axis=1)
+
+    return quat_out
 
 # Cell
+import h5py
+
+
 class HDF2Quaternion(HDF2Sequence):
 
     def _hdf_extract_sequence(self,hdf_path,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, resampling_idx =None,resampling_inverse =False):
@@ -594,14 +642,14 @@ class InclinationBlock(TransformBlock):
 def plot_scalar_inclination(axs,in_sig,targ_sig,out_sig=None, **kwargs):
 #     import pdb; pdb.set_trace()
     first_targ = targ_sig[0].repeat(targ_sig.shape[0],1)
-    axs[0].plot(rad2deg(targ_sig))
+    axs[0].plot(rad2deg(targ_sig).detach().numpy())
     axs[0].label_outer()
     axs[0].set_ylabel('inclination[°]')
 
     if out_sig is not None:
-        axs[0].plot(rad2deg(out_sig))
+        axs[0].plot(rad2deg(out_sig).detach().numpy())
         axs[0].legend(['y','ŷ'])
-        axs[1].plot(rad2deg(targ_sig-out_sig))
+        axs[1].plot(rad2deg(targ_sig-out_sig).detach().numpy())
         axs[1].label_outer()
         axs[1].set_ylabel('error[°]')
 
@@ -610,21 +658,21 @@ def plot_scalar_inclination(axs,in_sig,targ_sig,out_sig=None, **kwargs):
 # Cell
 def plot_quaternion_inclination(axs,in_sig,targ_sig,out_sig=None, **kwargs):
 #     import pdb; pdb.set_trace()
-    axs[0].plot(rad2deg(inclinationAngleAbs(targ_sig)))
+    axs[0].plot(rad2deg(inclinationAngleAbs(targ_sig)).detach().numpy())
     axs[0].label_outer()
     axs[0].legend(['y'])
     axs[0].set_ylabel('inclination[°]')
 
     if out_sig is not None:
-        axs[0].plot(rad2deg(inclinationAngleAbs(out_sig)))
+        axs[0].plot(rad2deg(inclinationAngleAbs(out_sig)).detach().numpy())
         axs[0].legend(['y','ŷ'])
-        axs[1].plot(rad2deg(inclinationAngle(out_sig,targ_sig)))
+        axs[1].plot(rad2deg(inclinationAngle(out_sig,targ_sig)).detach().numpy())
         axs[1].label_outer()
         axs[1].set_ylabel('error[°]')
         if 'ref' in kwargs:
 #             axs[0].plot(rad2deg(inclinationAngleAbs(kwargs['ref'])))
 #             axs[0].legend(['y','ŷ','y_ref'])
-            axs[1].plot(rad2deg(inclinationAngle(targ_sig,kwargs['ref'])))
+            axs[1].plot(rad2deg(inclinationAngle(targ_sig,kwargs['ref'])).detach().numpy())
             axs[1].legend(['ŷ','y_ref'])
 
     axs[-1].plot(in_sig)
@@ -633,15 +681,15 @@ def plot_quaternion_inclination(axs,in_sig,targ_sig,out_sig=None, **kwargs):
 def plot_quaternion_rel_angle(axs,in_sig,targ_sig,out_sig=None, **kwargs):
 #     import pdb; pdb.set_trace()
     first_targ = targ_sig[0].repeat(targ_sig.shape[0],1)
-    axs[0].plot(rad2deg(relativeAngle(first_targ,targ_sig)))
+    axs[0].plot(rad2deg(relativeAngle(first_targ,targ_sig)).detach().numpy())
     axs[0].label_outer()
     axs[0].legend(['y'])
     axs[0].set_ylabel('angle[°]')
 
     if out_sig is not None:
-        axs[0].plot(rad2deg(relativeAngle(first_targ,out_sig)))
+        axs[0].plot(rad2deg(relativeAngle(first_targ,out_sig)).detach().numpy())
         axs[0].legend(['y','ŷ'])
-        axs[1].plot(rad2deg(relativeAngle(out_sig,targ_sig)))
+        axs[1].plot(rad2deg(relativeAngle(out_sig,targ_sig)).detach().numpy())
         axs[1].label_outer()
         axs[1].set_ylabel('error[°]')
 
