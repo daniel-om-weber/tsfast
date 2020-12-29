@@ -200,12 +200,12 @@ def downsample_mean(x,N):
 
 # Cell
 from scipy.signal import butter, lfilter, lfilter_zi
-def resample_interp(x,resampling_factor,sequence_first=True, lowpass_cut=0.5, upsample_cubic_cut = None):
+def resample_interp(x,resampling_factor,sequence_first=True, lowpass_cut=0.7, upsample_cubic_cut = None):
     '''signal resampling using linear or cubic interpolation
 
     x: signal to resample with shape: features x resampling_dimension or resampling_dimension x  features if sequence_first=True
     resampling_factor: Factor > 0 that scales the signal
-    lowpass_cut: Upper boundary for resampling_factor that activates the lowpassfilter, low values exchange accuracy for performance
+    lowpass_cut: Upper boundary for resampling_factor that activates the lowpassfilter, low values exchange accuracy for performance, default is 0.7
     upsample_cubic_cut: Lower boundary for resampling_factor that activates cubic interpolation at high upsampling values.
                         Improves signal dynamics in exchange of performance. None deactivates cubic interpolation
     '''
@@ -216,18 +216,19 @@ def resample_interp(x,resampling_factor,sequence_first=True, lowpass_cut=0.5, up
     fs_n = resampling_factor
     #if downsampling rate is too high, lowpass filter before interpolation
     if fs_n < lowpass_cut:
-        b,a = butter(4, fs_n/2)
+        b,a = butter(4, fs_n)
         zi = lfilter_zi(b,a)*x[:,:1] #initialize filter with steady state at first time step value
         x,_ = lfilter(b,a,x,axis=-1,zi=zi)
 
     x_int = tensor(x)[None,...]
     targ_size = int(x.shape[-1]*fs_n)
 
-    #if upsampling rate is too high, switch from linear to cubic interpolation
+#     if upsampling rate is too high, switch from linear to cubic interpolation
     if upsample_cubic_cut is None or fs_n <= upsample_cubic_cut:
         x = array(nn.functional.interpolate(x_int, size=targ_size, mode='linear',align_corners=False)[0])
     else:
         x = array(nn.functional.interpolate(x_int[None,...], size=[1,targ_size], mode='bicubic',align_corners=False)[0,0])
+#     x = array(x_int)[0]
 
     if sequence_first:
         x = x.T
