@@ -200,6 +200,7 @@ def downsample_mean(x,N):
 
 # Cell
 from scipy.signal import butter, lfilter, lfilter_zi
+from scipy import signal
 def resample_interp(x,resampling_factor,sequence_first=True, lowpass_cut=0.7, upsample_cubic_cut = None):
     '''signal resampling using linear or cubic interpolation
 
@@ -216,9 +217,15 @@ def resample_interp(x,resampling_factor,sequence_first=True, lowpass_cut=0.7, up
     fs_n = resampling_factor
     #if downsampling rate is too high, lowpass filter before interpolation
     if fs_n < lowpass_cut:
-        b,a = butter(4, fs_n)
+        b,a = butter(2, fs_n)
         zi = lfilter_zi(b,a)*x[:,:1] #initialize filter with steady state at first time step value
         x,_ = lfilter(b,a,x,axis=-1,zi=zi)
+
+#         sos = butter(2, fs_n*1.2,output='sos')
+# #         sos = signal.cheby2(2,20, fs_n,output='sos')
+# #         import pdb;pdb.set_trace()
+#         zi = np.swapaxes(signal.sosfilt_zi(sos)[...,None]*x[:,0],1,2)
+#         x,_ = signal.sosfilt(sos, x,axis=-1,zi=zi)
 
     x_int = tensor(x)[None,...]
     targ_size = int(x.shape[-1]*fs_n)
@@ -227,7 +234,7 @@ def resample_interp(x,resampling_factor,sequence_first=True, lowpass_cut=0.7, up
     if upsample_cubic_cut is None or fs_n <= upsample_cubic_cut:
         x = array(nn.functional.interpolate(x_int, size=targ_size, mode='linear',align_corners=False)[0])
     else:
-        x = array(nn.functional.interpolate(x_int[None,...], size=[1,targ_size], mode='bicubic',align_corners=False)[0,0])
+        x = array(nn.functional.interpolate(x_int[...,None], size=[targ_size,1], mode='bicubic',align_corners=False)[0,...,0])
 #     x = array(x_int)[0]
 
     if sequence_first:
