@@ -201,7 +201,7 @@ def downsample_mean(x,N):
 # Cell
 from scipy.signal import butter, lfilter, lfilter_zi
 from scipy import signal
-def resample_interp(x,resampling_factor,sequence_first=True, lowpass_cut=0.7, upsample_cubic_cut = None):
+def resample_interp(x,resampling_factor,sequence_first=True, lowpass_cut=1.0, upsample_cubic_cut = None):
     '''signal resampling using linear or cubic interpolation
 
     x: signal to resample with shape: features x resampling_dimension or resampling_dimension x  features if sequence_first=True
