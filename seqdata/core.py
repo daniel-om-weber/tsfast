@@ -205,7 +205,73 @@ def downsample_mean(x,N):
     return x[:trunc,:].reshape((-1,N,x.shape[-1])).mean(axis=1)
 
 # Cell
+<<<<<<< HEAD
 def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None):
+=======
+from scipy.signal import butter, lfilter, lfilter_zi
+from scipy import signal
+def resample_interp(x,resampling_factor,sequence_first=True, lowpass_cut=1.0, upsample_cubic_cut = None):
+    '''signal resampling using linear or cubic interpolation
+
+    x: signal to resample with shape: features x resampling_dimension or resampling_dimension x  features if sequence_first=True
+    resampling_factor: Factor > 0 that scales the signal
+    lowpass_cut: Upper boundary for resampling_factor that activates the lowpassfilter, low values exchange accuracy for performance, default is 0.7
+    upsample_cubic_cut: Lower boundary for resampling_factor that activates cubic interpolation at high upsampling values.
+                        Improves signal dynamics in exchange of performance. None deactivates cubic interpolation
+    '''
+
+    if sequence_first:
+        x = x.T
+
+    fs_n = resampling_factor
+    #if downsampling rate is too high, lowpass filter before interpolation
+    if fs_n < lowpass_cut:
+        b,a = butter(2, fs_n)
+        zi = lfilter_zi(b,a)*x[:,:1] #initialize filter with steady state at first time step value
+        x,_ = lfilter(b,a,x,axis=-1,zi=zi)
+
+#         sos = butter(2, fs_n*1.2,output='sos')
+# #         sos = signal.cheby2(2,20, fs_n,output='sos')
+# #         import pdb;pdb.set_trace()
+#         zi = np.swapaxes(signal.sosfilt_zi(sos)[...,None]*x[:,0],1,2)
+#         x,_ = signal.sosfilt(sos, x,axis=-1,zi=zi)
+
+    x_int = tensor(x)[None,...]
+    targ_size = int(x.shape[-1]*fs_n)
+
+#     if upsampling rate is too high, switch from linear to cubic interpolation
+    if upsample_cubic_cut is None or fs_n <= upsample_cubic_cut:
+        x = array(nn.functional.interpolate(x_int, size=targ_size, mode='linear',align_corners=False)[0])
+    else:
+        x = array(nn.functional.interpolate(x_int[...,None], size=[targ_size,1], mode='bicubic',align_corners=False)[0,...,0])
+#     x = array(x_int)[0]
+
+    if sequence_first:
+        x = x.T
+
+    return x
+
+# Cell
+def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, fs_idx =None,dt_idx =False):
+    '''
+    extracts a sequence with the shape [seq_len x num_features]
+
+    hdf_path: file path of hdf file, may be a string or path type
+    clms: list of dataset names of sequences in hdf file
+    dataset: dataset root for clms. Useful for multiples sequences stored in one file.
+    l_slc: left boundary for extraction of a window of the whole sequence
+    r_slc: right boundary for extraction of a window of the whole sequence
+    resampling_factor: scaling factor for the sequence length, uses 'resample_interp' for resampling
+    fs_idx: clms list idx of fs entry in sequence. Will be scaled by resampling_factor after resampling
+    dt_idx: clms list idx of dt entry in sequence. Will be scaled by resampling_factor after resampling
+    '''
+
+    if resampling_factor is not None:
+        seq_len = r_slc-l_slc if l_slc is not None and r_slc is not None else None #calculate seq_len for later slicing, necesary because of rounding errors in resampling
+        if l_slc is not None: l_slc= math.floor(l_slc/resampling_factor)
+        if r_slc is not None: r_slc= math.ceil(r_slc/resampling_factor)
+
+>>>>>>> master
     with h5py.File(hdf_path,'r') as f:
         ds = f if dataset is None else f[dataset]
         l_array = [ds[n][l_slc:r_slc] for n in clms]
