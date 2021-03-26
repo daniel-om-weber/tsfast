@@ -239,27 +239,14 @@ class Sequential_RNN(RNN):
 class SimpleRNN(nn.Module):
 
     @delegates(RNN, keep=True)
-    def __init__(self,input_size,output_size,num_layers=1,hidden_size=100,lrn_init=False,linear_layers=1,**kwargs):
+    def __init__(self,input_size,output_size,num_layers=1,hidden_size=100,linear_layers=0,**kwargs):
         super().__init__()
         self.rnn = RNN(input_size=input_size,hidden_size=hidden_size,num_layers=num_layers,**kwargs)
         self.final = SeqLinear(hidden_size,output_size,hidden_size=hidden_size,hidden_layer=linear_layers,act=nn.LeakyReLU)
-
-        self.init_p = (nn.ParameterList([nn.Parameter(torch.randn(size=(1,1,hidden_size)),requires_grad=True)
-                        for f in range(num_layers)]) if lrn_init else None)
-        self.reset_flag = False
-    def forward(self, x):
-        if self.init_p is None or not self.reset_flag:
-            h_init = None
-        else:
-#             import pdb; pdb.set_trace()
-            h_init = [p.repeat((1,x.shape[0],1)) for p in self.init_p]
-            self.reset_flag = False
-
+    def forward(self, x, h_init=None):
         out,_ = self.rnn(x,h_init)
         out = self.final(out)
         return out
-    def reset_state(self):
-        self.reset_flag = True
 
 # Cell
 class ResidualBlock_RNN(nn.Module):
@@ -441,7 +428,7 @@ class TCN(nn.Module):
 
         if self.stateful:
             if self.x_init is not None: out = out[:,self.rec_field:]
-            self.x_init = x[:,-self.rec_field:]
+            self.x_init =to_detach( x[:,-self.rec_field:], cpu=False, gather=False)
 
         return out
 
@@ -525,20 +512,28 @@ class Normalizer1D(nn.Module):
         self.register_buffer('mean', mean.clone().detach())
 
     def normalize(self, x):
+        if x.device != self.mean.device:
+            self.mean = self.mean.to(x.device)
+            self.std = self.std.to(x.device)
         return (x-self.mean)/self.std
 
     def unnormalize(self, x):
+        if x.device != self.mean.device:
+            self.mean = self.mean.to(x.device)
+            self.std = self.std.to(x.device)
         return x*self.std + self.mean
 
 # Cell
 class AR_Model(nn.Module):
-    def __init__(self,model,ar=True,rf=1,hs=False):
+    def __init__(self,model,ar=True,receptive_field=1,hs=False,stateful=False):
         super().__init__()
         self.model = model
         self.ar = ar
-        self.rf = rf
+        self.receptive_field = receptive_field #receptive field, sequence length to pad at the beginning
         self.hs = hs
         self.norm = None
+        self.stateful = stateful
+        self.y_init = None
 
     def init_normalize(self, batch,axes = [0,1]):
         x = batch[1]
@@ -546,53 +541,62 @@ class AR_Model(nn.Module):
         std = x.std(axes, keepdim=True)
         self.norm = Normalizer1D(mean,std)
 
+    def init_normalize_values(self, mean, std):
+        self.norm = Normalizer1D(mean,std)
+
     def forward(self, u,y):
-        if self.ar:
-            y_e = torch.zeros_like(y)
+
+        if self.stateful and self.y_init is not None and self.y_init.shape[0] == y.shape[0]:
+            y_in = torch.cat([self.y_init,y[:,:-1]],dim=1)
+        else:
+            y_in = F.pad(y[:,:-1,:],[0,0,1,0])#first value is always zero, needs to be stored for tbptt
+
+        if self.ar: #autoregressive mode
+            y_e = y_in
             hs = None
             for i in range(y_e.shape[1]):
-                if i < self.rf:
-                    y_in = F.pad(y_e[:, :i], [0,0,self.rf-i, 0])
-                    u_in = F.pad(u[:, :i+1], [0,0,self.rf-i-1, 0])
+                if i < self.receptive_field:
+                    y_in = F.pad(y_in[:, :i+1], [0,0,self.receptive_field-i-1, 0])
+                    u_in = F.pad(u[:, :i+1], [0,0,self.receptive_field-i-1, 0])
                 else:
-                    y_in = y_e[:, i-self.rf:i]
-                    u_in = u[:, i-self.rf+1:i+1]
+                    y_in = y_e[:, i-self.receptive_field:i]
+                    u_in = u[:, i-self.receptive_field+1:i+1]
 
                 if self.norm is not None: y_in=self.norm.normalize(y_in)
 
                 x = torch.cat((u_in, y_in), 2)
 
-                if self.hs:
+                if self.hs: #model has a hidden state as input
                     y_next,hs = self.model(x,hs)
                 else:
                     y_next = self.model(x)
                 y_e[:, i] = y_next[:, -1]
-            return y_e
-        else:
-            y_in = F.pad(y[:,:-1,:],[0,0,1,0])
+        else: #teacherforcing mode
 
             if self.norm is not None: y_in=self.norm.normalize(y_in)
 
             x = torch.cat([u,y_in],dim=2)
-            if self.hs:
+            if self.hs: #model has a hidden state as output
                 y_e,_ = self.model(x)
             else:
                 y_e = self.model(x)
-            return y_e
+
+        if self.stateful:
+            self.y_init = to_detach(y_e[:,-1:], cpu=False, gather=False)
+        return y_e
+
+    def reset_state(self):
+        self.y_init = None
 
 # Cell
-@delegates(RNN, keep=True)
 class AR_RNN(nn.Module):
-    def __init__(self,input_size,output_size,num_layers=1,hidden_size=100,**kwargs):
+
+    @delegates(RNN, keep=True)
+    def __init__(self,input_size,output_size,num_layers=1,hidden_size=100,linear_layers=0,**kwargs):
         super().__init__()
         self.rnn = RNN(input_size=input_size,hidden_size=hidden_size,num_layers=num_layers,**kwargs)
-        self.final = nn.Conv1d(hidden_size,output_size,kernel_size=1)
-
-    def forward(self, x,init_state=None):
-#         out = x.transpose(1,2)
-        out,hs = self.rnn(x,init_state)
-#         import pdb; pdb.set_trace()
-        out = out.transpose(1,2)
+        self.final = SeqLinear(hidden_size,output_size,hidden_size=hidden_size,hidden_layer=linear_layers,act=nn.LeakyReLU)
+    def forward(self, x, h_init=None):
+        out,hs = self.rnn(x,h_init)
         out = self.final(out)
-        out = out.transpose(1,2)
         return out,hs

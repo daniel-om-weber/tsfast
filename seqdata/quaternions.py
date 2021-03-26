@@ -358,6 +358,7 @@ class QuaternionAugmentation(Transform):
         return multiplyQuat(x,self.r_quat)
 
 # Cell
+from scipy.signal import resample
 class Quaternion_ResamplingModel(nn.Module):
     '''
         Module that resamples the signal before and after the prediction of its model.
@@ -370,20 +371,22 @@ class Quaternion_ResamplingModel(nn.Module):
         super().__init__()
         self.model =model
         self.fs_targ =fs_targ
-        self.fs_mean =fs_mean
-        self.fs_std =fs_std
+        self.register_buffer('fs_mean',fs_mean)
+        self.register_buffer('fs_std',fs_std)
         self.quaternion_sampling = quaternion_sampling
 
     def forward(self, x):
         dt = (x[0,0,-1]*self.fs_std)+self.fs_mean
         fs_src = 1/dt
         x_len = x.shape[1]
-        res_len = int(x.shape[1]*self.fs_targ/fs_src)
+        res_len = int(x.shape[1]*self.fs_targ/(fs_src+10))
         x_raw = x[...,:-1]
         if x_len == res_len:
             res = self.model(x_raw)
         else:
-            x_new = nn.functional.interpolate(x_raw.transpose(1,2), size=res_len, mode='linear',align_corners=False).transpose(1,2)
+#             x_new = nn.functional.interpolate(x_raw.transpose(1,2), size=res_len, mode='linear',align_corners=False).transpose(1,2)
+#             import pdb;pdb.set_trace()
+            x_new = tensor(resample(x_raw.detach().cpu().numpy(),res_len,axis =1),device=x_raw.device)
             res = self.model(x_new)
             if self.quaternion_sampling:
                 res = quatInterp(res.transpose(0,1),torch.linspace(0,res.shape[1]-1,x_len)).transpose(0,1)
@@ -391,6 +394,41 @@ class Quaternion_ResamplingModel(nn.Module):
                 res = nn.functional.interpolate(res.transpose(1,2), size=x_len, mode='linear',align_corners=False).transpose(1,2)
 
         return res
+
+
+# class Quaternion_ResamplingModel(nn.Module):
+#     '''
+#         Module that resamples the signal before and after the prediction of its model.
+#         Usefull for using models on datasets with different samplingrates.
+
+#         sampling_method: method used for resampling ['resample','interpolate']
+#     '''
+
+#     def __init__(self,model,fs_targ,fs_mean=0,fs_std=1,quaternion_sampling=True):
+#         super().__init__()
+#         self.model =model
+#         self.fs_targ =fs_targ
+#         self.fs_mean =fs_mean
+#         self.fs_std =fs_std
+#         self.quaternion_sampling = quaternion_sampling
+
+#     def forward(self, x):
+#         dt = (x[0,0,-1]*self.fs_std)+self.fs_mean
+#         fs_src = 1/dt
+#         x_len = x.shape[1]
+#         res_len = int(x.shape[1]*self.fs_targ/fs_src)
+#         x_raw = x[...,:-1]
+#         if x_len == res_len:
+#             res = self.model(x_raw)
+#         else:
+#             x_new = nn.functional.interpolate(x_raw.transpose(1,2), size=res_len, mode='linear',align_corners=False).transpose(1,2)
+#             res = self.model(x_new)
+#             if self.quaternion_sampling:
+#                 res = quatInterp(res.transpose(0,1),torch.linspace(0,res.shape[1]-1,x_len)).transpose(0,1)
+#             else:
+#                 res = nn.functional.interpolate(res.transpose(1,2), size=x_len, mode='linear',align_corners=False).transpose(1,2)
+
+#         return res
 
 # Internal Cell
 def relativeQuat_np(q1, q2):
@@ -561,19 +599,20 @@ import h5py
 
 class HDF2Quaternion(HDF2Sequence):
 
-    def _hdf_extract_sequence(self,hdf_path,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, resampling_idx =None,resampling_inverse =False):
+    def _hdf_extract_sequence(self,hdf_path,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, fs_idx =None,dt_idx =False):
         '''
         extracts a sequence with the shape [seq_len x num_features]
-        quaternion variation of the resampling method
 
         hdf_path: file path of hdf file, may be a string or path type
+        clms: list of dataset names of sequences in hdf file
         dataset: dataset root for clms. Useful for multiples sequences stored in one file.
         l_slc: left boundary for extraction of a window of the whole sequence
         r_slc: right boundary for extraction of a window of the whole sequence
         resampling_factor: scaling factor for the sequence length, uses 'resample_interp' for resampling
-        resampling_idx: clms list idx of fs entry in sequence. Will be scaled by resampling_factor after resampling
-        resampling_inverse: if 'True' the fs entry given by 'resampling_idx' will be scaled by the inverse of 'resampling_factor'. Useful for dt scaling with fs factor
+        fs_idx: clms list idx of fs entry in sequence. Will be scaled by resampling_factor after resampling
+        dt_idx: clms list idx of dt entry in sequence. Will be scaled by resampling_factor after resampling
         '''
+
         if resampling_factor is not None:
             seq_len = r_slc-l_slc if l_slc is not None and r_slc is not None else None #calculate seq_len for later slicing, necesary because of rounding errors in resampling
             if l_slc is not None: l_slc= math.floor(l_slc/resampling_factor)
@@ -587,12 +626,10 @@ class HDF2Quaternion(HDF2Sequence):
         if resampling_factor is not None:
 #             res_seq = resample_interp(seq,resampling_factor)
             res_seq = quatInterp_np(seq,np.linspace(0,seq.shape[0]-1,int(seq.shape[0]*resampling_factor)))
-            if resampling_idx is not None:
-                if not resampling_inverse:
-                    res_seq[resampling_idx] = seq[resampling_idx] * resampling_factor
-                else:
-                    res_seq[resampling_idx] = seq[resampling_idx] / resampling_factor
+            if fs_idx is not None: res_seq[:,fs_idx] = seq[0,fs_idx] * resampling_factor
+            if dt_idx is not None: res_seq[:,dt_idx] = seq[0,dt_idx] / resampling_factor
             seq = res_seq
+
             if seq_len is not None: seq = seq[:seq_len] #cut the part of the sequence that is too long because of resampling rounding errors
 
         return seq

@@ -40,12 +40,15 @@ class SkipFirstNCallback(Callback):
         self.n_skip = n_skip
 
     def after_pred(self):
-        self.learn.pred = self.pred[:,self.n_skip:]
-#         import pdb; pdb.set_trace()
-        if isinstance(self.yb, tuple):
-            self.learn.yb = tuple([y[:,self.n_skip:] for y in self.yb])
-        else:
-            self.learn.yb = self.yb[:,self.n_skip:]
+        if self.training:
+            dl = self.learn.dls.train
+            if (hasattr(dl,'rnn_reset') and dl.rnn_reset) or not hasattr(dl,'rnn_reset'): # if tbptt is used, only skip loss in the first minibatch
+                self.learn.pred = self.pred[:,self.n_skip:]
+        #         import pdb; pdb.set_trace()
+                if isinstance(self.yb, tuple):
+                    self.learn.yb = tuple([y[:,self.n_skip:] for y in self.yb])
+                else:
+                    self.learn.yb = self.yb[:,self.n_skip:]
 
 
 # Cell
@@ -79,7 +82,7 @@ class TimeSeriesRegularizer(HookCallback):
 
     def hook(self, m, i, o):
 #         import pdb; pdb.set_trace()
-        if type(o) is torch.Tensor:
+        if isinstance(o,torch.Tensor):
             self.out = o
         else:
             self.out = o[0]
@@ -286,12 +289,12 @@ def AR_TCNLearner(db,hl_depth=3,alpha=1,beta=1,early_stop=0,metrics=None,n_skip=
     return lrn
 
 # Cell
-@delegates(AR_RNN, keep=True)
+@delegates(SimpleRNN, keep=True)
 def AR_RNNLearner(db,alpha=0,beta=0,early_stop=0,metrics=None,n_skip=0,fname='model',**kwargs):
     skip = partial(SkipNLoss,n_skip=n_skip)
 
     inp,out = get_inp_out_size(db)
-    model = AR_Model(AR_RNN(inp+out,out,**kwargs),ar=False,hs=True)
+    model = AR_Model(SimpleRNN(inp+out,out,**kwargs),ar=False,hs=True)
     model.init_normalize(db.one_batch())
 
     cbs=[ARInitCB(),TimeSeriesRegularizer(alpha=alpha,beta=beta,modules=[model.model.rnn]),SaveModelCallback()]

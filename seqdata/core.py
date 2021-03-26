@@ -8,7 +8,9 @@ __all__ = ['obj_in_lst', 'count_parameters', 'get_hdf_files', 'hdf_extensions', 
            'toTensorSequencesOutput', 'TensorScalars', 'TensorScalarsInput', 'TensorScalarsOutput', 'SeqSlice',
            'SeqNoiseInjection', 'SeqNoiseInjection_Varying', 'SeqNoiseInjection_Grouped', 'SeqBiasInjection', 'encodes',
            'decodes', 'ParentSplitter', 'PercentageSplitter', 'ApplyToDict', 'valid_clm_splitter', 'pad_sequence',
-           'SequenceBlock', 'plot_sequence', 'plot_seqs_single_figure', 'plot_seqs_multi_figures']
+           'SequenceBlock', 'TensorSpectrogram', 'TensorSpectrogramInput', 'TensorSpectrogramOutput',
+           'Sequence2Spectrogram', 'SpectrogramBlock', 'plot_sequence', 'plot_seqs_single_figure',
+           'plot_seqs_multi_figures']
 
 # Cell
 from fastai.data.all import *
@@ -243,7 +245,8 @@ def resample_interp(x,resampling_factor,sequence_first=True, lowpass_cut=1.0, up
     return x
 
 # Cell
-def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, fs_idx =None,dt_idx =False):
+from scipy.signal import resample
+def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, fs_idx =None,dt_idx =False,fast_resample=False):
     '''
     extracts a sequence with the shape [seq_len x num_features]
 
@@ -255,6 +258,7 @@ def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None
     resampling_factor: scaling factor for the sequence length, uses 'resample_interp' for resampling
     fs_idx: clms list idx of fs entry in sequence. Will be scaled by resampling_factor after resampling
     dt_idx: clms list idx of dt entry in sequence. Will be scaled by resampling_factor after resampling
+    fast_resample: if True, uses linear interpolation with anti-aliasing filter for faster resampling. Is less accurate than fft based resampling
     '''
 
     if resampling_factor is not None:
@@ -268,7 +272,10 @@ def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None
         seq = np.stack(l_array,axis=-1)
 
     if resampling_factor is not None:
-        res_seq = resample_interp(seq,resampling_factor)
+        if fast_resample:
+            res_seq = resample_interp(seq,resampling_factor)
+        else:
+            res_seq = resample(seq,int(seq.shape[0]*resampling_factor))
         if fs_idx is not None: res_seq[:,fs_idx] = seq[0,fs_idx] * resampling_factor
         if dt_idx is not None: res_seq[:,dt_idx] = seq[0,dt_idx] / resampling_factor
         seq = res_seq
@@ -291,7 +298,7 @@ class Memoize:
 # Cell
 class HDF2Sequence(Transform):
 
-    def __init__(self, clm_names,clm_shift=None,truncate_sz=None,to_cls=noop,cached=False, fs_idx =None,dt_idx =False):
+    def __init__(self, clm_names,clm_shift=None,truncate_sz=None,to_cls=noop,cached=False, fs_idx =None,dt_idx =False,fast_resample=False):
         if not clm_shift is None:
             assert len(clm_shift)==len(clm_names) and all(isinstance(n, int) for n in clm_shift)
             self.l_shift,self.r_shift,_ = calc_shift_offsets(clm_shift)
@@ -300,7 +307,7 @@ class HDF2Sequence(Transform):
 
         store_attr('clm_names,clm_shift,truncate_sz,to_cls,cached,fs_idx,dt_idx')
 
-    def _hdf_extract_sequence(self,hdf_path,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, fs_idx =None,dt_idx =False):
+    def _hdf_extract_sequence(self,hdf_path,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, fs_idx =None,dt_idx =False,fast_resample=False):
         '''
         extracts a sequence with the shape [seq_len x num_features]
 
@@ -312,6 +319,7 @@ class HDF2Sequence(Transform):
         resampling_factor: scaling factor for the sequence length, uses 'resample_interp' for resampling
         fs_idx: clms list idx of fs entry in sequence. Will be scaled by resampling_factor after resampling
         dt_idx: clms list idx of dt entry in sequence. Will be scaled by resampling_factor after resampling
+        fast_resample: if True, uses linear interpolation with anti-aliasing filter for faster resampling. Is less accurate than fft based resampling
         '''
 
         if resampling_factor is not None:
@@ -325,7 +333,11 @@ class HDF2Sequence(Transform):
             seq = np.stack(l_array,axis=-1)
 
         if resampling_factor is not None:
-            res_seq = resample_interp(seq,resampling_factor)
+            if fast_resample:
+                res_seq = resample_interp(seq,resampling_factor)
+            else:
+                res_seq = resample(seq,int(seq.shape[0]*resampling_factor))
+
             if fs_idx is not None: res_seq[:,fs_idx] = seq[0,fs_idx] * resampling_factor
             if dt_idx is not None: res_seq[:,dt_idx] = seq[0,dt_idx] / resampling_factor
             seq = res_seq
@@ -548,6 +560,56 @@ class SequenceBlock(TransformBlock):
     def from_hdf(cls, clm_names, seq_cls=TensorSequencesInput,padding=False, **kwargs):
         return cls(HDF2Sequence(clm_names,to_cls=seq_cls,**kwargs), padding)
 
+
+# Cell
+class TensorSpectrogram(TensorBase):
+    def show(self, ctx=None, ax=None, title="", **kwargs):
+        ax = ifnone(ax, ctx)
+        if ax is None:
+            _, ax = plt.subplots()
+        ax.axis(False)
+        n_channels = self.shape[0]
+        for i, channel in enumerate(self):
+            ia = ax.inset_axes((i / n_channels, 0.2, 1 / n_channels, 0.7))
+#             ia = ax.inset_axes((i / n_channels, 0, 1 / n_channels, 1))
+
+            ia.imshow(channel.cpu().numpy(),aspect ='auto',origin ='lower')
+            if i>0: ia.set_yticks([])
+            ia.set_title(f"Channel {i}")
+        ax.set_title(title)
+        return ax
+
+class TensorSpectrogramInput(TensorSpectrogram): pass
+class TensorSpectrogramOutput(TensorSpectrogram): pass
+
+# Cell
+import torchaudio
+@delegates(torchaudio.transforms.Spectrogram, keep=True)
+class Sequence2Spectrogram(Transform):
+    '''calculates the FFT of a sequence'''
+
+    def __init__(self,scaling='log',**kwargs):
+        self.scaling=scaling
+        self.tfm = torchaudio.transforms.Spectrogram(**kwargs)
+
+    def encodes(self, o:TensorSpectrogram):
+        if o.device != self.tfm.window.device: self.tfm.window = self.tfm.window.to(o.device)
+#         import pdb;pdb.set_trace()
+        spec = self.tfm(o.transpose(-1,-2))
+        if self.scaling == 'log': spec = torch.log10(spec + 1e-10)
+        return spec
+
+# Cell
+class SpectrogramBlock(TransformBlock):
+    def __init__(self, seq_extract,padding=False,n_fft=100,hop_length=None,normalized=False):
+        return super().__init__(type_tfms=[seq_extract],
+                                batch_tfms=[Sequence2Spectrogram(n_fft=n_fft,hop_length=hop_length,normalized=normalized)],
+                                dls_kwargs={} if not padding else {'before_batch': pad_sequence})
+
+    @classmethod
+    @delegates(HDF2Sequence, keep=True)
+    def from_hdf(cls, clm_names, seq_cls=TensorSpectrogramInput,padding=False,n_fft=100,hop_length=None,normalized=False, **kwargs):
+        return cls(HDF2Sequence(clm_names,to_cls=seq_cls,**kwargs), padding,n_fft=n_fft,hop_length=hop_length,normalized=normalized)
 
 # Cell
 def plot_sequence(axs,in_sig,targ_sig,out_sig=None,**kwargs):
