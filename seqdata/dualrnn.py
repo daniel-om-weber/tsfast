@@ -36,11 +36,11 @@ class ProDiagTrainer(Callback):
 
     def after_loss(self):
         if not self.training: return
-        self.learn.loss = self.learn.loss+self.beta*self.learn.loss_func(self.pred_diag,*self.yb)
+        self.learn.loss = self.learn.loss + self.beta*self.learn.loss_func(self.pred_diag,*self.yb)
 
         hidden_loss = ((self.est_hidden-self.pred_hidden)/
                        (self.est_hidden.norm()+self.pred_hidden.norm())).pow(2).mean()
-        self.learn.loss = self.learn.loss+self.alpha * hidden_loss
+        self.learn.loss = self.learn.loss + self.alpha * hidden_loss
 
     def before_validate(self):
         '''Set Dual RNN to reuse the prediction state after each mini batch on validation'''
@@ -61,9 +61,9 @@ class DualRNN(nn.Module):
 
     @delegates(RNN, keep=True)
     def __init__(self,main_input_size,co_input_size,output_size,init_sz=100,hidden_size=100,
-                 rnn_layer=1,linear_layer = 1,main_init_est = True,main_init_prop = True,**kwargs):
+                 rnn_layer=1,linear_layer = 1,main_init_est = True,main_init_prop = True, main_output_state = True, **kwargs):
         super().__init__()
-        store_attr('main_input_size,co_input_size,main_init_est,main_init_prop,init_sz')
+        store_attr('main_input_size,co_input_size,main_init_est,main_init_prop,init_sz,main_output_state')
 
         rnn_kwargs = dict(hidden_size=hidden_size,num_layers=rnn_layer,stateful=True,ret_full_hidden=True)
         rnn_kwargs = dict(rnn_kwargs, **kwargs)
@@ -71,16 +71,17 @@ class DualRNN(nn.Module):
         self.co_rnn = RNN(co_input_size,**rnn_kwargs)
         self.main_rnn = RNN(main_input_size,**rnn_kwargs)
 
-#         self.co_estimator = SeqLinear(hidden_size,output_size,hidden_layer=linear_layer)
+        #self.co_estimator = SeqLinear(hidden_size,output_size,hidden_layer=linear_layer)
         self.main_estimator = SeqLinear(hidden_size,output_size,hidden_layer=linear_layer)
 
     def forward(self, x,init_state = None):
         bs = x.shape[0]
         if init_state is None:
             init_state = self.main_rnn._get_hidden(bs) if self.main_init_prop else self.co_rnn._get_hidden(bs)
-
-
+            #init_state_co = self.co_rnn._get_hidden(bs)
+        # Diag
         x_co = x[...,:self.co_input_size]
+        # Prog
         x_main = x[...,:self.main_input_size]
 
         #RNN Layer
@@ -105,13 +106,15 @@ class DualRNN(nn.Module):
 
 #         import pdb; pdb.set_trace()
 
-        #Shared Linear Layer
+        #est_co = self.co_estimator(out_co[-1])
         est_co = self.main_estimator(out_co[-1])
         est_main = self.main_estimator(out_main[-1])
 
 #         import pdb; pdb.set_trace()
-        return est_main,est_co, out_co,out_main
-
+        if self.main_output_state:
+            return est_main,est_co, out_co,out_main
+        else:
+            return est_co, est_main, out_main, out_co
 # Cell
 class DualCRNN(nn.Module):
 

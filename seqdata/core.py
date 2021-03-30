@@ -204,10 +204,7 @@ def downsample_mean(x,N):
     trunc = trunc if trunc != 0 else None
     return x[:trunc,:].reshape((-1,N,x.shape[-1])).mean(axis=1)
 
-# Cell
-<<<<<<< HEAD
-def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None):
-=======
+
 from scipy.signal import butter, lfilter, lfilter_zi
 from scipy import signal
 def resample_interp(x,resampling_factor,sequence_first=True, lowpass_cut=1.0, upsample_cubic_cut = None):
@@ -271,7 +268,6 @@ def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None
         if l_slc is not None: l_slc= math.floor(l_slc/resampling_factor)
         if r_slc is not None: r_slc= math.ceil(r_slc/resampling_factor)
 
->>>>>>> master
     with h5py.File(hdf_path,'r') as f:
         ds = f if dataset is None else f[dataset]
         l_array = [ds[n][l_slc:r_slc] for n in clms]
