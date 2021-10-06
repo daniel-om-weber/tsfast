@@ -4,11 +4,12 @@ __all__ = ['obj_in_lst', 'count_parameters', 'get_hdf_files', 'hdf_extensions', 
            'ValidClmContains', 'ValidClmIs', 'FilterClm', 'get_hdf_seq_len', 'df_get_hdf_seq_len', 'DfHDFGetSeqLen',
            'DfResamplingFactor', 'DfHDFCreateWindows', 'DfFilterQuery', 'DfDropClmExcept', 'calc_shift_offsets',
            'running_mean', 'downsample_mean', 'resample_interp', 'hdf_extract_sequence', 'Memoize', 'HDF2Sequence',
-           'hdf2scalars', 'TensorSequences', 'TensorSequencesInput', 'TensorSequencesOutput', 'toTensorSequencesInput',
-           'toTensorSequencesOutput', 'TensorScalars', 'TensorScalarsInput', 'TensorScalarsOutput', 'SeqSlice',
-           'SeqNoiseInjection', 'SeqNoiseInjection_Varying', 'SeqNoiseInjection_Grouped', 'SeqBiasInjection', 'encodes',
-           'decodes', 'ParentSplitter', 'PercentageSplitter', 'ApplyToDict', 'valid_clm_splitter', 'pad_sequence',
-           'SequenceBlock', 'TensorSpectrogram', 'TensorSpectrogramInput', 'TensorSpectrogramOutput',
+           'hdf2scalars', 'HDF2Scalars', 'TensorSequences', 'TensorSequencesInput', 'TensorSequencesOutput',
+           'toTensorSequencesInput', 'toTensorSequencesOutput', 'TensorScalars', 'TensorScalarsInput',
+           'TensorScalarsOutput', 'SeqSlice', 'SeqNoiseInjection', 'SeqNoiseInjection_Varying',
+           'SeqNoiseInjection_Grouped', 'SeqBiasInjection', 'encodes', 'decodes', 'ParentSplitter',
+           'PercentageSplitter', 'ApplyToDict', 'valid_clm_splitter', 'pad_sequence', 'SequenceBlock',
+           'ScalarNormalize', 'ScalarBlock', 'TensorSpectrogram', 'TensorSpectrogramInput', 'TensorSpectrogramOutput',
            'Sequence2Spectrogram', 'SpectrogramBlock', 'plot_sequence', 'plot_seqs_single_figure',
            'plot_seqs_multi_figures']
 
@@ -298,7 +299,7 @@ class Memoize:
 # Cell
 class HDF2Sequence(Transform):
 
-    def __init__(self, clm_names,clm_shift=None,truncate_sz=None,to_cls=noop,cached=False, fs_idx =None,dt_idx =False,fast_resample=False):
+    def __init__(self, clm_names,clm_shift=None,truncate_sz=None,to_cls=noop,cached=False, fs_idx =None,dt_idx =None,fast_resample=False):
         if not clm_shift is None:
             assert len(clm_shift)==len(clm_names) and all(isinstance(n, int) for n in clm_shift)
             self.l_shift,self.r_shift,_ = calc_shift_offsets(clm_shift)
@@ -307,7 +308,7 @@ class HDF2Sequence(Transform):
 
         store_attr('clm_names,clm_shift,truncate_sz,to_cls,cached,fs_idx,dt_idx')
 
-    def _hdf_extract_sequence(self,hdf_path,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, fs_idx =None,dt_idx =False,fast_resample=False):
+    def _hdf_extract_sequence(self,hdf_path,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, fs_idx =None,dt_idx =None,fast_resample=False):
         '''
         extracts a sequence with the shape [seq_len x num_features]
 
@@ -377,12 +378,34 @@ class HDF2Sequence(Transform):
         return self._extract_dict_sequence(item)
 
 # Cell
-def hdf2scalars(hdf_path,c_names):
+def hdf2scalars(hdf_path,c_names,dataset = None):
     with h5py.File(hdf_path,'r') as f:
+        ds = f if dataset is None else f[dataset]
+        l_array = [ds.attrs[n] for n in c_names]
+        scalars = np.stack(l_array,axis=-1)
 #         import pdb; pdb.set_trace()
 #         l_array = [f[n][:][:,None] for n in c_names]
 #         seq = np.concatenate(l_array,axis=1)
-        return None
+        return scalars
+
+# Cell
+class HDF2Scalars(Transform):
+
+    def __init__(self, clm_names,to_cls=noop):
+        store_attr('clm_names,to_cls')
+
+    def _extract_dict_scalars(self,item):
+        if isinstance(item,dict):
+            path = item['path']
+            dataset = item['dataset'] if 'dataset' in item else None
+
+            seq = hdf2scalars(path,self.clm_names,dataset)
+        else:
+            seq = hdf2scalars(str(item),self.clm_names)
+        return self.to_cls(seq)
+
+    def encodes(self, item)->None:
+        return self._extract_dict_scalars(item)
 
 # Cell
 class TensorSequences(TensorBase):#TensorBase
@@ -413,7 +436,13 @@ def toTensorSequencesInput(o): return TensorSequencesInput(o)
 def toTensorSequencesOutput(o): return TensorSequencesOutput(o)
 
 # Cell
-class TensorScalars(Tensor): pass
+class TensorScalars(Tensor):
+    @classmethod
+    @delegates(HDF2Scalars, keep=True)
+    def from_hdf(cls,clm_names,**kwargs):
+        return HDF2Scalars(clm_names,**kwargs)
+
+
 class TensorScalarsInput(TensorScalars): pass
 class TensorScalarsOutput(TensorScalars): pass
 
@@ -559,6 +588,44 @@ class SequenceBlock(TransformBlock):
     @delegates(HDF2Sequence, keep=True)
     def from_hdf(cls, clm_names, seq_cls=TensorSequencesInput,padding=False, **kwargs):
         return cls(HDF2Sequence(clm_names,to_cls=seq_cls,**kwargs), padding)
+
+
+# Cell
+class ScalarNormalize(DisplayedTransform):
+    def __init__(self, mean=None, std=None, axes=(0,)): store_attr()
+
+    @classmethod
+    def from_stats(cls, mean, std, dim=1, ndim=4, cuda=True): return cls(*broadcast_vec(dim, ndim, mean, std, cuda=cuda))
+
+    def setups(self, dl:DataLoader):
+        if self.mean is None or self.std is None:
+            b = dl.one_batch()
+            for x in b:
+                if isinstance(x,TensorScalarsInput):
+                    self.mean,self.std = x.mean(self.axes, keepdim=True),x.std(self.axes, keepdim=True)+1e-7
+                    return
+
+    def encodes(self, x:TensorScalarsInput):
+        if x.device != self.mean.device:
+            self.mean = self.mean.to(x.device)
+            self.std = self.std.to(x.device)
+        return (x-self.mean) / self.std
+
+    def decodes(self, x:TensorScalarsInput):
+        if x.device != self.mean.device:
+            self.mean = self.mean.to(x.device)
+            self.std = self.std.to(x.device)
+        return (x*self.std + self.mean)
+
+class ScalarBlock(TransformBlock):
+    def __init__(self, scl_extract):
+        return super().__init__(type_tfms=[scl_extract],
+                                batch_tfms=[ScalarNormalize()])
+
+    @classmethod
+    @delegates(HDF2Scalars, keep=True)
+    def from_hdf(cls, clm_names, scl_cls=TensorScalarsInput, **kwargs):
+        return cls(HDF2Scalars(clm_names,to_cls=scl_cls,**kwargs))
 
 
 # Cell
