@@ -2,7 +2,7 @@
 
 __all__ = ['BatchNorm_1D_Stateful', 'SeqLinear', 'RNN', 'Sequential_RNN', 'SimpleRNN', 'ResidualBlock_RNN',
            'SimpleResidualRNN', 'DenseLayer_RNN', 'DenseBlock_RNN', 'DenseNet_RNN', 'SeperateRNN', 'CausalConv1d',
-           'CConv1D', 'TCN_Block', 'TCN', 'SeperateTCN', 'CRNN', 'SeperateCRNN', 'Normalizer1D', 'AR_Model', 'AR_RNN']
+           'CConv1D', 'TCN_Block', 'TCN', 'SeperateTCN', 'CRNN', 'SeperateCRNN', 'Normalizer1D', 'AR_Model']
 
 # Cell
 from ..core import *
@@ -349,21 +349,39 @@ class CausalConv1d(torch.nn.Conv1d):
                  stride=1,
                  dilation=1,
                  groups=1,
-                 bias=True):
+                 bias=True,
+                stateful=False):
 
         super().__init__(
             in_channels,
             out_channels,
             kernel_size=kernel_size,
             stride=stride,
-            padding=(kernel_size - 1) * dilation,
+            padding=0,
             dilation=dilation,
             groups=groups,
             bias=bias)
-        self.__padding = (kernel_size - 1) * dilation
+        self.__init_size = (kernel_size - 1) * dilation
+        self.x_init = None
+        self.stateful = stateful
 
-    def forward(self, input):
-        return super().forward(input)[:,:,:-self.__padding]
+    def forward(self, x):
+        if self.x_init is not None and self.x_init.shape[0] != x.shape[0]:
+            self.x_init = None
+
+        if self.x_init is None or not self.stateful:
+            self.x_init = torch.zeros((x.shape[0],x.shape[1],self.__init_size),device=x.device)
+
+        x = torch.cat([self.x_init,x],dim=-1)
+
+        out = super().forward(x)
+
+        if self.stateful: self.x_init =to_detach( x[...,-self.__init_size:], cpu=False, gather=False)
+
+        return out
+
+    def reset_state(self):
+        self.x_init = None
 
 # Cell
 @delegates(CausalConv1d, keep=True)
@@ -379,12 +397,12 @@ def CConv1D(input_size,output_size,kernel_size=2,activation = Mish,wn=True, bn =
 @delegates(CausalConv1d, keep=True)
 class TCN_Block(nn.Module):
     def __init__(self,input_size,output_size,num_layers=1,
-                 activation = Mish,wn=True, bn = False, **kwargs):
+                 activation = Mish,wn=True, bn = False,stateful=False, **kwargs):
         super().__init__()
 
         layers=[]
         for _ in range(num_layers):
-            conv = CausalConv1d(input_size,output_size,2,**kwargs)
+            conv = CausalConv1d(input_size,output_size,2,stateful=stateful,**kwargs)
             if wn: conv = weight_norm(conv)
             act = activation() if activation is not None else None
             bn = nn.BatchNorm1d(input_size) if bn else None
@@ -405,35 +423,16 @@ class TCN(nn.Module):
         super().__init__()
 
         conv_layers = [TCN_Block(input_size if i==0 else hl_width,hl_width,
-                                      dilation=2**(i),bn=bn,activation=act)
+                                      dilation=2**(i),bn=bn,activation=act,stateful=stateful)
                                           for i in range(hl_depth)]
         self.conv_layers = nn.Sequential(*conv_layers)
-
-
-        self.rec_field = (2**hl_depth)-1
         self.final = nn.Conv1d(hl_width,output_size,kernel_size=1)
-        self.x_init = None
-        self.stateful = stateful
 
     def forward(self, x):
-        if self.x_init is not None:
-            if self.x_init.shape[0] != x.shape[0]:
-                self.x_init = None
-            elif self.stateful:
-                x = torch.cat([self.x_init,x],dim=1)
-
         x_in = x.transpose(1,2)
         out = self.conv_layers(x_in)
         out = self.final(out).transpose(1,2)
-
-        if self.stateful:
-            if self.x_init is not None: out = out[:,self.rec_field:]
-            self.x_init =to_detach( x[:,-self.rec_field:], cpu=False, gather=False)
-
         return out
-
-    def reset_state(self):
-        self.x_init = None
 
 # Cell
 class SeperateTCN(nn.Module):
@@ -525,12 +524,10 @@ class Normalizer1D(nn.Module):
 
 # Cell
 class AR_Model(nn.Module):
-    def __init__(self,model,ar=True,receptive_field=1,hs=False,stateful=False):
+    def __init__(self,model,ar=True,stateful=False):
         super().__init__()
         self.model = model
         self.ar = ar
-        self.receptive_field = receptive_field #receptive field, sequence length to pad at the beginning
-        self.hs = hs
         self.norm = None
         self.stateful = stateful
         self.y_init = None
@@ -546,57 +543,39 @@ class AR_Model(nn.Module):
 
     def forward(self, u,y):
 
-        if self.stateful and self.y_init is not None and self.y_init.shape[0] == y.shape[0]:
+        if self.stateful and self.y_init is not None and self.y_init.shape[0] == u.shape[0]:
             y_in = torch.cat([self.y_init,y[:,:-1]],dim=1)
         else:
             y_in = F.pad(y[:,:-1,:],[0,0,1,0])#first value is always zero, needs to be stored for tbptt
 
         if self.ar: #autoregressive mode
-            y_e = y_in
-            hs = None
-            for i in range(y_e.shape[1]):
-                if i < self.receptive_field:
-                    y_in = F.pad(y_in[:, :i+1], [0,0,self.receptive_field-i-1, 0])
-                    u_in = F.pad(u[:, :i+1], [0,0,self.receptive_field-i-1, 0])
-                else:
-                    y_in = y_e[:, i-self.receptive_field:i]
-                    u_in = u[:, i-self.receptive_field+1:i+1]
+            y_e = []
 
-                if self.norm is not None: y_in=self.norm.normalize(y_in)
+            y_next = y_in[:,:1]
 
-                x = torch.cat((u_in, y_in), 2)
+            for i in range(u.shape[1]):
 
-                if self.hs: #model has a hidden state as input
-                    y_next,hs = self.model(x,hs)
-                else:
-                    y_next = self.model(x)
-                y_e[:, i] = y_next[:, -1]
+                if self.norm is not None: y_next=self.norm.normalize(y_next)
+                x = torch.cat((u[:, i:i+1], y_next), dim=2)
+                y = self.model(x)
+
+                y_next = y[:, -1:]
+                y_e.append(y_next)
+
+            y_e = torch.cat(y_e,dim=1)
+
         else: #teacherforcing mode
 
             if self.norm is not None: y_in=self.norm.normalize(y_in)
 
             x = torch.cat([u,y_in],dim=2)
-            if self.hs: #model has a hidden state as output
-                y_e,_ = self.model(x)
-            else:
-                y_e = self.model(x)
+            y_e = self.model(x)
 
         if self.stateful:
             self.y_init = to_detach(y_e[:,-1:], cpu=False, gather=False)
+
+#             import pdb; pdb.set_trace()
         return y_e
 
     def reset_state(self):
         self.y_init = None
-
-# Cell
-class AR_RNN(nn.Module):
-
-    @delegates(RNN, keep=True)
-    def __init__(self,input_size,output_size,num_layers=1,hidden_size=100,linear_layers=0,**kwargs):
-        super().__init__()
-        self.rnn = RNN(input_size=input_size,hidden_size=hidden_size,num_layers=num_layers,**kwargs)
-        self.final = SeqLinear(hidden_size,output_size,hidden_size=hidden_size,hidden_layer=linear_layers,act=nn.LeakyReLU)
-    def forward(self, x, h_init=None):
-        out,hs = self.rnn(x,h_init)
-        out = self.final(out)
-        return out,hs

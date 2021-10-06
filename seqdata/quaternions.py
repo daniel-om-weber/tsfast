@@ -6,9 +6,9 @@ __all__ = ['TensorQuaternionInclination', 'TensorQuaternionAngle', 'rad2deg', 'm
            'inclination_loss', 'inclination_loss_abs', 'inclination_loss_squared', 'inclination_loss_smooth',
            'abs_inclination', 'ms_inclination', 'rms_inclination', 'smooth_inclination', 'rms_inclination_deg',
            'rms_pitch_deg', 'rms_roll_deg', 'mean_inclination_deg', 'angle_loss', 'angle_loss_opt', 'ms_rel_angle',
-           'rms_rel_angle_deg', 'mean_rel_angle_deg', 'deg_rmse', 'QuaternionRegularizer', 'augmentation_groups',
-           'QuaternionAugmentation', 'Quaternion_ResamplingModel', 'HDF2Quaternion', 'QuaternionBlock',
-           'TensorInclination', 'HDF2Inclination', 'InclinationBlock', 'plot_scalar_inclination',
+           'abs_rel_angle', 'rms_rel_angle_deg', 'mean_rel_angle_deg', 'deg_rmse', 'QuaternionRegularizer',
+           'augmentation_groups', 'QuaternionAugmentation', 'Quaternion_ResamplingModel', 'HDF2Quaternion',
+           'QuaternionBlock', 'TensorInclination', 'HDF2Inclination', 'InclinationBlock', 'plot_scalar_inclination',
            'plot_quaternion_inclination', 'plot_quaternion_rel_angle']
 
 # Cell
@@ -281,6 +281,11 @@ def angle_loss_opt(q1,q2):
 def ms_rel_angle(q1,q2):
     rel_angle = relativeAngle(q1,q2)
     return  (rel_angle**2).mean()
+
+# Cell
+def abs_rel_angle(q1,q2):
+    rel_angle = relativeAngle(q1,q2)
+    return  rel_angle.abs().mean()
 
 # Cell
 def rms_rel_angle_deg(q1,q2):
