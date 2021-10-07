@@ -39,14 +39,15 @@ class TbpttDl(TfmdDL):
         return w_id
 
     def sample(self):
-        #replaced new fastai sample formulation that store __idxs in main process, lead to attribute error
-        #return (b for i,b in enumerate(self.__idxs) if i//(self.bs or 1)%self.num_workers==self.offs)
-        return (b for i,b in enumerate(self.get_idxs()) if i//(self.bs or 1)%self.num_workers==self.offs)
+        #replaced new fastai sample formulation that store __idxs in main process
+        return (b for i,b in enumerate(self.__idxs) if i//(self.bs or 1)%self.num_workers==self.offs)
+#         return (b for i,b in enumerate(self.get_idxs()) if i//(self.bs or 1)%self.num_workers==self.offs)
 
     def __iter__(self):
         '''iterator that handles multiprocessing by caching samples that are generated out of order'''
         self.randomize()
         self.before_iter()
+        self.__idxs=self.get_idxs() # called in context of main process (not workers/subprocesses)
 
         n_buffer = self.fake_l.num_workers*self.n_sub_seq
         queue = {n:[] for n in range(self.fake_l.num_workers)}
@@ -154,7 +155,8 @@ def WeightedDL_Factory(cls):
         def get_idxs(self):
             if self.n==0: return []
             if not self.shuffle or self.wgts is None: return super().get_idxs()
-            return list(np.random.choice(self.n, size=len(self)*self.bs, p=self.wgts))
+            idxs = list(np.random.choice(self.n, size=self.n, p=self.wgts))
+            return idxs
     return WeightedDL
 
 # Cell

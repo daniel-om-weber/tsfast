@@ -446,6 +446,13 @@ class TensorScalars(Tensor):
 class TensorScalarsInput(TensorScalars): pass
 class TensorScalarsOutput(TensorScalars): pass
 
+
+
+# Cell
+for f in torch.nn.functional.mse_loss,torch.nn.functional.huber_loss, Tensor.__getitem__, Tensor.__ne__,Tensor.__eq__,Tensor.add,Tensor.sub,Tensor.mul,Tensor.div,Tensor.__rsub__,Tensor.__radd__,Tensor.matmul,Tensor.bmm:
+    TensorBase.register_func(f,TensorSequences)
+    TensorBase.register_func(f,TensorScalars)
+
 # Cell
 class SeqSlice(Transform):
     '''Take a slice from an array-like object. Useful for e.g. shifting input and output'''
