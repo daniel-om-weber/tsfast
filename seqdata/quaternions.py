@@ -376,8 +376,8 @@ class Quaternion_ResamplingModel(nn.Module):
         super().__init__()
         self.model =model
         self.fs_targ =fs_targ
-        self.register_buffer('fs_mean',fs_mean)
-        self.register_buffer('fs_std',fs_std)
+        self.register_buffer('fs_mean',tensor(fs_mean))
+        self.register_buffer('fs_std',tensor(fs_std))
         self.quaternion_sampling = quaternion_sampling
 
     def forward(self, x):
@@ -391,7 +391,7 @@ class Quaternion_ResamplingModel(nn.Module):
         else:
 #             x_new = nn.functional.interpolate(x_raw.transpose(1,2), size=res_len, mode='linear',align_corners=False).transpose(1,2)
 #             import pdb;pdb.set_trace()
-            x_new = tensor(resample(x_raw.detach().cpu().numpy(),res_len,axis =1),device=x_raw.device)
+            x_new = tensor(resample(x_raw.detach().cpu().numpy(),res_len,axis =1)).to(x_raw.device)
             res = self.model(x_new)
             if self.quaternion_sampling:
                 res = quatInterp(res.transpose(0,1),torch.linspace(0,res.shape[1]-1,x_len)).transpose(0,1)
@@ -399,41 +399,6 @@ class Quaternion_ResamplingModel(nn.Module):
                 res = nn.functional.interpolate(res.transpose(1,2), size=x_len, mode='linear',align_corners=False).transpose(1,2)
 
         return res
-
-
-# class Quaternion_ResamplingModel(nn.Module):
-#     '''
-#         Module that resamples the signal before and after the prediction of its model.
-#         Usefull for using models on datasets with different samplingrates.
-
-#         sampling_method: method used for resampling ['resample','interpolate']
-#     '''
-
-#     def __init__(self,model,fs_targ,fs_mean=0,fs_std=1,quaternion_sampling=True):
-#         super().__init__()
-#         self.model =model
-#         self.fs_targ =fs_targ
-#         self.fs_mean =fs_mean
-#         self.fs_std =fs_std
-#         self.quaternion_sampling = quaternion_sampling
-
-#     def forward(self, x):
-#         dt = (x[0,0,-1]*self.fs_std)+self.fs_mean
-#         fs_src = 1/dt
-#         x_len = x.shape[1]
-#         res_len = int(x.shape[1]*self.fs_targ/fs_src)
-#         x_raw = x[...,:-1]
-#         if x_len == res_len:
-#             res = self.model(x_raw)
-#         else:
-#             x_new = nn.functional.interpolate(x_raw.transpose(1,2), size=res_len, mode='linear',align_corners=False).transpose(1,2)
-#             res = self.model(x_new)
-#             if self.quaternion_sampling:
-#                 res = quatInterp(res.transpose(0,1),torch.linspace(0,res.shape[1]-1,x_len)).transpose(0,1)
-#             else:
-#                 res = nn.functional.interpolate(res.transpose(1,2), size=x_len, mode='linear',align_corners=False).transpose(1,2)
-
-#         return res
 
 # Internal Cell
 def relativeQuat_np(q1, q2):
@@ -481,8 +446,8 @@ def quatFromAngleAxis_np(angle, axis):
 
         """
 
-    angle = np.asarray(angle, np.float)
-    axis = np.asarray(axis, np.float)
+    angle = np.asarray(angle, np.float64)
+    axis = np.asarray(axis, np.float64)
 
     is1D = (angle.shape == tuple() or angle.shape == (1,)) and axis.shape == (3,)
 
@@ -505,9 +470,9 @@ def quatFromAngleAxis_np(angle, axis):
 
     norm = np.linalg.norm(axis_brodcasted, axis=1)
 
-    identity = norm < np.finfo(np.float).eps
+    identity = norm < np.finfo(np.float64).eps
 
-    q = np.zeros((N, 4), np.float)
+    q = np.zeros((N, 4), np.float64)
     q[identity] = np.array([1, 0, 0, 0])
     q[~identity] = np.concatenate((np.cos(angle_brodcasted[~identity][:, np.newaxis] / 2), axis_brodcasted[~identity]
                                  * np.array(np.sin(angle_brodcasted[~identity] / 2.0) / norm[~identity])[:, np.newaxis]),
