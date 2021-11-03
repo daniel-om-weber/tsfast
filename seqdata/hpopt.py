@@ -119,6 +119,8 @@ def sample_config(config):
 class CBRayReporter(Callback):
     "`Callback` reports progress after every epoch to the ray tune logger"
 
+    order=70 #order has to be >50, to be executed after the recorder callback
+
     def after_epoch(self):
         train_loss,valid_loss,rmse = self.learn.recorder.values[-1]
         tune.report(train_loss=train_loss,
@@ -201,6 +203,6 @@ class HPOptimizer():
     def best_model(self):
         if self.analysis is None: raise Exception
         model = self.create_lrn(self.dls,sample_config(self.mut_conf)).model
-        f_path = self.analysis.get_best_trial('mean_loss',mode='min').checkpoint.value
+        f_path = ray.get(self.analysis.get_best_trial('mean_loss',mode='min').checkpoint.value)
         model.load_state_dict(torch.load(f_path))
         return model
