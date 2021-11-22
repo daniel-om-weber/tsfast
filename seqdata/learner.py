@@ -107,12 +107,12 @@ class TimeSeriesRegularizer(HookCallback):
 
         if self.alpha != 0.:
             l_a = float(self.alpha) * h.pow(2).mean()
-            self.learn.loss = self.learn.loss+l_a
+            self.learn.loss_grad += l_a
 
         if self.beta != 0. and h.shape[self.dim]>1:
             h_diff = (h[:,1:] - h[:,:-1]) if self.dim == 1 else (h[:,:,1:] - h[:,:,:-1])
             l_b = float(self.beta) * h_diff.pow(2).mean()
-            self.learn.loss = self.learn.loss+l_b
+            self.learn.loss_grad += l_b
 
 # Cell
 class ARInitCB(Callback):
