@@ -36,11 +36,11 @@ class ProDiagTrainer(Callback):
 
     def after_loss(self):
         if not self.training: return
-        self.learn.loss = self.learn.loss+self.beta*self.learn.loss_func(self.pred_diag,*self.yb)
+        self.learn.loss_grad += self.beta*self.learn.loss_func(self.pred_diag,*self.yb)
 
         hidden_loss = ((self.est_hidden-self.pred_hidden)/
                        (self.est_hidden.norm()+self.pred_hidden.norm())).pow(2).mean()
-        self.learn.loss = self.learn.loss+self.alpha * hidden_loss
+        self.learn.loss_grad += self.alpha * hidden_loss
 
     def before_validate(self):
         '''Set Dual RNN to reuse the prediction state after each mini batch on validation'''
