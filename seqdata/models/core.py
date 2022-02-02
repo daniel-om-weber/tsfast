@@ -214,6 +214,9 @@ class RNN(nn.Module):
         elif rnn_type == 'lstm':
             rnn = nn.LSTM(n_in, n_out,1,batch_first=True,**kwargs)
 #             rnn = WeightDropout(rnn,weight_p)
+        elif rnn_type == 'sru':
+            rnn = SRU(n_in, n_out,1,batch_first=True,**kwargs)
+#             rnn = WeightDropout(rnn,weight_p)
         elif rnn_type == 'rnn':
             rnn = nn.RNN(n_in, n_out,1,batch_first=True,**kwargs)
 #             rnn = WeightDropout(rnn,weight_p)

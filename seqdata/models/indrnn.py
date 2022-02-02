@@ -106,8 +106,8 @@ import warnings
 try:
     from cupy.cuda import function
     from pynvrtc.compiler import Program
-except ImportError:
-    warnings.warn('Failed to import pynvrtc and cupy for indrnn model', ImportWarning)
+except:
+    warnings.warn('Failed to import pynvrtc and cupy for indrnn model')
 
 def _get_indrnn_cuda(device):
     if not hasattr(_get_indrnn_cuda, '_DEVICE2FUNC'):_get_indrnn_cuda._DEVICE2FUNC = {}
@@ -282,4 +282,4 @@ class IndRNNRegularizer(Callback):
         for m in self.model.modules():
             if type(m) == IndRNN_onlyrecurrent:
 #                 import pdb;pdb.set_trace()
-                self.learn.loss += torch.max(self.zero,m.weight_hh.abs()-self.clip_limit).norm()
+                self.learn.loss_grad += torch.max(self.zero,m.weight_hh.abs()-self.clip_limit).norm()
