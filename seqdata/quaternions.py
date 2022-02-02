@@ -324,7 +324,7 @@ class QuaternionRegularizer(HookCallback):
         if self.reg_unit != 0.:
             l_a = float(self.reg_unit) * ((1-h.norm(dim=-1))**2).mean()
 #             import pdb; pdb.set_trace()
-            self.learn.loss = self.learn.loss+l_a
+            self.learn.loss_grad += l_a
 
 # Cell
 def augmentation_groups(u_groups):

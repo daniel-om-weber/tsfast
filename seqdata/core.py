@@ -276,7 +276,7 @@ def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None
         if fast_resample:
             res_seq = resample_interp(seq,resampling_factor)
         else:
-            res_seq = resample(seq,int(seq.shape[0]*resampling_factor))
+            res_seq = resample(seq,int(seq.shape[0]*resampling_factor),window=('kaiser', 14.0))
         if fs_idx is not None: res_seq[:,fs_idx] = seq[0,fs_idx] * resampling_factor
         if dt_idx is not None: res_seq[:,dt_idx] = seq[0,dt_idx] / resampling_factor
         seq = res_seq
@@ -337,7 +337,7 @@ class HDF2Sequence(Transform):
             if fast_resample:
                 res_seq = resample_interp(seq,resampling_factor)
             else:
-                res_seq = resample(seq,int(seq.shape[0]*resampling_factor))
+                res_seq = resample(seq,int(seq.shape[0]*resampling_factor),window=('kaiser', 14.0))
 
             if fs_idx is not None: res_seq[:,fs_idx] = seq[0,fs_idx] * resampling_factor
             if dt_idx is not None: res_seq[:,dt_idx] = seq[0,dt_idx] / resampling_factor
