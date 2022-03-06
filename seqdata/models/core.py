@@ -145,6 +145,10 @@ class SeqLinear(nn.Module):
 # Cell
 from fastai.text.models.awdlstm import *
 from .indrnn import IndRNN
+try:
+    import haste_pytorch as haste
+except:
+    print('Library "haste_pytorch" not found')
 class RNN(nn.Module):
     "inspired by https://arxiv.org/abs/1708.02182"
 
@@ -225,6 +229,14 @@ class RNN(nn.Module):
 #             rnn.layers[0].linear = WeightDropout(rnn.layers[0].linear,weight_p,layer_names='weight')
         elif rnn_type == 'indrnn':
             rnn = IndRNN(n_in, n_out,1,batch_first=True,**kwargs)
+        elif rnn_type == 'gru_haste':
+            rnn = haste.GRU(n_in, n_out,batch_first=True,**kwargs)
+        elif rnn_type == 'gru_ln_haste':
+            rnn = haste.LayerNormGRU(n_in, n_out,batch_first=True,**kwargs)
+        elif rnn_type == 'lstm_haste':
+            rnn = haste.LSTM(n_in, n_out,batch_first=True,**kwargs)
+        elif rnn_type == 'indrnn_haste':
+            rnn = haste.IndRNN(n_in, n_out,batch_first=True,**kwargs)
         else:
             raise Exception
         return rnn
