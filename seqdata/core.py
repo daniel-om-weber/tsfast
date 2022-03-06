@@ -4,9 +4,9 @@ __all__ = ['obj_in_lst', 'count_parameters', 'get_hdf_files', 'hdf_extensions', 
            'ValidClmContains', 'ValidClmIs', 'FilterClm', 'get_hdf_seq_len', 'df_get_hdf_seq_len', 'DfHDFGetSeqLen',
            'DfResamplingFactor', 'DfHDFCreateWindows', 'DfFilterQuery', 'DfDropClmExcept', 'calc_shift_offsets',
            'running_mean', 'downsample_mean', 'resample_interp', 'hdf_extract_sequence', 'Memoize', 'HDF2Sequence',
-           'hdf2scalars', 'HDF2Scalars', 'TensorSequences', 'TensorSequencesInput', 'TensorSequencesOutput',
-           'toTensorSequencesInput', 'toTensorSequencesOutput', 'TensorScalars', 'TensorScalarsInput',
-           'TensorScalarsOutput', 'SeqSlice', 'SeqNoiseInjection', 'SeqNoiseInjection_Varying',
+           'hdf2scalars', 'HDF2Scalars', 'ScalarSequenceElement', 'TensorSequences', 'TensorSequencesInput',
+           'TensorSequencesOutput', 'toTensorSequencesInput', 'toTensorSequencesOutput', 'TensorScalars',
+           'TensorScalarsInput', 'TensorScalarsOutput', 'SeqSlice', 'SeqNoiseInjection', 'SeqNoiseInjection_Varying',
            'SeqNoiseInjection_Grouped', 'SeqBiasInjection', 'encodes', 'decodes', 'ParentSplitter',
            'PercentageSplitter', 'ApplyToDict', 'valid_clm_splitter', 'pad_sequence', 'SequenceBlock',
            'ScalarNormalize', 'ScalarBlock', 'TensorSpectrogram', 'TensorSpectrogramInput', 'TensorSpectrogramOutput',
@@ -406,6 +406,15 @@ class HDF2Scalars(Transform):
 
     def encodes(self, item)->None:
         return self._extract_dict_scalars(item)
+
+# Cell
+class ScalarSequenceElement(Transform):
+
+    def __init__(self, idx,to_cls=noop):
+        store_attr('idx,to_cls')
+
+    def encodes(self, item)->None:
+        return self.to_cls(item[self.idx])
 
 # Cell
 class TensorSequences(TensorBase):#TensorBase
