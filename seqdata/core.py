@@ -348,7 +348,7 @@ class HDF2Sequence(Transform):
         return seq
 
     def _extract_dict_sequence(self,item):
-        if isinstance(item,dict):
+        if hasattr(item,'keys'):
             path = item['path']
             dataset = item['dataset'] if 'dataset' in item else None
             l_slc = item['l_slc'] if 'l_slc' in item else None

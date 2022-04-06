@@ -141,9 +141,14 @@ def WeightedDL_Factory(cls):
             #self.items need to be assigned, but super.init needs wgts allready assigned
             super().__init__(dataset=dataset, **kwargs)
             if wgts is None:
-                if  (type(self.items) is list and
+                if (isinstance(self.items,pd.DataFrame) and
                     len(self.items) > 0 and
-                    type(self.items[0]) is dict and
+                    'p_sample' in self.items):
+                    self.wgts = self.items.p_sample.to_numpy()
+                    self.wgts = self.wgts/self.wgts.sum()
+                elif (isinstance(self.items,Iterable) and
+                    len(self.items) > 0 and
+                    hasattr(self.items[0],'keys') and
                     'p_sample' in self.items[0].keys()):
                     self.wgts = np.array([x['p_sample'] for x in self.items])
                     self.wgts = self.wgts/self.wgts.sum()
@@ -155,7 +160,8 @@ def WeightedDL_Factory(cls):
         def get_idxs(self):
             if self.n==0: return []
             if not self.shuffle or self.wgts is None: return super().get_idxs()
-            idxs = list(np.random.choice(self.n, size=self.n, p=self.wgts))
+            #calculate number of elements with length of the dataset, for batch truncation
+            idxs = list(np.random.choice(self.n, size=len(self)*self.bs, p=self.wgts))
             return idxs
     return WeightedDL
 
@@ -247,6 +253,7 @@ def BatchLimit_Factory(cls):
     class BatchLimitDL(cls):
         def __init__(self, dataset, max_batches=None, **kwargs):
             self.max_batches = max_batches
+            # kwargs['n'] = max_batches*kwargs['bs'] n has to remain the full size, in order to create all indices if shuffled
             super().__init__(dataset=dataset, **kwargs)
 
         def __len__(self):
@@ -261,5 +268,12 @@ def BatchLimit_Factory(cls):
                 for idx,b in enumerate(super().__iter__()):
                     if idx >= self.max_batches: break
                     yield b
+
+        #shuffle function that is called in super().get_idxs, truncated for faster execution
+        def shuffle_fn(self, idxs): return self.rng.sample(idxs, len(self)*self.bs)
+
+        #get_idxs is truncated for the non-shuffling case, otherwise shuffle_fn is already truncated
+        def get_idxs(self):
+            return super().get_idxs()[:len(self)*self.bs]
 
     return BatchLimitDL
