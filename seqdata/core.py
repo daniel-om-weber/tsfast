@@ -247,7 +247,7 @@ def resample_interp(x,resampling_factor,sequence_first=True, lowpass_cut=1.0, up
 
 # Cell
 from scipy.signal import resample
-def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, fs_idx =None,dt_idx =False,fast_resample=False):
+def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, fs_idx =None,dt_idx =False,fast_resample=True):
     '''
     extracts a sequence with the shape [seq_len x num_features]
 
@@ -299,16 +299,16 @@ class Memoize:
 # Cell
 class HDF2Sequence(Transform):
 
-    def __init__(self, clm_names,clm_shift=None,truncate_sz=None,to_cls=noop,cached=False, fs_idx =None,dt_idx =None,fast_resample=False):
+    def __init__(self, clm_names,clm_shift=None,truncate_sz=None,to_cls=noop,cached=False, fs_idx =None,dt_idx =None,fast_resample=True):
         if not clm_shift is None:
             assert len(clm_shift)==len(clm_names) and all(isinstance(n, int) for n in clm_shift)
             self.l_shift,self.r_shift,_ = calc_shift_offsets(clm_shift)
 
         self._exseq = Memoize(self._hdf_extract_sequence) if cached else self._hdf_extract_sequence
 
-        store_attr('clm_names,clm_shift,truncate_sz,to_cls,cached,fs_idx,dt_idx')
+        store_attr('clm_names,clm_shift,truncate_sz,to_cls,cached,fs_idx,dt_idx,fast_resample')
 
-    def _hdf_extract_sequence(self,hdf_path,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, fs_idx =None,dt_idx =None,fast_resample=False):
+    def _hdf_extract_sequence(self,hdf_path,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, fs_idx =None,dt_idx =None,fast_resample=True):
         '''
         extracts a sequence with the shape [seq_len x num_features]
 
@@ -356,11 +356,11 @@ class HDF2Sequence(Transform):
             resampling_factor = item['resampling_factor'] if 'resampling_factor' in item else None
 
             if self.cached:
-                seq = self._exseq(path,dataset,None,None,resampling_factor,self.fs_idx,self.dt_idx)[l_slc:r_slc]
+                seq = self._exseq(path,dataset,None,None,resampling_factor,self.fs_idx,self.dt_idx,self.fast_resample)[l_slc:r_slc]
             else:
-                seq = self._exseq(path,dataset,l_slc,r_slc,resampling_factor,self.fs_idx,self.dt_idx)
+                seq = self._exseq(path,dataset,l_slc,r_slc,resampling_factor,self.fs_idx,self.dt_idx,self.fast_resample)
         else:
-            seq = self._exseq(str(item),None,None,None,None)
+            seq = self._exseq(str(item),None,None,None,None,None)
 
         #shift clms of result by given value
         if not self.clm_shift is None:

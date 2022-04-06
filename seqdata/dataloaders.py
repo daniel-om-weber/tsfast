@@ -259,7 +259,7 @@ def BatchLimit_Factory(cls):
                 yield from super().__iter__()
             else:
                 for idx,b in enumerate(super().__iter__()):
-                    if idx >= len(self): break
+                    if idx >= self.max_batches: break
                     yield b
 
     return BatchLimitDL
