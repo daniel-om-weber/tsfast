@@ -270,7 +270,7 @@ def BatchLimit_Factory(cls):
                     yield b
 
         #shuffle function that is called in super().get_idxs, truncated for faster execution
-        def shuffle_fn(self, idxs): return self.rng.sample(idxs, len(self)*self.bs)
+        def shuffle_fn(self, idxs): return self.rng.sample(idxs, min(len(self)*self.bs,len(idxs)))
 
         #get_idxs is truncated for the non-shuffling case, otherwise shuffle_fn is already truncated
         def get_idxs(self):

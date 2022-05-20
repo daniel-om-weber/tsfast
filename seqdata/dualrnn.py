@@ -127,7 +127,7 @@ class NarProg(nn.Module):
 
                 out_prog=torch.cat([out_prog_1,out_prog_2],2)
             else:
-                import pdb; pdb.set_trace()
+                #import pdb; pdb.set_trace()
                 out_prog,_ = self.rnn_prognosis(x_prog,init_state)
                 out_diag,_ = self.rnn_diagnosis(x_diag)
                 new_hidden = self.rnn_diagnosis.output_to_hidden(out_diag,-1)

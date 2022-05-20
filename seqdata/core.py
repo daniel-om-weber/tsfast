@@ -86,17 +86,18 @@ def FilterClm(clm_name,func = lambda x:x):
     return _inner
 
 # Cell
-def get_hdf_seq_len(f_path,clm):
+def get_hdf_seq_len(df,clm,ds=None):
     '''extract the sequence length of the dataset with the 'clm' name and 'f_path' path  '''
-    with h5py.File(f_path,'r') as f:
-        f_len = max(f[clm].shape)
+    with h5py.File(df['path'],'r') as f:
+        ds = f if 'dataset' not in df else f[df['dataset']]
+        f_len = max(ds[clm].shape)
     return f_len
 
 # Cell
-def df_get_hdf_seq_len(df,clm):
+def df_get_hdf_seq_len(df,clm,ds=None):
     '''extracts the sequence length of every file in advance to prepare repeated window extractions with 'DfHDFCreateWindows' '''
 #     df['seq_len'] = ([get_hdf_seq_len(row.path,clm) for (idx, row) in df.iterrows()])
-    df['seq_len'] = df.path.apply(lambda x: get_hdf_seq_len(x,clm))
+    df['seq_len'] = df.apply(lambda x: get_hdf_seq_len(x,clm),axis=1)
     return df
 
 # Cell
@@ -141,7 +142,7 @@ def DfHDFCreateWindows(win_sz,stp_sz, clm, fixed_start = False, fixed_end = Fals
         if 'seq_len' in df:
             np_f_len = df.seq_len.values
         else:
-            np_f_len = np.array([get_hdf_seq_len(row.path,clm) for (idx, row) in df.iterrows()])
+            np_f_len = np.array([get_hdf_seq_len(row,clm) for (idx, row) in df.iterrows()])
 
         if 'resampling_factor' in df: np_f_len =(np_f_len*df.resampling_factor.values).astype(int)
 
@@ -445,7 +446,7 @@ def toTensorSequencesInput(o): return TensorSequencesInput(o)
 def toTensorSequencesOutput(o): return TensorSequencesOutput(o)
 
 # Cell
-class TensorScalars(Tensor):
+class TensorScalars(TensorBase):
     @classmethod
     @delegates(HDF2Scalars, keep=True)
     def from_hdf(cls,clm_names,**kwargs):
@@ -605,6 +606,9 @@ class SequenceBlock(TransformBlock):
     def from_hdf(cls, clm_names, seq_cls=TensorSequencesInput,padding=False, **kwargs):
         return cls(HDF2Sequence(clm_names,to_cls=seq_cls,**kwargs), padding)
 
+    @classmethod
+    def from_numpy(cls, seq_cls=TensorSequencesInput,padding=False, **kwargs):
+        return cls(ToTensor(enc=seq_cls), padding)
 
 # Cell
 class ScalarNormalize(DisplayedTransform):
