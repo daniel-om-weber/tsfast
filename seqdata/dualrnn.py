@@ -50,8 +50,7 @@ class Diag_RNN_raw(nn.Module):
 
     def forward(self, x,init_state = None):
 
-        out,_ = self.rnn(x,init_state)
-        return out
+        return self.rnn(x,init_state)
 
 # Cell
 class NarProg(nn.Module):
@@ -74,15 +73,6 @@ class NarProg(nn.Module):
 
         self.reset_state()
 
-    def merge_states_masked(self,h_res,h_no_res,h_init, mask):
-        hidden = []
-        for res,no_res,init in zip(h_res,h_no_res,h_init):
-            h = torch.zeros_like(init)
-            h[:,mask] = res
-            h[:,~mask] = no_res
-            hidden.append(h)
-        return hidden
-
     def forward(self, x,init_state = None):
         bs = x.shape[0]
         if init_state is None: init_state = self._get_hidden(bs)
@@ -99,33 +89,6 @@ class NarProg(nn.Module):
 
                 out_prog,_ = self.rnn_prognosis(x_prog[:,self.init_sz:],h_init)
                 out_prog=torch.cat([out_diag[:,:,:self.init_sz],out_prog],2)
-            elif self.reset_mask is not None:
-                #execution with some sequences reset
-                #extract state of non reset diagnosis sequences
-                diag_init = self.rnn_diagnosis._get_hidden(bs)
-                diag_init_masked = [x[:,~self.reset_mask] for x in diag_init]
-                prog_init_masked = [x[:,~self.reset_mask] for x in init_state]
-                #diagnosis for init_state of reset sequences
-                reset_model_state(self.rnn_diagnosis)
-                out_diag_1_res,h_diag_1_res = self.rnn_diagnosis(x_diag[self.reset_mask,:self.init_sz])
-                h_prog_1_res = self.rnn_diagnosis.output_to_hidden(out_diag_1_res,-1)
-                #diagnosis and prognosis for init_state of non-reset sequences
-                out_diag_1_no_res,h_diag_1_no_res = self.rnn_diagnosis(x_diag[~self.reset_mask,:self.init_sz],diag_init_masked)
-                out_prog_1_no_res,h_prog_1_no_res = self.rnn_prognosis(x_prog[~self.reset_mask,:self.init_sz],prog_init_masked)
-                #merge output of init window
-                out_prog_1 = torch.zeros((out_diag_1_res.shape[0],bs,out_diag_1_res.shape[2],out_diag_1_res.shape[3]),
-                                         device=out_diag_1_res.device)
-                out_prog_1[:,self.reset_mask] = out_diag_1_res
-                out_prog_1[:,~self.reset_mask] = out_prog_1_no_res
-                #merge masked states for full batch prognosis
-                h_diag_1 = self.merge_states_masked(h_diag_1_res,h_diag_1_no_res,diag_init,self.reset_mask)
-                h_prog_1 = self.merge_states_masked(h_prog_1_res,h_prog_1_no_res,diag_init,self.reset_mask)
-
-                out_diag,_ = self.rnn_diagnosis(x_diag[:,self.init_sz:],h_diag_1)
-                new_hidden = self.rnn_diagnosis.output_to_hidden(out_diag,-1)
-                out_prog_2,_ = self.rnn_prognosis(x_prog[:,self.init_sz:],h_prog_1)
-
-                out_prog=torch.cat([out_prog_1,out_prog_2],2)
             else:
                 #import pdb; pdb.set_trace()
                 out_prog,_ = self.rnn_prognosis(x_prog,init_state)
@@ -143,8 +106,6 @@ class NarProg(nn.Module):
                 out_prog,new_hidden = self.rnn_prognosis(x_prog,init_state)
 
         self.hidden =  to_detach(new_hidden, cpu=False, gather=False)
-        self.reset_mask = None
-
         #Shared Linear Layer
         result = self.final(out_prog[-1])
         return result
@@ -158,81 +119,104 @@ class NarProg(nn.Module):
 
     def reset_state(self):
         self.hidden = None
-        self.reset_mask = None
 
 # Cell
 from fastai.callback.hook import *
 class NarProgCallback(HookCallback):
-    "`Callback` that regroups lr adjustment to seq_len, AR and TAR."
-    def __init__(self,modules, alpha=1e6,beta=1.0,p_diag_state=0.4,sync_type='mse',narprog_model = None,detach=False, **kwargs):
+    "`Callback` that regularizes the output of the NarProg model."
+    def __init__(self,modules, p_state_sync=1e6,
+                                p_diag_loss=0.0,
+                                p_osp_sync=1e6,
+                                p_osp_loss=0.1,
+                                sync_type='mse',
+                                targ_loss_func=mae,
+                                osp_n_skip=None,#number of elements to skip before osp is applied, defaults to model.init_sz
+                                narprog_model = None,detach=False, **kwargs):
         super().__init__(modules=modules,detach=detach,**kwargs)
-        store_attr('alpha,beta,p_diag_state,sync_type,narprog_model')
+        store_attr('p_state_sync,p_diag_loss,p_osp_sync,p_osp_loss,sync_type,targ_loss_func,osp_n_skip,narprog_model')
         self.clear()
 
     def clear(self):
-        self._out_diag = []
-        self._out_prog = []
+        self._out_diag = None
+        self._out_prog = None
 
     def hook(self, m, i, o):
         '''add output of diagnosis and prognosis modules to a list for regularization in after_loss'''
         if 'Diag' in type(m).__name__:
-            self._out_diag.insert(0,o[0])
+            self._out_diag = o[0]
         else:
-            self._out_prog.insert(0,o[0])
+            self._out_prog = o[0]
 
     def before_batch(self):
         self.clear()
-        if not self.training or self.p_diag_state == 1: return
-
-
-        if self.p_diag_state == 0:
-            reset_model_state(self.learn.model)
-            return
-
-        model = self.learn.model if self.narprog_model is None else self.narprog_model
-        bs = self.xb[0].shape[0]
-        hidden_diag = model._get_hidden(bs)
-        if not hidden_diag is None:
-            model.reset_mask = torch.randn((bs,), device=hidden_diag[0].device) >= self.p_diag_state
 
     def after_loss(self):
         if not self.training: return
+        if self._out_diag is None or self._out_prog is None: return
 
-        for diag,prog in zip(self._out_diag,self._out_prog):
-#             import pdb; pdb.set_trace()
-
-            if diag.shape != prog.shape:
-                if diag.shape[2] > prog.shape[2]:
-                    diag = diag[:,:,-prog.shape[2]:]
-                else:
-                    continue
-
-            if self.sync_type == 'mse':
-                hidden_loss = ((prog-diag)/
-                               (prog.norm()+diag.norm())).pow(2).mean()
-                self.learn.loss_grad += self.alpha * hidden_loss
-                self.learn.loss += self.alpha * hidden_loss
-            elif self.sync_type == 'mae':
-                hidden_loss = ((prog-diag)/
-                               (prog.norm()+diag.norm())).abs().mean()
-                self.learn.loss_grad += self.alpha * hidden_loss
-                self.learn.loss += self.alpha * hidden_loss
-            elif self.sync_type == 'mspe':
-                hidden_loss = ((diag-prog)/torch.linalg.norm(diag,dim=(0,1,2))).pow(2).mean()
-                self.learn.loss_grad += self.alpha * hidden_loss
-                self.learn.loss += self.alpha * hidden_loss
-            elif self.sync_type == 'mape':
-                hidden_loss = ((diag-prog)/torch.linalg.norm(diag,dim=(0,1,2))).abs().mean()
-                self.learn.loss_grad += self.alpha * hidden_loss
-                self.learn.loss += self.alpha * hidden_loss
-
-            #check equal batchsize
-            if diag.shape[1] == self.yb[0].shape[0]:
-                model = self.learn.model if self.narprog_model is None else self.narprog_model
-                y_diag = model.final(diag[-1])
-                self.learn.loss_grad += self.beta*self.learn.loss_func(y_diag,self.yb[0][:,-y_diag.shape[1]:])
-
+        # redefine variables for convenience
+        diag = self._out_diag
+        prog = self._out_prog
         self.clear()
+        model = self.learn.model if self.narprog_model is None else self.narprog_model
+        win_reg = self.osp_n_skip if self.osp_n_skip is not None else model.init_sz
+
+        #sync diag prog hidden states loss
+
+        #check if diag length has to be reduced to prog length
+        diag_trunc = diag
+        if diag.shape[2] > prog.shape[2]: diag_trunc = diag_trunc[:,:,-prog.shape[2]:]
+
+        if self.sync_type == 'mse':
+            hidden_loss = ((prog-diag_trunc)/
+                            (prog.norm()+diag_trunc.norm())).pow(2).mean()
+        elif self.sync_type == 'mae':
+            hidden_loss = ((prog-diag_trunc)/
+                            (prog.norm()+diag_trunc.norm())).abs().mean()
+        elif self.sync_type == 'mspe':
+            hidden_loss = ((diag_trunc-prog)/torch.linalg.norm(diag_trunc,dim=(0,1,2))).pow(2).mean()
+        elif self.sync_type == 'mape':
+            hidden_loss = ((diag_trunc-prog)/torch.linalg.norm(diag_trunc,dim=(0,1,2))).abs().mean()
+
+        self.learn.loss_grad += self.p_state_sync * hidden_loss
+        self.learn.loss += self.p_state_sync * hidden_loss
+
+        #self.diag loss
+        y_diag = model.final(diag_trunc[-1])
+        hidden_loss = self.targ_loss_func(y_diag,self.yb[0][:,-y_diag.shape[1]:])
+        self.learn.loss_grad += self.p_diag_loss*hidden_loss
+        self.learn.loss += self.p_diag_loss * hidden_loss
+
+
+        #osp loss - one step prediction on every element of the sequence
+        if self.p_osp_loss <= 0 or self.p_osp_sync <= 0: return
+        inp = self.xb[0][:,win_reg:]
+        bs,n,_ = inp.shape
+        #transform to a single batch of prediction length 1
+        # import pdb;pdb.set_trace()
+        inp = torch.flatten(inp[:,:,:model.prog_input_size],start_dim=0,end_dim=1)[:,None,:]
+        h_init = torch.flatten(diag[:,:,win_reg-1:-1], start_dim=1, end_dim=2)[:,None]
+
+        out,_ = model.rnn_prognosis(inp,h_init)
+        #undo transform of hiddenstates to original sequence length
+        h_out = out[:,:,0] # the hidden state vector, 0 is the index of the single time step taken
+        out = out[-1].unflatten(0,(bs,n))[:,:,0]# the single step batch transformed back to the batch of sequences
+
+        #osp hidden sync loss - deviation between diagnosis hidden state and one step prediction hidden state
+        h_out_targ = torch.flatten(diag[:,:,win_reg:], start_dim=1, end_dim=2)
+        hidden_loss = ((h_out_targ-h_out)/(h_out.norm()+h_out_targ.norm())).pow(2).mean()
+        # import pdb;pdb.set_trace()
+        self.learn.loss_grad += self.p_osp_sync * hidden_loss
+        self.learn.loss += self.p_osp_sync * hidden_loss
+
+        #osp target loss - one step prediction error on every timestep
+        y_osp = model.final(out)
+        hidden_loss = self.targ_loss_func(y_osp,self.yb[0][:,-y_osp.shape[1]:])
+        # import pdb;pdb.set_trace()
+        self.learn.loss_grad += self.p_osp_loss * hidden_loss
+        self.learn.loss += self.p_osp_loss * hidden_loss
+
+
 
 
 # Cell
