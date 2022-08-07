@@ -165,11 +165,12 @@ class NarProgCallback(HookCallback):
         model = self.learn.model if self.narprog_model is None else self.narprog_model
         win_reg = self.osp_n_skip if self.osp_n_skip is not None else model.init_sz
 
+        diag_trunc = diag
+        if diag.shape[2] > prog.shape[2]: diag_trunc = diag_trunc[:,:,-prog.shape[2]:]
+
         #sync diag prog hidden states loss
         if self.p_state_sync > 0:
             #check if diag length has to be reduced to prog length
-            diag_trunc = diag
-            if diag.shape[2] > prog.shape[2]: diag_trunc = diag_trunc[:,:,-prog.shape[2]:]
 
             if self.sync_type == 'mse':
                 hidden_loss = ((prog-diag_trunc)/
