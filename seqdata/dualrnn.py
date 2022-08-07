@@ -166,30 +166,31 @@ class NarProgCallback(HookCallback):
         win_reg = self.osp_n_skip if self.osp_n_skip is not None else model.init_sz
 
         #sync diag prog hidden states loss
+        if self.p_state_sync > 0:
+            #check if diag length has to be reduced to prog length
+            diag_trunc = diag
+            if diag.shape[2] > prog.shape[2]: diag_trunc = diag_trunc[:,:,-prog.shape[2]:]
 
-        #check if diag length has to be reduced to prog length
-        diag_trunc = diag
-        if diag.shape[2] > prog.shape[2]: diag_trunc = diag_trunc[:,:,-prog.shape[2]:]
+            if self.sync_type == 'mse':
+                hidden_loss = ((prog-diag_trunc)/
+                                (prog.norm()+diag_trunc.norm())).pow(2).mean()
+            elif self.sync_type == 'mae':
+                hidden_loss = ((prog-diag_trunc)/
+                                (prog.norm()+diag_trunc.norm())).abs().mean()
+            elif self.sync_type == 'mspe':
+                hidden_loss = ((diag_trunc-prog)/torch.linalg.norm(diag_trunc,dim=(0,1,2))).pow(2).mean()
+            elif self.sync_type == 'mape':
+                hidden_loss = ((diag_trunc-prog)/torch.linalg.norm(diag_trunc,dim=(0,1,2))).abs().mean()
 
-        if self.sync_type == 'mse':
-            hidden_loss = ((prog-diag_trunc)/
-                            (prog.norm()+diag_trunc.norm())).pow(2).mean()
-        elif self.sync_type == 'mae':
-            hidden_loss = ((prog-diag_trunc)/
-                            (prog.norm()+diag_trunc.norm())).abs().mean()
-        elif self.sync_type == 'mspe':
-            hidden_loss = ((diag_trunc-prog)/torch.linalg.norm(diag_trunc,dim=(0,1,2))).pow(2).mean()
-        elif self.sync_type == 'mape':
-            hidden_loss = ((diag_trunc-prog)/torch.linalg.norm(diag_trunc,dim=(0,1,2))).abs().mean()
-
-        self.learn.loss_grad += self.p_state_sync * hidden_loss
-        self.learn.loss += self.p_state_sync * hidden_loss
+            self.learn.loss_grad += self.p_state_sync * hidden_loss
+            self.learn.loss += self.p_state_sync * hidden_loss
 
         #self.diag loss
-        y_diag = model.final(diag_trunc[-1])
-        hidden_loss = self.targ_loss_func(y_diag,self.yb[0][:,-y_diag.shape[1]:])
-        self.learn.loss_grad += self.p_diag_loss*hidden_loss
-        self.learn.loss += self.p_diag_loss * hidden_loss
+        if self.p_diag_loss > 0:
+            y_diag = model.final(diag_trunc[-1])
+            hidden_loss = self.targ_loss_func(y_diag,self.yb[0][:,-y_diag.shape[1]:])
+            self.learn.loss_grad += self.p_diag_loss*hidden_loss
+            self.learn.loss += self.p_diag_loss * hidden_loss
 
 
         #osp loss - one step prediction on every element of the sequence
@@ -221,13 +222,14 @@ class NarProgCallback(HookCallback):
             self.learn.loss += self.p_osp_loss * hidden_loss
 
         # tar hidden loss
-        h = torch.cat([diag[:,:,:self.init_sz],prog],2)
-        h_diff = (h[:,:,1:] - h[:,:,:-1])
-        hidden_loss = h_diff.pow(2).mean()
+        if self.p_tar_loss > 0:
+            h = torch.cat([diag[:,:,:self.init_sz],prog],2)
+            h_diff = (h[:,:,1:] - h[:,:,:-1])
+            hidden_loss = h_diff.pow(2).mean()
 
-        import pdb;pdb.set_trace()
-        self.learn.loss_grad += self.p_tar_loss * hidden_loss
-        self.learn.loss += self.p_tar_loss * hidden_loss
+            # import pdb;pdb.set_trace()
+            self.learn.loss_grad += self.p_tar_loss * hidden_loss
+            self.learn.loss += self.p_tar_loss * hidden_loss
 
 
 # Cell
