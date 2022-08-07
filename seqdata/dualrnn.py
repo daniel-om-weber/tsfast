@@ -57,9 +57,9 @@ class NarProg(nn.Module):
 
     @delegates(RNN, keep=True)
     def __init__(self,prog_input_size,diag_input_size,output_size,init_sz=100,hidden_size=100,
-                 rnn_layer=1,linear_layer = 1,**kwargs):
+                 rnn_layer=1,linear_layer = 1,init_diag_only=False,**kwargs):
         super().__init__()
-        store_attr('prog_input_size,diag_input_size,init_sz')
+        store_attr('prog_input_size,diag_input_size,init_sz,init_diag_only')
 
         rnn_kwargs = dict(hidden_size=hidden_size,num_layers=rnn_layer,stateful=True,ret_full_hidden=True)
         rnn_kwargs = dict(rnn_kwargs, **kwargs)
@@ -78,6 +78,9 @@ class NarProg(nn.Module):
         if init_state is None: init_state = self._get_hidden(bs)
         x_diag = x[...,:self.diag_input_size]
         x_prog = x[...,:self.prog_input_size]
+
+
+        if self.init_diag_only: x_diag = x_diag[:,:self.init_sz] #limit diagnosis length to init size
 
         if self.training:
             #in training, estimate the full sequence with the diagnosis module
@@ -124,16 +127,17 @@ class NarProg(nn.Module):
 from fastai.callback.hook import *
 class NarProgCallback(HookCallback):
     "`Callback` that regularizes the output of the NarProg model."
-    def __init__(self,modules, p_state_sync=1e6,
-                                p_diag_loss=0.0,
-                                p_osp_sync=1e6,
-                                p_osp_loss=0.1,
+    def __init__(self,modules, p_state_sync=1e6,#scalingfactor for regularization of hidden state deviation between diag and prog module
+                                p_diag_loss=0.0,#scalingfactor of loss calculation of diag hidden state to final layer
+                                p_osp_sync=1e6,#scalingfactor for regularization of hidden state deviation between one step prediction and diag hidden states
+                                p_osp_loss=0.1,#scalingfactor for loss calculation of one step prediction of prog module
+                                p_tar_loss=4,#scalingfactor for time activation regularization of combined hiddenstate of diag and prog with target sequence length
                                 sync_type='mse',
                                 targ_loss_func=mae,
                                 osp_n_skip=None,#number of elements to skip before osp is applied, defaults to model.init_sz
                                 narprog_model = None,detach=False, **kwargs):
         super().__init__(modules=modules,detach=detach,**kwargs)
-        store_attr('p_state_sync,p_diag_loss,p_osp_sync,p_osp_loss,sync_type,targ_loss_func,osp_n_skip,narprog_model')
+        store_attr('p_state_sync,p_diag_loss,p_osp_sync,p_osp_loss,p_tar_loss,sync_type,targ_loss_func,osp_n_skip,narprog_model')
         self.clear()
 
     def clear(self):
@@ -189,34 +193,41 @@ class NarProgCallback(HookCallback):
 
 
         #osp loss - one step prediction on every element of the sequence
-        if self.p_osp_loss <= 0 or self.p_osp_sync <= 0: return
-        inp = self.xb[0][:,win_reg:]
-        bs,n,_ = inp.shape
-        #transform to a single batch of prediction length 1
-        # import pdb;pdb.set_trace()
-        inp = torch.flatten(inp[:,:,:model.prog_input_size],start_dim=0,end_dim=1)[:,None,:]
-        h_init = torch.flatten(diag[:,:,win_reg-1:-1], start_dim=1, end_dim=2)[:,None]
+        if self.p_osp_loss > 0 or self.p_osp_sync > 0:
+            inp = self.xb[0][:,win_reg:]
+            bs,n,_ = inp.shape
+            #transform to a single batch of prediction length 1
+            # import pdb;pdb.set_trace()
+            inp = torch.flatten(inp[:,:,:model.prog_input_size],start_dim=0,end_dim=1)[:,None,:]
+            h_init = torch.flatten(diag[:,:,win_reg-1:-1], start_dim=1, end_dim=2)[:,None]
 
-        out,_ = model.rnn_prognosis(inp,h_init)
-        #undo transform of hiddenstates to original sequence length
-        h_out = out[:,:,0] # the hidden state vector, 0 is the index of the single time step taken
-        out = out[-1].unflatten(0,(bs,n))[:,:,0]# the single step batch transformed back to the batch of sequences
+            out,_ = model.rnn_prognosis(inp,h_init)
+            #undo transform of hiddenstates to original sequence length
+            h_out = out[:,:,0] # the hidden state vector, 0 is the index of the single time step taken
+            out = out[-1].unflatten(0,(bs,n))[:,:,0]# the single step batch transformed back to the batch of sequences
 
-        #osp hidden sync loss - deviation between diagnosis hidden state and one step prediction hidden state
-        h_out_targ = torch.flatten(diag[:,:,win_reg:], start_dim=1, end_dim=2)
-        hidden_loss = ((h_out_targ-h_out)/(h_out.norm()+h_out_targ.norm())).pow(2).mean()
-        # import pdb;pdb.set_trace()
-        self.learn.loss_grad += self.p_osp_sync * hidden_loss
-        self.learn.loss += self.p_osp_sync * hidden_loss
+            #osp hidden sync loss - deviation between diagnosis hidden state and one step prediction hidden state
+            h_out_targ = torch.flatten(diag[:,:,win_reg:], start_dim=1, end_dim=2)
+            hidden_loss = ((h_out_targ-h_out)/(h_out.norm()+h_out_targ.norm())).pow(2).mean()
+            # import pdb;pdb.set_trace()
+            self.learn.loss_grad += self.p_osp_sync * hidden_loss
+            self.learn.loss += self.p_osp_sync * hidden_loss
 
-        #osp target loss - one step prediction error on every timestep
-        y_osp = model.final(out)
-        hidden_loss = self.targ_loss_func(y_osp,self.yb[0][:,-y_osp.shape[1]:])
-        # import pdb;pdb.set_trace()
-        self.learn.loss_grad += self.p_osp_loss * hidden_loss
-        self.learn.loss += self.p_osp_loss * hidden_loss
+            #osp target loss - one step prediction error on every timestep
+            y_osp = model.final(out)
+            hidden_loss = self.targ_loss_func(y_osp,self.yb[0][:,-y_osp.shape[1]:])
+            # import pdb;pdb.set_trace()
+            self.learn.loss_grad += self.p_osp_loss * hidden_loss
+            self.learn.loss += self.p_osp_loss * hidden_loss
 
+        # tar hidden loss
+        h = torch.cat([diag[:,:,:self.init_sz],prog],2)
+        h_diff = (h[:,:,1:] - h[:,:,:-1])
+        hidden_loss = h_diff.pow(2).mean()
 
+        import pdb;pdb.set_trace()
+        self.learn.loss_grad += self.p_tar_loss * hidden_loss
+        self.learn.loss += self.p_tar_loss * hidden_loss
 
 
 # Cell
