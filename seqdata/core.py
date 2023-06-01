@@ -148,6 +148,8 @@ def DfHDFCreateWindows(win_sz,stp_sz, clm, fixed_start = False, fixed_end = Fals
         if 'resampling_factor' in df: np_f_len =(np_f_len*df.resampling_factor.values).astype(int)
             
         n_win = ((np_f_len-win_sz)//stp_sz)+1
+        #cast array n_win to int and clip negative values to 0
+        n_win = n_win.astype(int)
         n_win = np.clip(n_win,a_min=0,a_max=None) #remove negative values at instances where the winsize is smaller than the seq_len
         lst_idx = np.arange(len(np_f_len))
         
