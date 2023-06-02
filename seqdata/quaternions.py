@@ -570,7 +570,7 @@ import h5py
 
 class HDF2Quaternion(HDF2Sequence):
 
-    def _hdf_extract_sequence(self,hdf_path,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, fs_idx =None,dt_idx =False):
+    def _hdf_extract_sequence(self,hdf_path,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, fs_idx =None,dt_idx =False,fast_resample=True):
         '''
         extracts a sequence with the shape [seq_len x num_features]
 

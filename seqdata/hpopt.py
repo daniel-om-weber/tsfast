@@ -17,7 +17,7 @@ import ray
 from ray import tune
 from ray.tune import Trainable
 from ray.tune.schedulers import *
-from ray.tune.trial import ExportFormat
+from ray.tune.experiment.trial import ExportFormat
 
 # %% ../13_HPOpt.ipynb 6
 def log_uniform(min_bound, max_bound, base=10):

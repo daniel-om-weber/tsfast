@@ -99,6 +99,7 @@ class TimeSeriesRegularizer(HookCallback):
     "Callback that adds AR and TAR to the loss, calculated by output of provided layer"
     run_before=TrainEvalCallback
     def __init__(self,alpha=0.0, beta=0.0,dim = None,detach=False, **kwargs):
+        if 'modules' not in kwargs: print('Warning: No module was provided to TimeSerieRegularizer')
         super().__init__(detach=detach,**kwargs)
         store_attr('alpha,beta,dim')
         
@@ -127,14 +128,14 @@ class TimeSeriesRegularizer(HookCallback):
             l_b = float(self.beta) * h_diff.pow(2).mean()
             self.learn.loss_grad += l_b
 
-# %% ../02_learner.ipynb 17
+# %% ../02_learner.ipynb 18
 class ARInitCB(Callback):
     '''Adds the target variable to the input tuple for autoregression'''
     def before_batch(self):
 #         import pdb; pdb.set_trace()
         self.learn.xb = tuple([*self.xb,*self.yb])
 
-# %% ../02_learner.ipynb 19
+# %% ../02_learner.ipynb 20
 from matplotlib.lines import Line2D
 def plot_grad_flow(named_parameters):
     '''Plots the gradients flowing through different layers in the net during training.
@@ -150,8 +151,8 @@ def plot_grad_flow(named_parameters):
         if(p.requires_grad) and ("bias" not in n):
             layers.append(n)
 #             pdb.set_trace()
-            ave_grads.append(0 if p.grad is None else p.grad.abs().mean())
-            max_grads.append(0 if p.grad is None else p.grad.abs().max())
+            ave_grads.append(0 if p.grad is None else p.grad.abs().mean().cpu())
+            max_grads.append(0 if p.grad is None else p.grad.abs().max().cpu())
     plt.bar(np.arange(len(max_grads)), max_grads, alpha=0.1, lw=1, color="c")
     plt.bar(np.arange(len(max_grads)), ave_grads, alpha=0.1, lw=1, color="b")
     plt.hlines(0, 0, len(ave_grads)+1, lw=2, color="k" )
@@ -167,7 +168,7 @@ def plot_grad_flow(named_parameters):
                 Line2D([0], [0], color="b", lw=4),
                 Line2D([0], [0], color="k", lw=4)], ['max-gradient', 'mean-gradient', 'zero-gradient'])
 
-# %% ../02_learner.ipynb 20
+# %% ../02_learner.ipynb 21
 class CB_PlotGradient(Callback):
     '''Plot the Gradient Distribution for every trainable parameter'''
     
@@ -186,7 +187,7 @@ class CB_PlotGradient(Callback):
             plot_grad_flow(self.learn.model.named_parameters())
 #             print('done')
 
-# %% ../02_learner.ipynb 23
+# %% ../02_learner.ipynb 24
 import functools
 
 def ignore_nan(func):
@@ -200,10 +201,10 @@ def ignore_nan(func):
         return func(*args, **kwargs)
     return ignore_nan_decorator
 
-# %% ../02_learner.ipynb 28
+# %% ../02_learner.ipynb 29
 mse_nan = ignore_nan(mse)
 
-# %% ../02_learner.ipynb 30
+# %% ../02_learner.ipynb 31
 import functools
 
 def float64_func(func):
@@ -215,7 +216,7 @@ def float64_func(func):
         return func(*args, **kwargs).type(typ)
     return float64_func_decorator
 
-# %% ../02_learner.ipynb 32
+# %% ../02_learner.ipynb 33
 def SkipNLoss(fn,n_skip=0):
     '''Loss-Function modifier that skips the first n samples of sequential data'''
     @functools.wraps(fn)
@@ -224,7 +225,7 @@ def SkipNLoss(fn,n_skip=0):
     
     return _inner
 
-# %% ../02_learner.ipynb 34
+# %% ../02_learner.ipynb 35
 def RandSeqLenLoss(fn,min_idx=1,max_idx=None,mid_idx=None):
     '''Loss-Function modifier that truncates the sequence length of every sequence in the minibatch inidiviually randomly.
     At the moment slow for very big batchsizes.'''
@@ -238,21 +239,21 @@ def RandSeqLenLoss(fn,min_idx=1,max_idx=None,mid_idx=None):
         return torch.stack([fn(input[i,:len_list[i]],target[i,:len_list[i]]) for i in range(bs)]).mean()
     return _inner
 
-# %% ../02_learner.ipynb 36
+# %% ../02_learner.ipynb 37
 def fun_rmse(inp, targ): 
     '''rmse loss function defined as a function not as a AccumMetric'''
     return torch.sqrt(F.mse_loss(inp, targ))
 
-# %% ../02_learner.ipynb 38
+# %% ../02_learner.ipynb 39
 def norm_rmse(inp, targ):
     '''rmse loss function defined as a function not as a AccumMetric'''
     return fun_rmse(inp, targ)*100
 
-# %% ../02_learner.ipynb 40
+# %% ../02_learner.ipynb 41
 def mean_vaf(inp,targ):
     return (1-((targ-inp).var()/targ.var()))*100
 
-# %% ../02_learner.ipynb 43
+# %% ../02_learner.ipynb 44
 def get_inp_out_size(db):
     '''returns input and output size of a timeseries databunch'''
     tup = db.one_batch()
@@ -260,7 +261,7 @@ def get_inp_out_size(db):
     out = tup[1].shape[-1]
     return inp,out
 
-# %% ../02_learner.ipynb 46
+# %% ../02_learner.ipynb 47
 @delegates(SimpleRNN, keep=True)
 def RNNLearner(db,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,**kwargs):
     inp,out = get_inp_out_size(db)
@@ -274,7 +275,7 @@ def RNNLearner(db,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,**
     lrn = Learner(db,model,loss_func=loss_func,opt_func=ranger,metrics=metrics,cbs=cbs)
     return lrn
 
-# %% ../02_learner.ipynb 49
+# %% ../02_learner.ipynb 50
 @delegates(TCN, keep=True)
 def TCNLearner(db,hl_depth=3,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,**kwargs):
     inp,out = get_inp_out_size(db)
@@ -289,7 +290,7 @@ def TCNLearner(db,hl_depth=3,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,
     lrn = Learner(db,model,loss_func=loss_func,opt_func=ranger,metrics=metrics,cbs=cbs)
     return lrn
 
-# %% ../02_learner.ipynb 52
+# %% ../02_learner.ipynb 53
 @delegates(CRNN, keep=True)
 def CRNNLearner(db,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,**kwargs):
     inp,out = get_inp_out_size(db)
@@ -303,7 +304,7 @@ def CRNNLearner(db,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,*
     lrn = Learner(db,model,loss_func=loss_func,opt_func=ranger,metrics=metrics,cbs=cbs)
     return lrn
 
-# %% ../02_learner.ipynb 55
+# %% ../02_learner.ipynb 56
 @delegates(TCN, keep=True)
 def AR_TCNLearner(db,hl_depth=3,alpha=1,beta=1,early_stop=0,metrics=None,n_skip=None,**kwargs):
     n_skip = 2**hl_depth if n_skip is None else n_skip
@@ -322,7 +323,7 @@ def AR_TCNLearner(db,hl_depth=3,alpha=1,beta=1,early_stop=0,metrics=None,n_skip=
     lrn = Learner(db,model,loss_func=nn.MSELoss(),opt_func=ranger,metrics=metrics,cbs=cbs)
     return lrn
 
-# %% ../02_learner.ipynb 56
+# %% ../02_learner.ipynb 57
 @delegates(SimpleRNN, keep=True)
 def AR_RNNLearner(db,alpha=0,beta=0,early_stop=0,metrics=None,n_skip=0,fname='model',**kwargs):
     skip = partial(SkipNLoss,n_skip=n_skip)
