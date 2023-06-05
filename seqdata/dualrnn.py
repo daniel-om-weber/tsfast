@@ -247,15 +247,20 @@ class NarProgCallback(HookCallback):
 class Diag_TCN(nn.Module):
     
     @delegates(TCN, keep=True)
-    def __init__(self,input_size,output_size,output_layer,**kwargs):
+    def __init__(self,input_size,output_size,output_layer,hl_width,mlp_layers=0,**kwargs):
         super().__init__()
         self.output_size = output_size
         
-        self._model = TCN(input_size,int(output_size*output_layer),**kwargs)
-        #RNN(input_size,hidden_size,rnn_layer,stateful=stateful,ret_full_hidden=False,**kwargs) 
+        if mlp_layers>0: 
+            self._model = TCN(input_size,hl_width,hl_width=hl_width,**kwargs)
+            self.final = SeqLinear(hl_width,int(output_size*output_layer),hidden_size=hl_width,hidden_layer=mlp_layers)
+        else:
+            self._model = TCN(input_size,int(output_size*output_layer),hl_width=hl_width,**kwargs)
+            self.final = nn.Identity()
 
     def forward(self, x,init_state = None):
         out = self._model(x)
+        out = self.final(out)
         out = torch.stack(torch.split(out, split_size_or_sections = self.output_size,dim = -1),0)
         return out,out
     
