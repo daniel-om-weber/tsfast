@@ -2,9 +2,10 @@
 
 # %% auto 0
 __all__ = ['mse_nan', 'GradientClipping', 'WeightClipping', 'SkipFirstNCallback', 'SkipNaNCallback', 'VarySeqLen',
-           'CB_TruncateSequence', 'CB_AddLoss', 'TimeSeriesRegularizer', 'ARInitCB', 'plot_grad_flow',
-           'CB_PlotGradient', 'ignore_nan', 'float64_func', 'SkipNLoss', 'RandSeqLenLoss', 'fun_rmse', 'norm_rmse',
-           'mean_vaf', 'get_inp_out_size', 'RNNLearner', 'TCNLearner', 'CRNNLearner', 'AR_TCNLearner', 'AR_RNNLearner']
+           'CB_TruncateSequence', 'CB_AddLoss', 'BatchLossFilter', 'TimeSeriesRegularizer', 'ARInitCB',
+           'plot_grad_flow', 'CB_PlotGradient', 'ignore_nan', 'float64_func', 'SkipNLoss', 'RandSeqLenLoss', 'fun_rmse',
+           'norm_rmse', 'mean_vaf', 'get_inp_out_size', 'RNNLearner', 'TCNLearner', 'CRNNLearner', 'AR_TCNLearner',
+           'AR_RNNLearner']
 
 # %% ../02_learner.ipynb 2
 from .core import *
@@ -115,7 +116,37 @@ class CB_AddLoss(Callback):
         self.learn.loss_grad = loss + self.learn.loss_grad
         self.learn.loss = loss + self.learn.loss
 
-# %% ../02_learner.ipynb 18
+# %% ../02_learner.ipynb 19
+class BatchLossFilter(Callback):
+    """ 
+    Callback that selects the hardest samples in every batch representing a percentage of the total loss.
+    """
+    def __init__(self, loss_perc=1., filter_criterion=nn.HuberLoss(reduction='none'), schedule_func:Optional[callable]=None):
+        store_attr() 
+
+    def after_pred(self):
+        """
+        Selects hardest samples after model prediction and before loss computation.
+        """
+        if not self.training: return  # Skip if not in training mode
+        if self.schedule_func is None: loss_perc = self.loss_perc
+        else: loss_perc = self.loss_perc * self.schedule_func(self.pct_train)  # Adjust loss_perc if a schedule function is given
+        if loss_perc == 1.: return  # If loss_perc is 1, all samples are included, no need to filter
+
+        with torch.no_grad():  # No gradients needed for the filtering operation
+            losses = self.filter_criterion(self.pred, self.y)  # Compute individual losses with model's predictions
+            if losses.ndim >= 2: losses = losses.mean(tuple(range(1,losses.ndim)))  # If loss is multi-dimensional, take the mean over all but the first dimension
+            losses /= losses.sum()  # Normalize losses to make them sum up to 1
+            
+            idxs = torch.argsort(losses, descending=True)  # Sort indices by loss
+            cut_idx = max(1, torch.argmax((losses[idxs].cumsum(0) > loss_perc).float()))  # Determine the cut-off index where cumulative sum exceeds loss_perc
+            idxs = idxs[:cut_idx]  # Select the hardest samples
+
+        self.learn.xb = tuple(xbi[idxs] for xbi in self.learn.xb)  # Filter the input batch
+        self.learn.yb = tuple(ybi[idxs] for ybi in self.learn.yb)  # Filter the output batch
+        self.learn.pred = self.pred[idxs]  # Update the predictions to match the filtered batch
+
+# %% ../02_learner.ipynb 22
 from fastai.callback.hook import *
 @delegates()
 class TimeSeriesRegularizer(HookCallback):
@@ -151,14 +182,14 @@ class TimeSeriesRegularizer(HookCallback):
             l_b = float(self.beta) * h_diff.pow(2).mean()
             self.learn.loss_grad += l_b
 
-# %% ../02_learner.ipynb 20
+# %% ../02_learner.ipynb 24
 class ARInitCB(Callback):
     '''Adds the target variable to the input tuple for autoregression'''
     def before_batch(self):
 #         import pdb; pdb.set_trace()
         self.learn.xb = tuple([*self.xb,*self.yb])
 
-# %% ../02_learner.ipynb 22
+# %% ../02_learner.ipynb 26
 from matplotlib.lines import Line2D
 def plot_grad_flow(named_parameters):
     '''Plots the gradients flowing through different layers in the net during training.
@@ -191,7 +222,7 @@ def plot_grad_flow(named_parameters):
                 Line2D([0], [0], color="b", lw=4),
                 Line2D([0], [0], color="k", lw=4)], ['max-gradient', 'mean-gradient', 'zero-gradient'])
 
-# %% ../02_learner.ipynb 23
+# %% ../02_learner.ipynb 27
 class CB_PlotGradient(Callback):
     '''Plot the Gradient Distribution for every trainable parameter'''
     
@@ -210,7 +241,7 @@ class CB_PlotGradient(Callback):
             plot_grad_flow(self.learn.model.named_parameters())
 #             print('done')
 
-# %% ../02_learner.ipynb 26
+# %% ../02_learner.ipynb 30
 import functools
 
 def ignore_nan(func):
@@ -224,10 +255,10 @@ def ignore_nan(func):
         return func(*args, **kwargs)
     return ignore_nan_decorator
 
-# %% ../02_learner.ipynb 31
+# %% ../02_learner.ipynb 35
 mse_nan = ignore_nan(mse)
 
-# %% ../02_learner.ipynb 33
+# %% ../02_learner.ipynb 37
 import functools
 
 def float64_func(func):
@@ -239,7 +270,7 @@ def float64_func(func):
         return func(*args, **kwargs).type(typ)
     return float64_func_decorator
 
-# %% ../02_learner.ipynb 35
+# %% ../02_learner.ipynb 39
 def SkipNLoss(fn,n_skip=0):
     '''Loss-Function modifier that skips the first n samples of sequential data'''
     @functools.wraps(fn)
@@ -248,7 +279,7 @@ def SkipNLoss(fn,n_skip=0):
     
     return _inner
 
-# %% ../02_learner.ipynb 37
+# %% ../02_learner.ipynb 41
 def RandSeqLenLoss(fn,min_idx=1,max_idx=None,mid_idx=None):
     '''Loss-Function modifier that truncates the sequence length of every sequence in the minibatch inidiviually randomly.
     At the moment slow for very big batchsizes.'''
@@ -262,21 +293,21 @@ def RandSeqLenLoss(fn,min_idx=1,max_idx=None,mid_idx=None):
         return torch.stack([fn(input[i,:len_list[i]],target[i,:len_list[i]]) for i in range(bs)]).mean()
     return _inner
 
-# %% ../02_learner.ipynb 39
+# %% ../02_learner.ipynb 43
 def fun_rmse(inp, targ): 
     '''rmse loss function defined as a function not as a AccumMetric'''
     return torch.sqrt(F.mse_loss(inp, targ))
 
-# %% ../02_learner.ipynb 41
+# %% ../02_learner.ipynb 45
 def norm_rmse(inp, targ):
     '''rmse loss function defined as a function not as a AccumMetric'''
     return fun_rmse(inp, targ)*100
 
-# %% ../02_learner.ipynb 43
+# %% ../02_learner.ipynb 47
 def mean_vaf(inp,targ):
     return (1-((targ-inp).var()/targ.var()))*100
 
-# %% ../02_learner.ipynb 46
+# %% ../02_learner.ipynb 50
 def get_inp_out_size(db):
     '''returns input and output size of a timeseries databunch'''
     tup = db.one_batch()
@@ -284,7 +315,7 @@ def get_inp_out_size(db):
     out = tup[1].shape[-1]
     return inp,out
 
-# %% ../02_learner.ipynb 49
+# %% ../02_learner.ipynb 53
 @delegates(SimpleRNN, keep=True)
 def RNNLearner(db,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,**kwargs):
     inp,out = get_inp_out_size(db)
@@ -298,7 +329,7 @@ def RNNLearner(db,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,**
     lrn = Learner(db,model,loss_func=loss_func,opt_func=ranger,metrics=metrics,cbs=cbs)
     return lrn
 
-# %% ../02_learner.ipynb 52
+# %% ../02_learner.ipynb 56
 @delegates(TCN, keep=True)
 def TCNLearner(db,hl_depth=3,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,**kwargs):
     inp,out = get_inp_out_size(db)
@@ -313,7 +344,7 @@ def TCNLearner(db,hl_depth=3,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,
     lrn = Learner(db,model,loss_func=loss_func,opt_func=ranger,metrics=metrics,cbs=cbs)
     return lrn
 
-# %% ../02_learner.ipynb 55
+# %% ../02_learner.ipynb 59
 @delegates(CRNN, keep=True)
 def CRNNLearner(db,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,**kwargs):
     inp,out = get_inp_out_size(db)
@@ -327,7 +358,7 @@ def CRNNLearner(db,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,*
     lrn = Learner(db,model,loss_func=loss_func,opt_func=ranger,metrics=metrics,cbs=cbs)
     return lrn
 
-# %% ../02_learner.ipynb 58
+# %% ../02_learner.ipynb 62
 @delegates(TCN, keep=True)
 def AR_TCNLearner(db,hl_depth=3,alpha=1,beta=1,early_stop=0,metrics=None,n_skip=None,**kwargs):
     n_skip = 2**hl_depth if n_skip is None else n_skip
@@ -346,7 +377,7 @@ def AR_TCNLearner(db,hl_depth=3,alpha=1,beta=1,early_stop=0,metrics=None,n_skip=
     lrn = Learner(db,model,loss_func=nn.MSELoss(),opt_func=ranger,metrics=metrics,cbs=cbs)
     return lrn
 
-# %% ../02_learner.ipynb 60
+# %% ../02_learner.ipynb 64
 @delegates(SimpleRNN, keep=True)
 def AR_RNNLearner(db,alpha=0,beta=0,early_stop=0,metrics=None,n_skip=0,fname='model',**kwargs):
     skip = partial(SkipNLoss,n_skip=n_skip)

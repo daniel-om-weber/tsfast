@@ -538,59 +538,54 @@ class Normalizer1D(nn.Module):
             self.std = self.std.to(x.device)
         return x*self.std + self.mean
 
-# %% ../../01_models.ipynb 44
+# %% ../../01_models.ipynb 43
 class AR_Model(nn.Module):
-    def __init__(self,model,ar=True,stateful=False):
+    '''
+    Autoregressive model container which work autoregressively if the sequence y is not provided, otherwise it works as a normal model.
+    This way it can be trained either with teacher forcing or with autoregression 
+    '''
+    def __init__(self,model,ar=True,stateful=True,out_sz=None):
         super().__init__()
         self.model = model
         self.ar = ar
-        self.norm = None
         self.stateful = stateful
+        self.norm = None
         self.y_init = None
+        self.out_sz = out_sz
     
     def init_normalize(self, batch,axes = [0,1]):
         x = batch[1]
         mean = x.mean(axes, keepdim=True)
         std = x.std(axes, keepdim=True)
-        self.norm = Normalizer1D(mean,std)
+        self.init_normalize_values(mean,std)
         
     def init_normalize_values(self, mean, std):
         self.norm = Normalizer1D(mean,std)
         
-    def forward(self, u,y):
-        
-        if self.stateful and self.y_init is not None and self.y_init.shape[0] == u.shape[0]:
-            y_in = torch.cat([self.y_init,y[:,:-1]],dim=1)
-        else:
-            y_in = F.pad(y[:,:-1,:],[0,0,1,0])#first value is always zero, needs to be stored for tbptt
-        
-        if self.ar: #autoregressive mode
+    def forward(self, u,y=None,ar=None):
+        if ar is None: ar = self.ar
+
+        if ar: #autoregressive mode
             y_e = []
             
-            y_next = y_in[:,:1]
-            
-            for i in range(u.shape[1]):
-                
-                if self.norm is not None: y_next=self.norm.normalize(y_next)
-                x = torch.cat((u[:, i:i+1], y_next), dim=2)
-                y = self.model(x)
-                    
-                y_next = y[:, -1:]
+            y_next = self.y_init if self.y_init is not None else torch.zeros(u.shape[0],1,self.out_sz).to(u.device)
+            for u_in in u.split(1,dim=1):
+                x = torch.cat((u_in, y_next), dim=2)
+                y_next = self.model(x)
                 y_e.append(y_next)
                     
             y_e = torch.cat(y_e,dim=1)
             
         else: #teacherforcing mode
+            if y is None: raise ValueError('y must be provided in teacher forcing mode')
 
-            if self.norm is not None: y_in=self.norm.normalize(y_in)
-            
-            x = torch.cat([u,y_in],dim=2)
+            x = torch.cat([u,y],dim=2)
             y_e = self.model(x)
                 
         if self.stateful:
             self.y_init = to_detach(y_e[:,-1:], cpu=False, gather=False) 
-            
-#             import pdb; pdb.set_trace()
+
+        if self.norm is not None: y_e = self.norm.unnormalize(y_e)
         return y_e
     
     def reset_state(self):

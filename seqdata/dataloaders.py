@@ -2,7 +2,7 @@
 
 # %% auto 0
 __all__ = ['TbpttDl', 'reset_model_state', 'TbpttResetCB', 'WeightedDL_Factory', 'uniform_p_of_category', 'uniform_p_of_float',
-           'uniform_p_of_float_with_gaps', 'BatchLimit_Factory']
+           'uniform_p_of_float_with_gaps', 'ImportanceSampling', 'BatchLimit_Factory']
 
 # %% ../03_dataloaders.ipynb 3
 from .core import *
@@ -166,7 +166,7 @@ def WeightedDL_Factory(cls):
             return idxs
     return WeightedDL
 
-# %% ../03_dataloaders.ipynb 26
+# %% ../03_dataloaders.ipynb 27
 def uniform_p_of_category(cat_name):  
     '''Scales sampling weights for an even distribution between every category'''
     def _inner(df):
@@ -189,7 +189,7 @@ def uniform_p_of_category(cat_name):
     
     return _inner
 
-# %% ../03_dataloaders.ipynb 27
+# %% ../03_dataloaders.ipynb 28
 def uniform_p_of_float(var_name,bins = 10):
     '''Scales sampling weights for an even distribution of the continous variable by creating equi sized bins'''
     def _inner(df):
@@ -214,7 +214,7 @@ def uniform_p_of_float(var_name,bins = 10):
 
     return _inner
 
-# %% ../03_dataloaders.ipynb 28
+# %% ../03_dataloaders.ipynb 29
 def uniform_p_of_float_with_gaps(var_name,bins = 100):
     '''Scales sampling weights for an even distribution of the continous variable by creating equi sized bins'''
     def _inner(df):
@@ -243,6 +243,43 @@ def uniform_p_of_float_with_gaps(var_name,bins = 100):
     return _inner
 
 # %% ../03_dataloaders.ipynb 37
+class ImportanceSampling(Callback):
+    #modify the dataloader weights to sample items with higher loss more often
+    def __init__(self, filter_criterion=nn.HuberLoss(reduction='none')):
+        self.filter_criterion = filter_criterion
+        self.loss_list = None #store loss of each item in the dataloader
+
+    def begin_fit(self):
+        #empty the loss list at the beginning of each fit
+        self.loss_list = None
+
+    def after_pred(self):
+        # store loss of each item in the batch
+        if not self.training: return
+        losses = self.filter_criterion(self.learn.pred, *self.learn.yb)
+        if losses.ndim >= 2: losses = losses.mean(tuple(range(1,losses.ndim)))  # If loss is multi-dimensional, take the mean over all but the first dimension
+        #get the indices of each item in the batch from the dataloader
+        import pdb; pdb.set_trace()
+
+        #if the loss_list is empty, initialize it with dataloader wgts
+        if self.loss_list is None:
+            self.loss_list = self.learn.dls.train.wgts.clone()
+            #scale the loss_list mean to the mean loss of the batch
+            self.loss_list *= self.loss_list.numel()/losses.mean()
+
+        #store the loss of each item in the loss_list
+        
+    def after_epoch(self):
+        #modify the dataloader weights to sample items with higher loss more often
+        if not self.training: return
+        self.learn.dls.train.wgts = self.loss_list
+        self.learn.dls.train.wgts /= self.learn.dls.train.wgts.sum()
+
+    
+
+        
+
+# %% ../03_dataloaders.ipynb 43
 def BatchLimit_Factory(cls):
     '''
     Batch limited Dataloader that provides an upper limit for the number of mini batches per epoch

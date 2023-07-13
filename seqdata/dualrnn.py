@@ -65,7 +65,7 @@ class NarProg(nn.Module):
     
     @delegates(RNN, keep=True)
     def __init__(self,prog_input_size,diag_input_size,output_size,init_sz,hidden_size=100,
-                 rnn_layer=1,diag_model=None,linear_layer = 1,init_diag_only=False,**kwargs):
+                 rnn_layer=1,diag_model=None,linear_layer = 1,init_diag_only=False,final_layer=0,**kwargs):
         super().__init__()
         store_attr('prog_input_size,diag_input_size,init_sz,init_diag_only')
         
@@ -73,14 +73,14 @@ class NarProg(nn.Module):
         rnn_kwargs = dict(rnn_kwargs, **kwargs)
         
         if diag_model is None:
-            self.rnn_diagnosis = Diag_RNN(diag_input_size,output_size=hidden_size,hidden_size=hidden_size,output_layer=rnn_layer,rnn_layer=rnn_layer,**kwargs) 
+            self.rnn_diagnosis = Diag_RNN(diag_input_size,output_size=hidden_size,hidden_size=hidden_size,output_layer=rnn_layer,rnn_layer=rnn_layer,linear_layer=linear_layer,**kwargs) 
         else:
             self.rnn_diagnosis = diag_model
 #         self.rnn_diagnosis = Diag_RNN_raw(diag_input_size,hidden_size,num_layers=rnn_layer,ret_full_hidden=True,stateful=True) 
         self.rnn_prognosis = RNN(prog_input_size,**rnn_kwargs) 
 
 #        self.final = SeqLinear(int(hidden_size*rnn_layer),output_size,hidden_layer=0)
-        self.final = SeqLinear(hidden_size,output_size,hidden_layer=0)
+        self.final = SeqLinear(hidden_size,output_size,hidden_layer=final_layer)
         
         self.reset_state()
 
