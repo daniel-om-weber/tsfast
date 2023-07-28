@@ -255,16 +255,17 @@ class Sequential_RNN(RNN):
 class SimpleRNN(nn.Module):
     
     @delegates(RNN, keep=True)
-    def __init__(self,input_size,output_size,num_layers=1,hidden_size=100,linear_layers=0,**kwargs):
+    def __init__(self,input_size,output_size,num_layers=1,hidden_size=100,linear_layers=0,return_state=False,**kwargs):
         super().__init__()
+        self.return_state = return_state
         self.rnn = RNN(input_size=input_size,hidden_size=hidden_size,num_layers=num_layers,**kwargs)
         self.final = SeqLinear(hidden_size,output_size,hidden_size=hidden_size,hidden_layer=linear_layers,act=nn.LeakyReLU)
     def forward(self, x, h_init=None):
-        out,_ = self.rnn(x,h_init)
+        out,h = self.rnn(x,h_init)
         out = self.final(out)
-        return out
+        return out if not self.return_state else (out,h)
 
-# %% ../../01_models.ipynb 19
+# %% ../../01_models.ipynb 18
 class ResidualBlock_RNN(nn.Module):
     
     @delegates(RNN, keep=True)
@@ -279,7 +280,7 @@ class ResidualBlock_RNN(nn.Module):
         out,_ = self.rnn2(out)
         return out+self.residual(x)
 
-# %% ../../01_models.ipynb 20
+# %% ../../01_models.ipynb 19
 class SimpleResidualRNN(nn.Sequential):
     
     @delegates(ResidualBlock_RNN, keep=True)
@@ -290,7 +291,7 @@ class SimpleResidualRNN(nn.Sequential):
 
         self.add_module('linear', SeqLinear(hidden_size,output_size,hidden_size,hidden_layer=1))
 
-# %% ../../01_models.ipynb 23
+# %% ../../01_models.ipynb 22
 class DenseLayer_RNN(nn.Module):
     
     @delegates(RNN, keep=True)
@@ -312,7 +313,7 @@ class DenseBlock_RNN(nn.Sequential):
             self.add_module('denselayer%d' % i, DenseLayer_RNN(num_input_features + i * growth_rate,growth_rate,**kwargs))
             
 
-# %% ../../01_models.ipynb 24
+# %% ../../01_models.ipynb 23
 class DenseNet_RNN(nn.Sequential):
     
     @delegates(RNN, keep=True)
@@ -332,7 +333,7 @@ class DenseNet_RNN(nn.Sequential):
             num_features = num_features // 2
         self.add_module('final',  SeqLinear(num_features, output_size ,hidden_layer=0))
 
-# %% ../../01_models.ipynb 27
+# %% ../../01_models.ipynb 26
 class SeperateRNN(nn.Module):
     
     @delegates(RNN, keep=True)
@@ -356,7 +357,7 @@ class SeperateRNN(nn.Module):
         out = self.final(out)
         return out
 
-# %% ../../01_models.ipynb 30
+# %% ../../01_models.ipynb 29
 class CausalConv1d(torch.nn.Conv1d):
     def __init__(self,
                  in_channels,
@@ -399,7 +400,7 @@ class CausalConv1d(torch.nn.Conv1d):
     def reset_state(self):
         self.x_init = None
 
-# %% ../../01_models.ipynb 31
+# %% ../../01_models.ipynb 30
 @delegates(CausalConv1d, keep=True)
 def CConv1D(input_size,output_size,kernel_size=2,activation = Mish,wn=True, bn = False, **kwargs):
     conv = CausalConv1d(input_size,output_size,kernel_size,**kwargs)
@@ -409,7 +410,7 @@ def CConv1D(input_size,output_size,kernel_size=2,activation = Mish,wn=True, bn =
     m = [m for m in [bn,conv,act] if m is not None]
     return nn.Sequential(*m)
 
-# %% ../../01_models.ipynb 32
+# %% ../../01_models.ipynb 31
 @delegates(CausalConv1d, keep=True)
 class TCN_Block(nn.Module):
     def __init__(self,input_size,output_size,num_layers=1,
@@ -433,7 +434,7 @@ class TCN_Block(nn.Module):
         out = out + (x if self.residual is None else self.residual(x))  
         return out
 
-# %% ../../01_models.ipynb 33
+# %% ../../01_models.ipynb 32
 class TCN(nn.Module):
     def __init__(self,input_size,output_size,hl_depth=1,hl_width=10,act = Mish,bn=False,stateful=False):
         super().__init__()
@@ -450,7 +451,7 @@ class TCN(nn.Module):
         out = self.final(out).transpose(1,2)
         return out
 
-# %% ../../01_models.ipynb 35
+# %% ../../01_models.ipynb 34
 class SeperateTCN(nn.Module):
     def __init__(self,input_list,output_size,hl_depth=1,hl_width=10,act = Mish,bn=False,stateful=False,final_layer=3):
         super().__init__()
@@ -490,10 +491,10 @@ class SeperateTCN(nn.Module):
     def reset_state(self):
         self.x_init = None
 
-# %% ../../01_models.ipynb 37
+# %% ../../01_models.ipynb 36
 class CRNN(nn.Module):
     def __init__(self,input_size,output_size,num_ft=10,num_cnn_layers=4,num_rnn_layers=2,hs_cnn=10,hs_rnn=10,
-         hidden_p=0, input_p=0, weight_p=0, rnn_type='gru',stateful=True):
+         hidden_p=0, input_p=0, weight_p=0, rnn_type='gru',stateful=False):
         super().__init__()
         self.cnn = TCN(input_size,num_ft,num_cnn_layers,hs_cnn,act=nn.ReLU,stateful=stateful)
         self.rnn = SimpleRNN(num_ft,output_size,num_layers=num_rnn_layers,hidden_size=hs_rnn,
@@ -504,10 +505,10 @@ class CRNN(nn.Module):
         return self.rnn(self.cnn(x))
     
 
-# %% ../../01_models.ipynb 40
+# %% ../../01_models.ipynb 39
 class SeperateCRNN(nn.Module):
     def __init__(self,input_list,output_size,num_ft=10,num_cnn_layers=4,num_rnn_layers=2,hs_cnn=10,hs_rnn=10,
-         hidden_p=0, input_p=0, weight_p=0, rnn_type='gru',stateful=True):
+         hidden_p=0, input_p=0, weight_p=0, rnn_type='gru',stateful=False):
         super().__init__()
         self.cnn = SeperateTCN(input_list,num_ft,num_cnn_layers,hs_cnn,act=nn.ReLU,stateful=stateful,final_layer=0)
         self.rnn = SimpleRNN(num_ft,output_size,num_layers=num_rnn_layers,hidden_size=hs_rnn,
@@ -517,7 +518,7 @@ class SeperateCRNN(nn.Module):
     def forward(self, x):
         return self.rnn(self.cnn(x))
 
-# %% ../../01_models.ipynb 42
+# %% ../../01_models.ipynb 41
 class Normalizer1D(nn.Module):
     _epsilon = 1e-16
 
@@ -538,20 +539,18 @@ class Normalizer1D(nn.Module):
             self.std = self.std.to(x.device)
         return x*self.std + self.mean
 
-# %% ../../01_models.ipynb 43
+# %% ../../01_models.ipynb 42
 class AR_Model(nn.Module):
     '''
     Autoregressive model container which work autoregressively if the sequence y is not provided, otherwise it works as a normal model.
     This way it can be trained either with teacher forcing or with autoregression 
     '''
-    def __init__(self,model,ar=True,stateful=True,out_sz=None):
+    def __init__(self,model,ar=True,stateful=False,model_has_state=False,return_state=False,out_sz=None):
         super().__init__()
-        self.model = model
-        self.ar = ar
-        self.stateful = stateful
+        store_attr()
+        if return_state and not model_has_state: raise ValueError('return_state=True requires model_has_state=True')
         self.norm = None
         self.y_init = None
-        self.out_sz = out_sz
     
     def init_normalize(self, batch,axes = [0,1]):
         x = batch[1]
@@ -562,17 +561,26 @@ class AR_Model(nn.Module):
     def init_normalize_values(self, mean, std):
         self.norm = Normalizer1D(mean,std)
         
-    def forward(self, u,y=None,ar=None):
+    def forward(self, u,y=None,h_init=None,ar=None):
         if ar is None: ar = self.ar
 
         if ar: #autoregressive mode
             y_e = []
             
             y_next = self.y_init if self.y_init is not None else torch.zeros(u.shape[0],1,self.out_sz).to(u.device)
-            for u_in in u.split(1,dim=1):
-                x = torch.cat((u_in, y_next), dim=2)
-                y_next = self.model(x)
-                y_e.append(y_next)
+
+            #two loops in the if clause to avoid the if inside the loop
+            if self.model_has_state:
+                h0 = h_init
+                for u_in in u.split(1,dim=1):
+                    x = torch.cat((u_in, y_next), dim=2)
+                    y_next,h0 = self.model(x,h0)
+                    y_e.append(y_next)
+            else:
+                for u_in in u.split(1,dim=1):
+                    x = torch.cat((u_in, y_next), dim=2)
+                    y_next = self.model(x)
+                    y_e.append(y_next)
                     
             y_e = torch.cat(y_e,dim=1)
             
@@ -580,13 +588,17 @@ class AR_Model(nn.Module):
             if y is None: raise ValueError('y must be provided in teacher forcing mode')
 
             x = torch.cat([u,y],dim=2)
-            y_e = self.model(x)
+
+            if self.model_has_state:
+                y_e,h0 = self.model(x,h_init)
+            else:
+                y_e = self.model(x)
                 
         if self.stateful:
             self.y_init = to_detach(y_e[:,-1:], cpu=False, gather=False) 
 
         if self.norm is not None: y_e = self.norm.unnormalize(y_e)
-        return y_e
+        return y_e if not self.return_state else (y_e,h0)
     
     def reset_state(self):
         self.y_init = None
