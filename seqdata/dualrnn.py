@@ -370,7 +370,10 @@ class ARProg_Init(nn.Module):
         y_x = inp[...,self.n_u:] #measured output and external state
         u = inp[...,:self.n_u] #measured input
 
-        out_diag,_ = self.rnn_diagnosis(inp[:,:self.init_sz])
+        if self.training:
+            out_diag,_ = self.rnn_diagnosis(inp)
+        else:
+            out_diag,_ = self.rnn_diagnosis(inp[:,:self.init_sz])
         h_init = self.rnn_diagnosis.output_to_hidden(out_diag,self.init_sz-1)
         self.rnn_prognosis.y_init = y_x[:,self.init_sz:self.init_sz+1]
         out_prog = self.rnn_prognosis(u[:,self.init_sz:],h_init=h_init,ar=True)
