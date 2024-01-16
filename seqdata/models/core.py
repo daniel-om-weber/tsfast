@@ -158,7 +158,7 @@ class RNN(nn.Module):
                  rnn_type='gru',ret_full_hidden=False,stateful=False,
                  normalization='',**kwargs):
         super().__init__()
-        store_attr('ret_full_hidden,num_layers,rnn_type,hidden_size,stateful,input_p,normalization')
+        store_attr()
         self.bs = 1
         
         self.rnns = nn.ModuleList([self._one_rnn(input_size if l == 0 else hidden_size,
@@ -174,7 +174,7 @@ class RNN(nn.Module):
         elif normalization == 'batchnorm':
             self.norm_layers = nn.ModuleList([(BatchNorm_1D_Stateful(hidden_size,stateful=stateful,batch_first=True,affine=False)) for i in range(num_layers)])  
         else:
-            raise ValueError('Wrong Value for normalization')
+            raise ValueError('Invalid value for normalization')
         self.reset_state()
 
     def forward(self, inp, h_init=None):
@@ -196,9 +196,10 @@ class RNN(nn.Module):
             full_hid.append(r_output)
             new_hidden.append(h)
             r_input = r_output
-        
-        self.hidden =  to_detach(new_hidden, cpu=False, gather=False)
-        self.bs = bs
+
+        if self.stateful:
+            self.hidden =  to_detach(new_hidden, cpu=False, gather=False)
+            self.bs = bs
         output = r_output if not self.ret_full_hidden else torch.stack(full_hid, 0)
         
         return output, new_hidden
@@ -215,16 +216,16 @@ class RNN(nn.Module):
         "Return one of the inner rnn"
         if rnn_type == 'gru':
             rnn = nn.GRU(n_in, n_out,1,batch_first=True,**kwargs)
-#             rnn = WeightDropout(rnn,weight_p)
+            # rnn = WeightDropout(rnn,weight_p)
         elif rnn_type == 'lstm':
             rnn = nn.LSTM(n_in, n_out,1,batch_first=True,**kwargs)
-#             rnn = WeightDropout(rnn,weight_p)
+            # rnn = WeightDropout(rnn,weight_p)
         elif rnn_type == 'sru':
             rnn = SRU(n_in, n_out,1,batch_first=True,**kwargs)
-#             rnn = WeightDropout(rnn,weight_p)
+            # rnn = WeightDropout(rnn,weight_p)
         elif rnn_type == 'rnn':
             rnn = nn.RNN(n_in, n_out,1,batch_first=True,**kwargs)
-#             rnn = WeightDropout(rnn,weight_p)
+            # rnn = WeightDropout(rnn,weight_p)
         elif rnn_type == 'qrnn':
             rnn = QRNN(n_in, n_out,1,batch_first=True,**kwargs)
 #             rnn.layers[0].linear = WeightDropout(rnn.layers[0].linear,weight_p,layer_names='weight')

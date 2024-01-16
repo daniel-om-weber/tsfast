@@ -18,6 +18,8 @@ from ray import tune
 from ray.tune import Trainable
 from ray.tune.schedulers import *
 from ray.tune.experiment.trial import ExportFormat
+from ray import train
+from ray.train import Checkpoint
 
 # %% ../13_HPOpt.ipynb 6
 def log_uniform(min_bound, max_bound, base=10):
@@ -75,20 +77,17 @@ class CBRaySaveModel(SaveModelCallback):
     "A `TrackerCallback` that saves the model's best during training in a tune checkpoint directory"
     
     def _save(self, name):
-        if not hasattr(self,'idx_checkpoint'): self.idx_checkpoint = 0
-        with tune.checkpoint_dir(step=self.idx_checkpoint) as checkpoint_dir:
-            file = os.path.join(checkpoint_dir,name+'.pth')
-            print(file)
+        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            file = os.path.join(temp_checkpoint_dir,name+'.pth')
             save_model(file, self.learn.model,opt=None)
             self.last_saved_path = file
-            self.idx_checkpoint += 1
             
     #final checkpoint
     def after_fit(self, **kwargs):
         self._save(f'{self.fname}')
 
 # %% ../13_HPOpt.ipynb 10
-def learner_optimize(config, checkpoint_dir=None):
+def learner_optimize(config):
         create_lrn = ray.get(config['create_lrn'])
         dls = ray.get(config['dls'])
         
@@ -100,8 +99,10 @@ def learner_optimize(config, checkpoint_dir=None):
         lrn = create_lrn(dls,config)
         
         # load checkpoint data if provided
-        if checkpoint_dir:
-            lrn.model.load_state_dict(torch.load(tmp_checkpoint_dir))
+        checkpoint: train.Checkpoint = train.get_checkpoint()
+        if checkpoint:
+            with checkpoint.as_directory() as checkpoint_dir:
+                lrn.model.load_state_dict(torch.load(checkpoint_dir + 'model.pth'))
         
         lrn.lr = config['lr'] if 'lr' in config else 3e-3
         lrn.add_cb(CBRayReporter() if 'reporter' not in config else ray.get(config['reporter'])())
@@ -123,10 +124,22 @@ class CBRayReporter(Callback):
     order=70 #order has to be >50, to be executed after the recorder callback
 
     def after_epoch(self):
-        train_loss,valid_loss,rmse = self.learn.recorder.values[-1]
-        tune.report(train_loss=train_loss,
-                        valid_loss=valid_loss,
-                        mean_loss=rmse)
+        # train_loss,valid_loss,rmse = self.learn.recorder.values[-1]
+        # metrics = {
+        #     'train_loss': train_loss,
+        #     'valid_loss': valid_loss,
+        #     'mean_loss': rmse,
+        # }
+        scores = self.learn.recorder.values[-1]
+        metrics = {
+            'train_loss': scores[0],
+            'valid_loss': scores[1]
+        }
+        for metric,value in zip(self.learn.metrics,scores[2:]):
+            m_name = metric.name if hasattr(metric,'name') else str(metric)
+            metrics[m_name] = value
+        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            ray.train.report(metrics, checkpoint=Checkpoint.from_directory(temp_checkpoint_dir))
 
 # %% ../13_HPOpt.ipynb 14
 class HPOptimizer():
