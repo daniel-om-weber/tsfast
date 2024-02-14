@@ -138,9 +138,9 @@ class NarProg(nn.Module):
 from fastai.callback.hook import *
 class NarProgCallback(HookCallback):
     "`Callback` that regularizes the output of the NarProg model."
-    def __init__(self,modules, p_state_sync=1e6,#scalingfactor for regularization of hidden state deviation between diag and prog module
+    def __init__(self,modules, p_state_sync=1e7,#scalingfactor for regularization of hidden state deviation between diag and prog module
                                 p_diag_loss=0.0,#scalingfactor of loss calculation of diag hidden state to final layer
-                                p_osp_sync=1e6,#scalingfactor for regularization of hidden state deviation between one step prediction and diag hidden states
+                                p_osp_sync=1e7,#scalingfactor for regularization of hidden state deviation between one step prediction and diag hidden states
                                 p_osp_loss=0.1,#scalingfactor for loss calculation of one step prediction of prog module
                                 p_tar_loss=4,#scalingfactor for time activation regularization of combined hiddenstate of diag and prog with target sequence length
                                 sync_type='mse',
