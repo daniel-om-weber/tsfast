@@ -106,7 +106,7 @@ def learner_optimize(config):
         
         lrn.lr = config['lr'] if 'lr' in config else 3e-3
         lrn.add_cb(CBRayReporter() if 'reporter' not in config else ray.get(config['reporter'])())
-        lrn.add_cb(CBRaySaveModel())
+        # lrn.add_cb(CBRaySaveModel()) #the model saving now has to be done by the reporter callback
         with lrn.no_bar(): 
             ray.get(config['fit_method'])(lrn,**lrn_kwargs)
 
@@ -138,7 +138,12 @@ class CBRayReporter(Callback):
         for metric,value in zip(self.learn.metrics,scores[2:]):
             m_name = metric.name if hasattr(metric,'name') else str(metric)
             metrics[m_name] = value
+
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            file = os.path.join(temp_checkpoint_dir,'model.pth')
+            #the model has to be saved to the checkpoint directory on creation
+            #that is why a seperate callback for model saving is not trivial
+            save_model(file, self.learn.model,opt=None) 
             ray.train.report(metrics, checkpoint=Checkpoint.from_directory(temp_checkpoint_dir))
 
 # %% ../13_HPOpt.ipynb 14

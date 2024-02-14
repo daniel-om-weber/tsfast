@@ -144,7 +144,7 @@ class SeqLinear(nn.Module):
         return out
 
 # %% ../../01_models.ipynb 11
-from fastai.text.models.awdlstm import *
+from fastai.text.models.awdlstm import RNNDropout,WeightDropout
 from .indrnn import IndRNN
 try:
     import haste_pytorch as haste
@@ -216,16 +216,19 @@ class RNN(nn.Module):
         "Return one of the inner rnn"
         if rnn_type == 'gru':
             rnn = nn.GRU(n_in, n_out,1,batch_first=True,**kwargs)
-            # rnn = WeightDropout(rnn,weight_p)
+            if weight_p > 0: 
+                rnn = WeightDropout(rnn,weight_p)
         elif rnn_type == 'lstm':
             rnn = nn.LSTM(n_in, n_out,1,batch_first=True,**kwargs)
-            # rnn = WeightDropout(rnn,weight_p)
+            if weight_p > 0: 
+                rnn = WeightDropout(rnn,weight_p)
         elif rnn_type == 'sru':
             rnn = SRU(n_in, n_out,1,batch_first=True,**kwargs)
-            # rnn = WeightDropout(rnn,weight_p)
+            #rnn = WeightDropout(rnn,weight_p)
         elif rnn_type == 'rnn':
             rnn = nn.RNN(n_in, n_out,1,batch_first=True,**kwargs)
-            # rnn = WeightDropout(rnn,weight_p)
+            if weight_p > 0: 
+                rnn = WeightDropout(rnn,weight_p)
         elif rnn_type == 'qrnn':
             rnn = QRNN(n_in, n_out,1,batch_first=True,**kwargs)
 #             rnn.layers[0].linear = WeightDropout(rnn.layers[0].linear,weight_p,layer_names='weight')
@@ -246,7 +249,7 @@ class RNN(nn.Module):
     def reset_state(self):
         self.hidden = None
 
-# %% ../../01_models.ipynb 12
+# %% ../../01_models.ipynb 13
 class Sequential_RNN(RNN):
     '''RNN Variant for Sequential Modules'''
     def forward(self, inp, h_init=None):
@@ -266,7 +269,7 @@ class SimpleRNN(nn.Module):
         out = self.final(out)
         return out if not self.return_state else (out,h)
 
-# %% ../../01_models.ipynb 18
+# %% ../../01_models.ipynb 19
 class ResidualBlock_RNN(nn.Module):
     
     @delegates(RNN, keep=True)
@@ -281,7 +284,7 @@ class ResidualBlock_RNN(nn.Module):
         out,_ = self.rnn2(out)
         return out+self.residual(x)
 
-# %% ../../01_models.ipynb 19
+# %% ../../01_models.ipynb 20
 class SimpleResidualRNN(nn.Sequential):
     
     @delegates(ResidualBlock_RNN, keep=True)
@@ -292,7 +295,7 @@ class SimpleResidualRNN(nn.Sequential):
 
         self.add_module('linear', SeqLinear(hidden_size,output_size,hidden_size,hidden_layer=1))
 
-# %% ../../01_models.ipynb 22
+# %% ../../01_models.ipynb 23
 class DenseLayer_RNN(nn.Module):
     
     @delegates(RNN, keep=True)
@@ -314,7 +317,7 @@ class DenseBlock_RNN(nn.Sequential):
             self.add_module('denselayer%d' % i, DenseLayer_RNN(num_input_features + i * growth_rate,growth_rate,**kwargs))
             
 
-# %% ../../01_models.ipynb 23
+# %% ../../01_models.ipynb 24
 class DenseNet_RNN(nn.Sequential):
     
     @delegates(RNN, keep=True)
@@ -334,7 +337,7 @@ class DenseNet_RNN(nn.Sequential):
             num_features = num_features // 2
         self.add_module('final',  SeqLinear(num_features, output_size ,hidden_layer=0))
 
-# %% ../../01_models.ipynb 26
+# %% ../../01_models.ipynb 27
 class SeperateRNN(nn.Module):
     
     @delegates(RNN, keep=True)
@@ -358,7 +361,7 @@ class SeperateRNN(nn.Module):
         out = self.final(out)
         return out
 
-# %% ../../01_models.ipynb 29
+# %% ../../01_models.ipynb 30
 class CausalConv1d(torch.nn.Conv1d):
     def __init__(self,
                  in_channels,
@@ -401,7 +404,7 @@ class CausalConv1d(torch.nn.Conv1d):
     def reset_state(self):
         self.x_init = None
 
-# %% ../../01_models.ipynb 30
+# %% ../../01_models.ipynb 31
 @delegates(CausalConv1d, keep=True)
 def CConv1D(input_size,output_size,kernel_size=2,activation = Mish,wn=True, bn = False, **kwargs):
     conv = CausalConv1d(input_size,output_size,kernel_size,**kwargs)
@@ -411,7 +414,7 @@ def CConv1D(input_size,output_size,kernel_size=2,activation = Mish,wn=True, bn =
     m = [m for m in [bn,conv,act] if m is not None]
     return nn.Sequential(*m)
 
-# %% ../../01_models.ipynb 31
+# %% ../../01_models.ipynb 32
 @delegates(CausalConv1d, keep=True)
 class TCN_Block(nn.Module):
     def __init__(self,input_size,output_size,num_layers=1,
@@ -435,7 +438,7 @@ class TCN_Block(nn.Module):
         out = out + (x if self.residual is None else self.residual(x))  
         return out
 
-# %% ../../01_models.ipynb 32
+# %% ../../01_models.ipynb 33
 class TCN(nn.Module):
     def __init__(self,input_size,output_size,hl_depth=1,hl_width=10,act = Mish,bn=False,stateful=False):
         super().__init__()
@@ -452,7 +455,7 @@ class TCN(nn.Module):
         out = self.final(out).transpose(1,2)
         return out
 
-# %% ../../01_models.ipynb 34
+# %% ../../01_models.ipynb 35
 class SeperateTCN(nn.Module):
     def __init__(self,input_list,output_size,hl_depth=1,hl_width=10,act = Mish,bn=False,stateful=False,final_layer=3):
         super().__init__()
@@ -492,7 +495,7 @@ class SeperateTCN(nn.Module):
     def reset_state(self):
         self.x_init = None
 
-# %% ../../01_models.ipynb 36
+# %% ../../01_models.ipynb 37
 class CRNN(nn.Module):
     def __init__(self,input_size,output_size,num_ft=10,num_cnn_layers=4,num_rnn_layers=2,hs_cnn=10,hs_rnn=10,
          hidden_p=0, input_p=0, weight_p=0, rnn_type='gru',stateful=False):
@@ -506,7 +509,7 @@ class CRNN(nn.Module):
         return self.rnn(self.cnn(x))
     
 
-# %% ../../01_models.ipynb 39
+# %% ../../01_models.ipynb 40
 class SeperateCRNN(nn.Module):
     def __init__(self,input_list,output_size,num_ft=10,num_cnn_layers=4,num_rnn_layers=2,hs_cnn=10,hs_rnn=10,
          hidden_p=0, input_p=0, weight_p=0, rnn_type='gru',stateful=False):
@@ -519,7 +522,7 @@ class SeperateCRNN(nn.Module):
     def forward(self, x):
         return self.rnn(self.cnn(x))
 
-# %% ../../01_models.ipynb 41
+# %% ../../01_models.ipynb 42
 class Normalizer1D(nn.Module):
     _epsilon = 1e-16
 
@@ -540,7 +543,7 @@ class Normalizer1D(nn.Module):
             self.std = self.std.to(x.device)
         return x*self.std + self.mean
 
-# %% ../../01_models.ipynb 42
+# %% ../../01_models.ipynb 43
 class AR_Model(nn.Module):
     '''
     Autoregressive model container which work autoregressively if the sequence y is not provided, otherwise it works as a normal model.
