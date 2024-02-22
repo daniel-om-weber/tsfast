@@ -140,9 +140,9 @@ class NarProgCallback(HookCallback):
     "`Callback` that regularizes the output of the NarProg model."
     def __init__(self,modules, p_state_sync=1e7,#scalingfactor for regularization of hidden state deviation between diag and prog module
                                 p_diag_loss=0.0,#scalingfactor of loss calculation of diag hidden state to final layer
-                                p_osp_sync=1e7,#scalingfactor for regularization of hidden state deviation between one step prediction and diag hidden states
-                                p_osp_loss=0.1,#scalingfactor for loss calculation of one step prediction of prog module
-                                p_tar_loss=4,#scalingfactor for time activation regularization of combined hiddenstate of diag and prog with target sequence length
+                                p_osp_sync=0,#scalingfactor for regularization of hidden state deviation between one step prediction and diag hidden states
+                                p_osp_loss=0,#scalingfactor for loss calculation of one step prediction of prog module
+                                p_tar_loss=0,#scalingfactor for time activation regularization of combined hiddenstate of diag and prog with target sequence length
                                 sync_type='mse',
                                 targ_loss_func=mae,
                                 osp_n_skip=None,#number of elements to skip before osp is applied, defaults to model.init_sz
@@ -185,14 +185,18 @@ class NarProgCallback(HookCallback):
         
             if self.sync_type == 'mse': 
                 hidden_loss = ((prog-diag_trunc)/
-                                (prog.norm()+diag_trunc.norm())).pow(2).mean()  
+                                (diag_trunc.norm())).pow(2).mean()  
             elif self.sync_type == 'mae':
                 hidden_loss = ((prog-diag_trunc)/
-                                (prog.norm()+diag_trunc.norm())).abs().mean()
+                                (diag_trunc.norm())).abs().mean()
             elif self.sync_type == 'mspe':
-                hidden_loss = ((diag_trunc-prog)/torch.linalg.norm(diag_trunc,dim=(0,1,2))).pow(2).mean()
+                hidden_loss = ((diag_trunc-prog)/torch.linalg.norm(diag_trunc,dim=(0,1),keepdim=True)).pow(2).mean()
             elif self.sync_type == 'mape':
-                hidden_loss = ((diag_trunc-prog)/torch.linalg.norm(diag_trunc,dim=(0,1,2))).abs().mean() 
+                hidden_loss = ((diag_trunc-prog)/torch.linalg.norm(diag_trunc,dim=(0,1),keepdim=True)).abs().mean() 
+            elif self.sync_type == 'cos':
+                hidden_loss = cos_sim_loss(diag_trunc,prog)
+            elif self.sync_type == 'cos_pow':
+                hidden_loss = cos_sim_loss_pow(diag_trunc,prog)
 
             self.learn.loss_grad += self.p_state_sync * hidden_loss  
             self.learn.loss += self.p_state_sync * hidden_loss  
@@ -243,7 +247,7 @@ class NarProgCallback(HookCallback):
             self.learn.loss_grad += self.p_tar_loss * hidden_loss  
             self.learn.loss += self.p_tar_loss * hidden_loss  
 
-# %% ../11_dualrnn.ipynb 14
+# %% ../11_dualrnn.ipynb 15
 class Diag_TCN(nn.Module):
     
     @delegates(TCN, keep=True)
@@ -270,7 +274,7 @@ class Diag_TCN(nn.Module):
         hidden = [ h.contiguous() for h in hidden]
         return hidden
 
-# %% ../11_dualrnn.ipynb 20
+# %% ../11_dualrnn.ipynb 21
 class NarProgCallback_variable_init(Callback):
     "`Callback` reports progress after every epoch to the ray tune logger"
     
@@ -288,7 +292,7 @@ class NarProgCallback_variable_init(Callback):
             else:
                 self.learn.model.init_sz = self.init_sz_valid
 
-# %% ../11_dualrnn.ipynb 25
+# %% ../11_dualrnn.ipynb 26
 class ARProg(nn.Module):
     
     @delegates(RNN, keep=True)
@@ -314,7 +318,7 @@ class ARProg(nn.Module):
 
         return result[...,-self.n_y:]
 
-# %% ../11_dualrnn.ipynb 29
+# %% ../11_dualrnn.ipynb 30
 class DiagLSTM(nn.Module):
 
     @delegates(nn.LSTM, keep=True)
@@ -344,7 +348,7 @@ class DiagLSTM(nn.Module):
     def _get_hidden(self,bs):
         return self.rnn._get_hidden(bs)
 
-# %% ../11_dualrnn.ipynb 30
+# %% ../11_dualrnn.ipynb 31
 class ARProg_Init(nn.Module):
     
     @delegates(RNN, keep=True)
@@ -382,7 +386,7 @@ class ARProg_Init(nn.Module):
 
         return result[...,-self.n_y:]
 
-# %% ../11_dualrnn.ipynb 34
+# %% ../11_dualrnn.ipynb 35
 class ProDiagTrainer(Callback):
     "`Callback` that regroups lr adjustment to seq_len, AR and TAR."
     def __init__(self, alpha=1e6,beta=1,p_own_state=0):
@@ -427,7 +431,7 @@ class ProDiagTrainer(Callback):
     def after_fit(self):
         reset_model_state(self.learn.model)
 
-# %% ../11_dualrnn.ipynb 35
+# %% ../11_dualrnn.ipynb 36
 class DualRNN(nn.Module):
     
     @delegates(RNN, keep=True)
@@ -483,7 +487,7 @@ class DualRNN(nn.Module):
 #         import pdb; pdb.set_trace()   
         return est_main,est_co, out_co,out_main
 
-# %% ../11_dualrnn.ipynb 40
+# %% ../11_dualrnn.ipynb 41
 class DualCRNN(nn.Module):
     
     @delegates(RNN, keep=True)
