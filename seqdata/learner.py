@@ -4,8 +4,9 @@
 __all__ = ['mse_nan', 'GradientClipping', 'GradientNormPrint', 'GradientBatchFiltering', 'WeightClipping', 'SkipFirstNCallback',
            'SkipNaNCallback', 'VarySeqLen', 'CB_TruncateSequence', 'sched_lin_p', 'sched_ramp', 'CB_AddLoss',
            'BatchLossFilter', 'TimeSeriesRegularizer', 'ARInitCB', 'plot_grad_flow', 'CB_PlotGradient', 'ignore_nan',
-           'float64_func', 'SkipNLoss', 'CutLoss', 'weighted_mae', 'RandSeqLenLoss', 'fun_rmse', 'nrmse', 'nrmse_std',
-           'mean_vaf', 'get_inp_out_size', 'RNNLearner', 'TCNLearner', 'CRNNLearner', 'AR_TCNLearner', 'AR_RNNLearner']
+           'float64_func', 'SkipNLoss', 'CutLoss', 'weighted_mae', 'RandSeqLenLoss', 'fun_rmse', 'cos_sim_loss',
+           'cos_sim_loss_pow', 'nrmse', 'nrmse_std', 'mean_vaf', 'get_inp_out_size', 'RNNLearner', 'TCNLearner',
+           'CRNNLearner', 'AR_TCNLearner', 'AR_RNNLearner']
 
 # %% ../02_learner.ipynb 2
 from .core import *
@@ -366,24 +367,34 @@ def fun_rmse(inp, targ):
     return torch.sqrt(F.mse_loss(inp, targ))
 
 # %% ../02_learner.ipynb 56
+def cos_sim_loss(inp, targ): 
+    '''rmse loss function defined as a function not as a AccumMetric'''
+    return (1-F.cosine_similarity(inp,targ,dim=-1)).mean()
+
+# %% ../02_learner.ipynb 58
+def cos_sim_loss_pow(inp, targ): 
+    '''rmse loss function defined as a function not as a AccumMetric'''
+    return (1-F.cosine_similarity(inp,targ,dim=-1)).pow(2).mean()
+
+# %% ../02_learner.ipynb 60
 def nrmse(inp, targ): 
     '''rmse loss function scaled by variance of each target variable'''
     mse = (inp-targ).pow(2).mean(dim=[0,1])
     var = targ.var(dim=[0,1])
     return (mse/var).sqrt().mean()
 
-# %% ../02_learner.ipynb 58
+# %% ../02_learner.ipynb 63
 def nrmse_std(inp, targ): 
     '''rmse loss function scaled by standard deviation of each target variable'''
     mse = (inp-targ).pow(2).mean(dim=[0,1])
     var = targ.std(dim=[0,1])
     return (mse/var).sqrt().mean()
 
-# %% ../02_learner.ipynb 60
+# %% ../02_learner.ipynb 65
 def mean_vaf(inp,targ):
     return (1-((targ-inp).var()/targ.var()))*100
 
-# %% ../02_learner.ipynb 63
+# %% ../02_learner.ipynb 68
 def get_inp_out_size(db):
     '''returns input and output size of a timeseries databunch'''
     tup = db.one_batch()
@@ -391,7 +402,7 @@ def get_inp_out_size(db):
     out = tup[1].shape[-1]
     return inp,out
 
-# %% ../02_learner.ipynb 66
+# %% ../02_learner.ipynb 71
 @delegates(SimpleRNN, keep=True)
 def RNNLearner(db,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,**kwargs):
     inp,out = get_inp_out_size(db)
@@ -405,7 +416,7 @@ def RNNLearner(db,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,**
     lrn = Learner(db,model,loss_func=loss_func,opt_func=ranger,metrics=metrics,cbs=cbs)
     return lrn
 
-# %% ../02_learner.ipynb 69
+# %% ../02_learner.ipynb 74
 @delegates(TCN, keep=True)
 def TCNLearner(db,hl_depth=3,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,**kwargs):
     inp,out = get_inp_out_size(db)
@@ -420,7 +431,7 @@ def TCNLearner(db,hl_depth=3,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,
     lrn = Learner(db,model,loss_func=loss_func,opt_func=ranger,metrics=metrics,cbs=cbs)
     return lrn
 
-# %% ../02_learner.ipynb 72
+# %% ../02_learner.ipynb 77
 @delegates(CRNN, keep=True)
 def CRNNLearner(db,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,**kwargs):
     inp,out = get_inp_out_size(db)
@@ -434,7 +445,7 @@ def CRNNLearner(db,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,*
     lrn = Learner(db,model,loss_func=loss_func,opt_func=ranger,metrics=metrics,cbs=cbs)
     return lrn
 
-# %% ../02_learner.ipynb 75
+# %% ../02_learner.ipynb 80
 @delegates(TCN, keep=True)
 def AR_TCNLearner(db,hl_depth=3,alpha=1,beta=1,early_stop=0,metrics=None,n_skip=None,**kwargs):
     n_skip = 2**hl_depth if n_skip is None else n_skip
@@ -453,7 +464,7 @@ def AR_TCNLearner(db,hl_depth=3,alpha=1,beta=1,early_stop=0,metrics=None,n_skip=
     lrn = Learner(db,model,loss_func=nn.MSELoss(),opt_func=ranger,metrics=metrics,cbs=cbs)
     return lrn
 
-# %% ../02_learner.ipynb 76
+# %% ../02_learner.ipynb 81
 @delegates(SimpleRNN, keep=True)
 def AR_RNNLearner(db,alpha=0,beta=0,early_stop=0,metrics=None,n_skip=0,fname='model',**kwargs):
     skip = partial(SkipNLoss,n_skip=n_skip)
