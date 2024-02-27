@@ -171,6 +171,8 @@ class HPOptimizer():
         config['dls'] = ray.put(self.dls) 
         if 'fit_method' not in config: config['fit_method'] = ray.put(Learner.fit_flat_cos)
 
+        kwargs.setdefault('keep_checkpoints_num', 1)#keep only the last checkpoint
+
         self.analysis = tune.run(
             optimize_func,
             config=config,
@@ -192,6 +194,7 @@ class HPOptimizer():
         #dls are large objects, letting ray handle the copying process makes it much faster
         config['dls'] = ray.put(self.dls) 
         
+        kwargs.setdefault('keep_checkpoints_num', 2)
         
 
         
