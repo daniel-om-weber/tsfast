@@ -5,14 +5,15 @@ __all__ = ['hdf_extensions', 'valid_clm_splitter', 'obj_in_lst', 'count_paramete
            'CreateDict', 'ValidClmContains', 'ValidClmIs', 'FilterClm', 'get_hdf_seq_len', 'df_get_hdf_seq_len',
            'DfHDFGetSeqLen', 'DfResamplingFactor', 'DfHDFCreateWindows', 'DfApplyFuncSplit', 'DfFilterQuery',
            'DfDropClmExcept', 'calc_shift_offsets', 'running_mean', 'downsample_mean', 'resample_interp',
-           'hdf_extract_sequence', 'Memoize', 'HDF2Sequence', 'hdf2scalars', 'HDF2Scalars', 'ScalarSequenceElement',
-           'TensorSequences', 'TensorSequencesInput', 'TensorSequencesOutput', 'toTensorSequencesInput',
-           'toTensorSequencesOutput', 'TensorScalars', 'TensorScalarsInput', 'TensorScalarsOutput', 'SeqSlice',
-           'SeqNoiseInjection', 'SeqNoiseInjection_Varying', 'SeqNoiseInjection_Grouped', 'SeqBiasInjection', 'encodes',
-           'decodes', 'ParentSplitter', 'PercentageSplitter', 'ApplyToDict', 'pad_sequence', 'SequenceBlock',
-           'ScalarNormalize', 'ScalarBlock', 'TensorSpectrogram', 'TensorSpectrogramInput', 'TensorSpectrogramOutput',
-           'Sequence2Spectrogram', 'SpectrogramBlock', 'plot_sequence', 'plot_seqs_single_figure',
-           'plot_seqs_multi_figures', 'show_batch', 'show_results']
+           'hdf_extract_sequence', 'Memoize', 'MemoizeMP', 'HDF2Sequence', 'hdf2scalars', 'HDF2Scalars',
+           'ScalarSequenceElement', 'TensorSequences', 'TensorSequencesInput', 'TensorSequencesOutput',
+           'toTensorSequencesInput', 'toTensorSequencesOutput', 'TensorScalars', 'TensorScalarsInput',
+           'TensorScalarsOutput', 'SeqSlice', 'SeqNoiseInjection', 'SeqNoiseInjection_Varying',
+           'SeqNoiseInjection_Grouped', 'SeqBiasInjection', 'encodes', 'decodes', 'ParentSplitter',
+           'PercentageSplitter', 'ApplyToDict', 'pad_sequence', 'SequenceBlock', 'ScalarNormalize', 'ScalarBlock',
+           'TensorSpectrogram', 'TensorSpectrogramInput', 'TensorSpectrogramOutput', 'Sequence2Spectrogram',
+           'SpectrogramBlock', 'plot_sequence', 'plot_seqs_single_figure', 'plot_seqs_multi_figures', 'show_batch',
+           'show_results']
 
 # %% ../00_core.ipynb 4
 from fastai.data.all import *
@@ -311,17 +312,60 @@ class Memoize:
             self.memo[args] = self.fn(*args)
         return self.memo[args]
 
+
+from multiprocessing import Manager, Lock
+class MemoizeMP:
+    '''
+        Multiprocessing Shared Memory implementation of function caching. 
+        Used for multiprocessing dataloaders, so not every process has to load from files.
+    '''
+    def __init__(self, fn):
+        self.fn = fn
+        self.shared_memo = Manager().dict()  # Shared dictionary across processes
+        self.local_memo = {}  # Local cache for each process
+        self.lock = Lock()  # Lock for concurrency control in shared memory access
+    
+    def __call__(self, *args):
+
+        # First, attempt to return the result from the local cache to avoid unnecessary locking
+        if args in self.local_memo:
+            return self.local_memo[args]
+        
+        # If the result is not in the local cache, check the shared cache
+        if args in self.shared_memo:
+            # If found in the shared cache, update the local cache for faster future access
+            result = self.shared_memo[args]
+            self.local_memo[args] = result
+            return result
+
+        result = self.fn(*args)
+        
+        with self.lock:
+            # Check again if the result was not computed by another process
+            if args not in self.shared_memo:
+                self.shared_memo[args] = result
+        
+        # Update the local cache before returning the result
+        self.local_memo[args] = result
+        return result
+
 # %% ../00_core.ipynb 61
 class HDF2Sequence(Transform):
     
-    def __init__(self, clm_names,clm_shift=None,truncate_sz=None,to_cls=noop,cached=False, fs_idx =None,dt_idx =None,fast_resample=True):
+    def __init__(self, clm_names,clm_shift=None,truncate_sz=None,to_cls=noop,cached=None, fs_idx =None,dt_idx =None,fast_resample=True):
         if not clm_shift is None:
             assert len(clm_shift)==len(clm_names) and all(isinstance(n, int) for n in clm_shift)
             self.l_shift,self.r_shift,_ = calc_shift_offsets(clm_shift)
         
-        self._exseq = Memoize(self._hdf_extract_sequence) if cached else self._hdf_extract_sequence
-        
-        store_attr('clm_names,clm_shift,truncate_sz,to_cls,cached,fs_idx,dt_idx,fast_resample')
+        if cached is None:
+            self._exseq = self._hdf_extract_sequence 
+        elif cached == 'shared':
+            self._exseq = MemoizeMP(self._hdf_extract_sequence) 
+        else :
+            self._exseq = Memoize(self._hdf_extract_sequence)
+
+        self.cached = cached is not None
+        store_attr('clm_names,clm_shift,truncate_sz,to_cls,fs_idx,dt_idx,fast_resample')
         
     def _hdf_extract_sequence(self,hdf_path,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, fs_idx =None,dt_idx =None,fast_resample=True):
         '''

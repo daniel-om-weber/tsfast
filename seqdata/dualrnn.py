@@ -81,15 +81,10 @@ class NarProg(nn.Module):
 
 #        self.final = SeqLinear(int(hidden_size*rnn_layer),output_size,hidden_layer=0)
         self.final = SeqLinear(hidden_size,output_size,hidden_layer=final_layer)
-        
-        self.reset_state()
 
     def forward(self, x,init_state = None):
-        bs = x.shape[0]
-        if init_state is None: init_state = self._get_hidden(bs)
         x_diag = x[...,:self.diag_input_size]
         x_prog = x[...,:self.prog_input_size]
-        
         
         if self.init_diag_only: x_diag = x_diag[:,:self.init_sz] #limit diagnosis length to init size
         
@@ -119,20 +114,9 @@ class NarProg(nn.Module):
             else:         
                 out_prog,new_hidden = self.rnn_prognosis(x_prog,init_state)
 
-        self.hidden =  to_detach(new_hidden, cpu=False, gather=False)
         #Shared Linear Layer
         result = self.final(out_prog[-1])
         return result
-
-    def _get_hidden(self,bs):
-        '''retrieve internal hidden state, check if model device has changed'''
-        if self.hidden is None: return None
-        if bs!=self.hidden[0].shape[1]: return None
-        if self.hidden[0][0].device != one_param(self).device: return None
-        return self.hidden
-    
-    def reset_state(self):
-        self.hidden = None
 
 # %% ../11_dualrnn.ipynb 11
 from fastai.callback.hook import *
