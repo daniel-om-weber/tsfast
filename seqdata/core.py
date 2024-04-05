@@ -314,7 +314,7 @@ class Memoize:
 
 
 
-# %% ../00_core.ipynb 62
+# %% ../00_core.ipynb 61
 from multiprocessing import shared_memory, Manager, Lock
 import weakref
 
@@ -345,12 +345,13 @@ class MemoizeMP:
 
         result = self.fn(*args)
 
-        result_shm = shared_memory.SharedMemory(create=True, size=result.nbytes)
-        shm_array = np.ndarray(result.shape, dtype=result.dtype, buffer=result_shm.buf)
-        shm_array[:] = result[:]
 
         with self.lock:
             if args not in self.results_dict:
+                result_shm = shared_memory.SharedMemory(create=True, size=result.nbytes)
+                shm_array = np.ndarray(result.shape, dtype=result.dtype, buffer=result_shm.buf)
+                shm_array[:] = result[:]
+                
                 self.results_dict[args] = {
                     'name': result_shm.name,
                     'shape': result.shape,
@@ -372,7 +373,7 @@ class MemoizeMP:
             # Handle the case where the shared memory block is already cleaned up
             pass
 
-# %% ../00_core.ipynb 63
+# %% ../00_core.ipynb 62
 class HDF2Sequence(Transform):
     
     def __init__(self, clm_names,clm_shift=None,truncate_sz=None,to_cls=noop,cached=True, fs_idx =None,dt_idx =None,fast_resample=True):
@@ -459,7 +460,7 @@ class HDF2Sequence(Transform):
     def encodes(self, item)->None: 
         return self._extract_dict_sequence(item)
 
-# %% ../00_core.ipynb 84
+# %% ../00_core.ipynb 83
 def hdf2scalars(hdf_path,c_names,dataset = None):
     with h5py.File(hdf_path,'r') as f:
         ds = f if dataset is None else f[dataset]
@@ -470,7 +471,7 @@ def hdf2scalars(hdf_path,c_names,dataset = None):
 #         seq = np.concatenate(l_array,axis=1)
         return scalars
 
-# %% ../00_core.ipynb 86
+# %% ../00_core.ipynb 85
 class HDF2Scalars(Transform):
     
     def __init__(self, clm_names,to_cls=noop):
@@ -489,7 +490,7 @@ class HDF2Scalars(Transform):
     def encodes(self, item)->None: 
         return self._extract_dict_scalars(item)
 
-# %% ../00_core.ipynb 89
+# %% ../00_core.ipynb 88
 class ScalarSequenceElement(Transform):
     
     def __init__(self, idx,to_cls=noop):
@@ -498,7 +499,7 @@ class ScalarSequenceElement(Transform):
     def encodes(self, item)->None: 
         return self.to_cls(item[self.idx])
 
-# %% ../00_core.ipynb 92
+# %% ../00_core.ipynb 91
 class TensorSequences(TensorBase):#TensorBase
 #     def __init__(self,x,c_names=None, **kwargs):
 #         super().__init__()
@@ -520,13 +521,13 @@ class TensorSequences(TensorBase):#TensorBase
 class TensorSequencesInput(TensorSequences): pass
 class TensorSequencesOutput(TensorSequences): pass
 
-# %% ../00_core.ipynb 95
+# %% ../00_core.ipynb 94
 @Transform
 def toTensorSequencesInput(o): return TensorSequencesInput(o)
 @Transform
 def toTensorSequencesOutput(o): return TensorSequencesOutput(o)
 
-# %% ../00_core.ipynb 96
+# %% ../00_core.ipynb 95
 class TensorScalars(TensorBase):
     @classmethod
     @delegates(HDF2Scalars, keep=True)
@@ -538,12 +539,12 @@ class TensorScalarsInput(TensorScalars): pass
 class TensorScalarsOutput(TensorScalars): pass
 
 
-# %% ../00_core.ipynb 98
+# %% ../00_core.ipynb 97
 for f in torch.nn.functional.mse_loss,torch.nn.functional.huber_loss, Tensor.__getitem__, Tensor.__ne__,Tensor.__eq__,Tensor.add,Tensor.sub,Tensor.mul,Tensor.div,Tensor.__rsub__,Tensor.__radd__,Tensor.matmul,Tensor.bmm:
     TensorBase.register_func(f,TensorSequences)
     TensorBase.register_func(f,TensorScalars)
 
-# %% ../00_core.ipynb 102
+# %% ../00_core.ipynb 101
 class SeqSlice(Transform):
     '''Take a slice from an array-like object. Useful for e.g. shifting input and output'''
     def __init__(self, l_slc=None,r_slc=None):
@@ -551,7 +552,7 @@ class SeqSlice(Transform):
         
     def encodes(self, o): return o[self.l_slc:self.r_slc]
 
-# %% ../00_core.ipynb 105
+# %% ../00_core.ipynb 104
 class SeqNoiseInjection(RandTransform):
     split_idx=0 #apply only to training data, if None it will be applied to all data
     '''Adds normal distributed noise to the tensor sequence with seperate mean and std for every signal'''
@@ -568,7 +569,7 @@ class SeqNoiseInjection(RandTransform):
         return o+torch.normal(mean=self.mean.expand_as(o), 
                               std=self.std.expand_as(o))
 
-# %% ../00_core.ipynb 109
+# %% ../00_core.ipynb 108
 class SeqNoiseInjection_Varying(RandTransform):
     split_idx=0
     '''Adds normal distributed noise to the tensor sequence with a normal distributed standard deviation for every application'''
@@ -584,7 +585,7 @@ class SeqNoiseInjection_Varying(RandTransform):
         std = torch.normal(mean=0,std=self.std_std).abs()
         return o+torch.normal(mean=0,std=std.expand_as(o))
 
-# %% ../00_core.ipynb 112
+# %% ../00_core.ipynb 111
 class SeqNoiseInjection_Grouped(RandTransform):
     split_idx=0
     '''Adds normal distributed noise to the tensor sequence with a normal distributed standard deviation for every application, every group gert'''
@@ -601,7 +602,7 @@ class SeqNoiseInjection_Grouped(RandTransform):
         std = torch.normal(mean=0,std=self.std_std).abs()[self.std_idx]
         return o+torch.normal(mean=0,std=std.expand_as(o))
 
-# %% ../00_core.ipynb 116
+# %% ../00_core.ipynb 115
 class SeqBiasInjection(RandTransform):
     split_idx=0
     '''Adds a normal distributed offset to the tensor sequence with seperate mean and std for every signal'''
@@ -621,7 +622,7 @@ class SeqBiasInjection(RandTransform):
         n = torch.normal(mean=mean, std=std).expand_as(o)
         return o+n
 
-# %% ../00_core.ipynb 121
+# %% ../00_core.ipynb 120
 @Normalize
 def encodes(self, x:TensorSequencesInput): 
     if x.device != self.mean.device:
@@ -636,7 +637,7 @@ def decodes(self, x:TensorSequencesInput):
         self.std = self.std.to(x.device)
     return (x*self.std + self.mean)
 
-# %% ../00_core.ipynb 129
+# %% ../00_core.ipynb 128
 def _parent_idxs(items, name): return mask2idxs(Path(o).parent.name == name for o in items)
 
 def ParentSplitter(train_name='train', valid_name='valid'):
@@ -645,7 +646,7 @@ def ParentSplitter(train_name='train', valid_name='valid'):
         return _parent_idxs(o, train_name),_parent_idxs(o, valid_name)
     return _inner
 
-# %% ../00_core.ipynb 132
+# %% ../00_core.ipynb 131
 def PercentageSplitter(pct=0.8):
     "Split `items` in order in relative quantity."
     def _inner(o, **kwargs):
@@ -653,14 +654,14 @@ def PercentageSplitter(pct=0.8):
         return L(range(split_idx)),L(range(split_idx,len(o)))
     return _inner
 
-# %% ../00_core.ipynb 135
+# %% ../00_core.ipynb 134
 def ApplyToDict(fn,key='path'):
     return lambda x:fn([i[key] for i in x])
 
-# %% ../00_core.ipynb 137
+# %% ../00_core.ipynb 136
 valid_clm_splitter =  FuncSplitter(lambda o:o['valid'])
 
-# %% ../00_core.ipynb 140
+# %% ../00_core.ipynb 139
 def pad_sequence(batch,sorting = False):
     '''collate_fn for padding of sequences of different lengths, use in before_batch of databunch, still quite slow'''
     #takes list of tuples as input, returns list of tuples
@@ -674,7 +675,7 @@ def pad_sequence(batch,sorting = False):
     
     return padded_list
 
-# %% ../00_core.ipynb 146
+# %% ../00_core.ipynb 145
 class SequenceBlock(TransformBlock):
     def __init__(self, seq_extract,padding=False):
         return super().__init__(type_tfms=[seq_extract],
@@ -690,7 +691,7 @@ class SequenceBlock(TransformBlock):
     def from_numpy(cls, seq_cls=TensorSequencesInput,padding=False, **kwargs):
         return cls(ToTensor(enc=seq_cls), padding)
 
-# %% ../00_core.ipynb 149
+# %% ../00_core.ipynb 148
 class ScalarNormalize(DisplayedTransform):
     def __init__(self, mean=None, std=None, axes=(0,)): store_attr()
         
@@ -727,7 +728,7 @@ class ScalarBlock(TransformBlock):
     def from_hdf(cls, clm_names, scl_cls=TensorScalarsInput, **kwargs):
         return cls(HDF2Scalars(clm_names,to_cls=scl_cls,**kwargs))
 
-# %% ../00_core.ipynb 151
+# %% ../00_core.ipynb 150
 class TensorSpectrogram(TensorBase):
     def show(self, ctx=None, ax=None, title="", **kwargs):
         ax = ifnone(ax, ctx)
@@ -748,7 +749,7 @@ class TensorSpectrogram(TensorBase):
 class TensorSpectrogramInput(TensorSpectrogram): pass
 class TensorSpectrogramOutput(TensorSpectrogram): pass
 
-# %% ../00_core.ipynb 153
+# %% ../00_core.ipynb 152
 def complex_norm(
         complex_tensor: Tensor,
         power: float = 1.0
@@ -766,7 +767,7 @@ def complex_norm(
         return torch.norm(complex_tensor, 2, -1)
     return torch.norm(complex_tensor, 2, -1).pow(power)
 
-# %% ../00_core.ipynb 154
+# %% ../00_core.ipynb 153
 def spectrogram(
         waveform: Tensor,
         pad: int,
@@ -821,7 +822,7 @@ def spectrogram(
 
     return spec_f
 
-# %% ../00_core.ipynb 155
+# %% ../00_core.ipynb 154
 from typing import Callable
 
 class Spectrogram(torch.nn.Module):
@@ -876,7 +877,7 @@ class Spectrogram(torch.nn.Module):
         return spectrogram(waveform, self.pad, self.window, self.n_fft, self.hop_length,
                              self.win_length, self.power, self.normalized)
 
-# %% ../00_core.ipynb 156
+# %% ../00_core.ipynb 155
 @delegates(Spectrogram, keep=True)
 class Sequence2Spectrogram(Transform):
     '''calculates the FFT of a sequence'''
@@ -892,7 +893,7 @@ class Sequence2Spectrogram(Transform):
         if self.scaling == 'log': spec = torch.log10(spec + 1e-10)
         return spec
 
-# %% ../00_core.ipynb 157
+# %% ../00_core.ipynb 156
 class SpectrogramBlock(TransformBlock):
     def __init__(self, seq_extract,padding=False,n_fft=100,hop_length=None,normalized=False):
         return super().__init__(type_tfms=[seq_extract],
@@ -904,7 +905,7 @@ class SpectrogramBlock(TransformBlock):
     def from_hdf(cls, clm_names, seq_cls=TensorSpectrogramInput,padding=False,n_fft=100,hop_length=None,normalized=False, **kwargs):
         return cls(HDF2Sequence(clm_names,to_cls=seq_cls,**kwargs), padding,n_fft=n_fft,hop_length=hop_length,normalized=normalized)
 
-# %% ../00_core.ipynb 161
+# %% ../00_core.ipynb 160
 def plot_sequence(axs,in_sig,targ_sig,out_sig=None,**kwargs):
     n_targ = targ_sig.shape[1]
     for j,ax in  enumerate(axs[:-1]):
@@ -917,7 +918,7 @@ def plot_sequence(axs,in_sig,targ_sig,out_sig=None,**kwargs):
         ax.label_outer()
     axs[-1].plot(in_sig)
 
-# %% ../00_core.ipynb 162
+# %% ../00_core.ipynb 161
 def plot_seqs_single_figure(n_samples,n_targ,samples,plot_func,outs=None,**kwargs):
     rows=max(1,((n_samples-1) // 3)+1)
     cols=min(3,n_samples)
@@ -933,7 +934,7 @@ def plot_seqs_single_figure(n_samples,n_targ,samples,plot_func,outs=None,**kwarg
         plot_func(axs,in_sig,targ_sig,out_sig=out_sig if outs is not None else None,**kwargs)
     plt.tight_layout()
 
-# %% ../00_core.ipynb 163
+# %% ../00_core.ipynb 162
 def plot_seqs_multi_figures(n_samples,n_targ,samples,plot_func,outs=None,**kwargs):
     for i in range(n_samples):
         fig = plt.figure(figsize=(9,3))
@@ -946,7 +947,7 @@ def plot_seqs_multi_figures(n_samples,n_targ,samples,plot_func,outs=None,**kwarg
         
         plt.tight_layout()
 
-# %% ../00_core.ipynb 164
+# %% ../00_core.ipynb 163
 @typedispatch
 def show_batch(x:TensorSequences, y:TensorSequences, samples, ctxs=None, max_n=6, **kwargs):
     n_samples = min(len(samples), max_n)
@@ -959,7 +960,7 @@ def show_batch(x:TensorSequences, y:TensorSequences, samples, ctxs=None, max_n=6
         plot_seqs_multi_figures(n_samples,n_targ,samples,plot_sequence, **kwargs)
     return ctxs
 
-# %% ../00_core.ipynb 165
+# %% ../00_core.ipynb 164
 @typedispatch
 def show_results(x:TensorSequences, y:TensorSequences, samples, outs, ctxs=None, max_n=2, **kwargs):
     n_samples = min(len(samples), max_n)
