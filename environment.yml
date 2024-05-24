@@ -1,0 +1,21 @@
+name: env_fastai
+channels:
+  - fastchan
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=11.8
+  - fastai=2.7
+  - jupyterlab
+  - ipympl
+  - h5py
+  - nbdev
+  - seaborn
+  - pip:
+      - ray[tune]==2.23
