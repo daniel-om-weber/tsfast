@@ -35,7 +35,7 @@ class GradientNormPrint(Callback):
             if param.grad is not None
         ]
         norm = torch.cat(grads).norm()
-        print(f'Gradient norm: {norm:.2f}')
+        # print(f'Gradient norm: {norm:.2f}')
 
 # %% ../02_learner.ipynb 10
 class GradientBatchFiltering(Callback):
@@ -51,7 +51,7 @@ class GradientBatchFiltering(Callback):
         norm = torch.cat(grads).norm()
         if norm > self.filter_val:
             self.opt.zero_grad()
-            print(f'Gradient norm: {norm:.2f} filtered')
+            # print(f'Gradient norm: {norm:.2f} filtered')
             raise CancelBatchException()
         # print(f'Gradient norm: {norm:.2f}')
 
