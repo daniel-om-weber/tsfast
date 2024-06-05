@@ -13,13 +13,13 @@
 > summary
 
 
-# seqdata
+# tsfast
 
-seqdata is a library for fast and flexible datagrabbing of sequential datasets for deep learning with pytorch and fastai2.
+tsfast is a library for fast and flexible datagrabbing of sequential datasets for deep learning with pytorch and fastai2.
 
 ## Install
 
 First install the required libraries:
 `conda env create -f environment.yml`
-Then install seqdata from github
-`pip install git+https://github.com/daniel-om-weber/seqdata.git`
+Then install tsfast from github
+`pip install git+https://github.com/daniel-om-weber/tsfast.git`
