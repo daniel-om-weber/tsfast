@@ -10,27 +10,27 @@ __all__ = ['hdf_extensions', 'obj_in_lst', 'count_parameters', 'get_hdf_files', 
            'TensorScalars', 'TensorScalarsInput', 'TensorScalarsOutput', 'plot_sequence', 'plot_seqs_single_figure',
            'plot_seqs_multi_figures', 'show_batch', 'show_results']
 
-# %% ../../nbs/00_data/00_core.ipynb 4
+# %% ../../nbs/00_data/00_core.ipynb 3
 from fastai.data.all import *
 import h5py
 
-# %% ../../nbs/00_data/00_core.ipynb 5
+# %% ../../nbs/00_data/00_core.ipynb 4
 def obj_in_lst(lst,cls):
     '''retrieve first object of type cls from a list'''
     return next(o for o in lst if type(o) is cls)
 
-# %% ../../nbs/00_data/00_core.ipynb 6
+# %% ../../nbs/00_data/00_core.ipynb 5
 def count_parameters(model):
     '''retrieve number of trainable parameters of a model'''
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-# %% ../../nbs/00_data/00_core.ipynb 12
+# %% ../../nbs/00_data/00_core.ipynb 11
 hdf_extensions = ['.hdf5']
 def get_hdf_files(path,recurse=True, folders=None):
     "Get hdf5 files in `path` recursively, only in `folders`, if specified."
     return get_files(path, extensions=hdf_extensions, recurse=recurse, folders=folders)
 
-# %% ../../nbs/00_data/00_core.ipynb 15
+# %% ../../nbs/00_data/00_core.ipynb 14
 def apply_df_tfms(src,pd_tfms = None):
     '''Create Pandas Dataframe out of a list of items, with a list of df transforms applied'''
     if type(src) is pd.DataFrame:
@@ -42,7 +42,7 @@ def apply_df_tfms(src,pd_tfms = None):
             df = t(df)
     return df
 
-# %% ../../nbs/00_data/00_core.ipynb 18
+# %% ../../nbs/00_data/00_core.ipynb 17
 def CreateDict(pd_tfms = None):
     '''Create List of Dictionarys out of a list of items, with a list of df transforms applied'''
     def _inner(src):
@@ -54,7 +54,7 @@ def CreateDict(pd_tfms = None):
         return df_dict_list
     return _inner
 
-# %% ../../nbs/00_data/00_core.ipynb 20
+# %% ../../nbs/00_data/00_core.ipynb 19
 def ValidClmContains(lst_valid):
     '''add validation column using a list of strings that are part of the validation frames'''
     def _inner(df):
@@ -64,7 +64,7 @@ def ValidClmContains(lst_valid):
 
     return _inner
 
-# %% ../../nbs/00_data/00_core.ipynb 22
+# %% ../../nbs/00_data/00_core.ipynb 21
 def ValidClmIs(lst_valid):
     '''adds validation column using a list of validation filenames'''
     def _inner(df):
@@ -73,7 +73,7 @@ def ValidClmIs(lst_valid):
 
     return _inner
 
-# %% ../../nbs/00_data/00_core.ipynb 24
+# %% ../../nbs/00_data/00_core.ipynb 23
 def FilterClm(clm_name,func = lambda x:x):
     '''adds validation column using a list of validation filenames'''
     def _inner(df):
@@ -81,7 +81,7 @@ def FilterClm(clm_name,func = lambda x:x):
 
     return _inner
 
-# %% ../../nbs/00_data/00_core.ipynb 26
+# %% ../../nbs/00_data/00_core.ipynb 25
 def get_hdf_seq_len(df,clm,ds=None):
     '''extract the sequence length of the dataset with the 'clm' name and 'f_path' path  '''
     with h5py.File(df['path'],'r') as f:
@@ -89,20 +89,20 @@ def get_hdf_seq_len(df,clm,ds=None):
         f_len = max(ds[clm].shape)
     return f_len 
 
-# %% ../../nbs/00_data/00_core.ipynb 27
+# %% ../../nbs/00_data/00_core.ipynb 26
 def df_get_hdf_seq_len(df,clm,ds=None):
     '''extracts the sequence length of every file in advance to prepare repeated window extractions with 'DfHDFCreateWindows' '''
 #     df['seq_len'] = ([get_hdf_seq_len(row.path,clm) for (idx, row) in df.iterrows()])
     df['seq_len'] = df.apply(lambda x: get_hdf_seq_len(x,clm),axis=1)
     return df
 
-# %% ../../nbs/00_data/00_core.ipynb 28
+# %% ../../nbs/00_data/00_core.ipynb 27
 def DfHDFGetSeqLen(clm):
     def _inner(df):
         return df_get_hdf_seq_len(df,clm)
     return _inner
 
-# %% ../../nbs/00_data/00_core.ipynb 31
+# %% ../../nbs/00_data/00_core.ipynb 30
 import numbers
 def DfResamplingFactor(src_fs,lst_targ_fs):
     if not isinstance(src_fs, numbers.Number) and not type(src_fs) is str: 
@@ -129,7 +129,7 @@ def DfResamplingFactor(src_fs,lst_targ_fs):
         return res_df
     return _inner
 
-# %% ../../nbs/00_data/00_core.ipynb 33
+# %% ../../nbs/00_data/00_core.ipynb 32
 def DfHDFCreateWindows(win_sz,stp_sz, clm, fixed_start = False, fixed_end = False):
     '''create windows of sequences, splits sequence into multiple items'''
     def _inner(df):
@@ -165,7 +165,7 @@ def DfHDFCreateWindows(win_sz,stp_sz, clm, fixed_start = False, fixed_end = Fals
     
     return _inner
 
-# %% ../../nbs/00_data/00_core.ipynb 40
+# %% ../../nbs/00_data/00_core.ipynb 39
 def DfApplyFuncSplit(split_func,func1,func2):
     '''apply two different functions on the dataframe, func1 on the first indices of split_func, func2 on the second indices.
         Split_func is a Training, Validation split function'''
@@ -176,20 +176,20 @@ def DfApplyFuncSplit(split_func,func1,func2):
         return pd.concat((df1,df2))
     return _inner
 
-# %% ../../nbs/00_data/00_core.ipynb 42
+# %% ../../nbs/00_data/00_core.ipynb 41
 def DfFilterQuery(query):
     def _inner(df):
         return df.query(query)
     return _inner
 
-# %% ../../nbs/00_data/00_core.ipynb 45
+# %% ../../nbs/00_data/00_core.ipynb 44
 def DfDropClmExcept(clms = ['path','l_slc','r_slc','p_sample','resampling_factor']):
     '''drop unused dataframe columns as a last optional step to accelerate dictionary conversion'''
     def _inner(df):
         return df[[c for c in clms if c in df]]
     return _inner
 
-# %% ../../nbs/00_data/00_core.ipynb 49
+# %% ../../nbs/00_data/00_core.ipynb 48
 def calc_shift_offsets(clm_shift):
     clm_shift = array(clm_shift)
     l_offs = -min(clm_shift.min(),0)
@@ -199,19 +199,19 @@ def calc_shift_offsets(clm_shift):
     dim_red = l_offs-r_offs
     return l_shift,r_shift,dim_red
 
-# %% ../../nbs/00_data/00_core.ipynb 56
+# %% ../../nbs/00_data/00_core.ipynb 55
 def running_mean(x, N):
     cumsum = np.cumsum(np.insert(x, 0, 0,axis=0),axis=0) 
     return (cumsum[N:] - cumsum[:-N]) / float(N)
 
-# %% ../../nbs/00_data/00_core.ipynb 57
+# %% ../../nbs/00_data/00_core.ipynb 56
 def downsample_mean(x,N):
     shp = x.shape
     trunc = -(x.shape[0] % N)
     trunc = trunc if trunc != 0 else None
     return x[:trunc,:].reshape((-1,N,x.shape[-1])).mean(axis=1)
 
-# %% ../../nbs/00_data/00_core.ipynb 58
+# %% ../../nbs/00_data/00_core.ipynb 57
 from scipy.signal import butter, lfilter, lfilter_zi
 from scipy import signal
 def resample_interp(x,resampling_factor,sequence_first=True, lowpass_cut=1.0, upsample_cubic_cut = None):
@@ -255,7 +255,7 @@ def resample_interp(x,resampling_factor,sequence_first=True, lowpass_cut=1.0, up
     
     return x
 
-# %% ../../nbs/00_data/00_core.ipynb 60
+# %% ../../nbs/00_data/00_core.ipynb 59
 from scipy.signal import resample
 def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, fs_idx =None,dt_idx =False,fast_resample=True):
     '''
@@ -295,7 +295,7 @@ def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None
         
     return seq
 
-# %% ../../nbs/00_data/00_core.ipynb 61
+# %% ../../nbs/00_data/00_core.ipynb 60
 class Memoize:
     def __init__(self, fn):
         self.fn = fn
@@ -308,7 +308,7 @@ class Memoize:
 
 
 
-# %% ../../nbs/00_data/00_core.ipynb 62
+# %% ../../nbs/00_data/00_core.ipynb 61
 from multiprocessing import shared_memory, Manager, Lock
 class MemoizeMP:
     
@@ -359,7 +359,7 @@ class MemoizeMP:
     def __del__(self):
         self.cleanup_shared_memory()
 
-# %% ../../nbs/00_data/00_core.ipynb 63
+# %% ../../nbs/00_data/00_core.ipynb 62
 class HDF2Sequence(Transform):
     
     def __init__(self, clm_names,clm_shift=None,truncate_sz=None,to_cls=noop,cached=True, fs_idx =None,dt_idx =None,fast_resample=True):
@@ -447,7 +447,7 @@ class HDF2Sequence(Transform):
     def encodes(self, item)->None: 
         return self._extract_dict_sequence(item)
 
-# %% ../../nbs/00_data/00_core.ipynb 83
+# %% ../../nbs/00_data/00_core.ipynb 82
 def hdf2scalars(hdf_path,c_names,dataset = None):
     with h5py.File(hdf_path,'r') as f:
         ds = f if dataset is None else f[dataset]
@@ -458,7 +458,7 @@ def hdf2scalars(hdf_path,c_names,dataset = None):
 #         seq = np.concatenate(l_array,axis=1)
         return scalars
 
-# %% ../../nbs/00_data/00_core.ipynb 85
+# %% ../../nbs/00_data/00_core.ipynb 84
 class HDF2Scalars(Transform):
     
     def __init__(self, clm_names,to_cls=noop):
@@ -477,7 +477,7 @@ class HDF2Scalars(Transform):
     def encodes(self, item)->None: 
         return self._extract_dict_scalars(item)
 
-# %% ../../nbs/00_data/00_core.ipynb 88
+# %% ../../nbs/00_data/00_core.ipynb 87
 class ScalarSequenceElement(Transform):
     
     def __init__(self, idx,to_cls=noop):
@@ -486,7 +486,7 @@ class ScalarSequenceElement(Transform):
     def encodes(self, item)->None: 
         return self.to_cls(item[self.idx])
 
-# %% ../../nbs/00_data/00_core.ipynb 91
+# %% ../../nbs/00_data/00_core.ipynb 90
 class TensorSequences(TensorBase):#TensorBase
 #     def __init__(self,x,c_names=None, **kwargs):
 #         super().__init__()
@@ -508,13 +508,13 @@ class TensorSequences(TensorBase):#TensorBase
 class TensorSequencesInput(TensorSequences): pass
 class TensorSequencesOutput(TensorSequences): pass
 
-# %% ../../nbs/00_data/00_core.ipynb 94
+# %% ../../nbs/00_data/00_core.ipynb 93
 @Transform
 def toTensorSequencesInput(o): return TensorSequencesInput(o)
 @Transform
 def toTensorSequencesOutput(o): return TensorSequencesOutput(o)
 
-# %% ../../nbs/00_data/00_core.ipynb 95
+# %% ../../nbs/00_data/00_core.ipynb 94
 class TensorScalars(TensorBase):
     @classmethod
     @delegates(HDF2Scalars, keep=True)
@@ -526,12 +526,12 @@ class TensorScalarsInput(TensorScalars): pass
 class TensorScalarsOutput(TensorScalars): pass
 
 
-# %% ../../nbs/00_data/00_core.ipynb 97
+# %% ../../nbs/00_data/00_core.ipynb 96
 for f in torch.nn.functional.mse_loss,torch.nn.functional.huber_loss, Tensor.__getitem__, Tensor.__ne__,Tensor.__eq__,Tensor.add,Tensor.sub,Tensor.mul,Tensor.div,Tensor.__rsub__,Tensor.__radd__,Tensor.matmul,Tensor.bmm:
     TensorBase.register_func(f,TensorSequences)
     TensorBase.register_func(f,TensorScalars)
 
-# %% ../../nbs/00_data/00_core.ipynb 103
+# %% ../../nbs/00_data/00_core.ipynb 102
 def plot_sequence(axs,in_sig,targ_sig,out_sig=None,**kwargs):
     n_targ = targ_sig.shape[1]
     for j,ax in  enumerate(axs[:-1]):
@@ -544,7 +544,7 @@ def plot_sequence(axs,in_sig,targ_sig,out_sig=None,**kwargs):
         ax.label_outer()
     axs[-1].plot(in_sig)
 
-# %% ../../nbs/00_data/00_core.ipynb 104
+# %% ../../nbs/00_data/00_core.ipynb 103
 def plot_seqs_single_figure(n_samples,n_targ,samples,plot_func,outs=None,**kwargs):
     rows=max(1,((n_samples-1) // 3)+1)
     cols=min(3,n_samples)
@@ -560,7 +560,7 @@ def plot_seqs_single_figure(n_samples,n_targ,samples,plot_func,outs=None,**kwarg
         plot_func(axs,in_sig,targ_sig,out_sig=out_sig if outs is not None else None,**kwargs)
     plt.tight_layout()
 
-# %% ../../nbs/00_data/00_core.ipynb 105
+# %% ../../nbs/00_data/00_core.ipynb 104
 def plot_seqs_multi_figures(n_samples,n_targ,samples,plot_func,outs=None,**kwargs):
     for i in range(n_samples):
         fig = plt.figure(figsize=(9,3))
@@ -573,7 +573,7 @@ def plot_seqs_multi_figures(n_samples,n_targ,samples,plot_func,outs=None,**kwarg
         
         plt.tight_layout()
 
-# %% ../../nbs/00_data/00_core.ipynb 106
+# %% ../../nbs/00_data/00_core.ipynb 105
 @typedispatch
 def show_batch(x:TensorSequences, y:TensorSequences, samples, ctxs=None, max_n=6, **kwargs):
     n_samples = min(len(samples), max_n)
@@ -586,7 +586,7 @@ def show_batch(x:TensorSequences, y:TensorSequences, samples, ctxs=None, max_n=6
         plot_seqs_multi_figures(n_samples,n_targ,samples,plot_sequence, **kwargs)
     return ctxs
 
-# %% ../../nbs/00_data/00_core.ipynb 107
+# %% ../../nbs/00_data/00_core.ipynb 106
 @typedispatch
 def show_results(x:TensorSequences, y:TensorSequences, samples, outs, ctxs=None, max_n=2, **kwargs):
     n_samples = min(len(samples), max_n)

@@ -12,23 +12,23 @@ __all__ = ['TensorQuaternionInclination', 'TensorQuaternionAngle', 'rad2deg', 'm
            'QuaternionBlock', 'TensorInclination', 'HDF2Inclination', 'InclinationBlock', 'plot_scalar_inclination',
            'plot_quaternion_inclination', 'plot_quaternion_rel_angle', 'show_results', 'show_batch']
 
-# %% ../nbs/01_quaternions.ipynb 3
+# %% ../nbs/01_quaternions.ipynb 2
 from .data import *
 from .models import *
 from .learner import *
 
 from fastai.basics import *
 
-# %% ../nbs/01_quaternions.ipynb 5
+# %% ../nbs/01_quaternions.ipynb 4
 class TensorQuaternionInclination(TensorSequences): pass
 class TensorQuaternionAngle(TensorSequences): pass
 
-# %% ../nbs/01_quaternions.ipynb 11
+# %% ../nbs/01_quaternions.ipynb 10
 _pi = torch.Tensor([3.14159265358979323846])
 def rad2deg(t):
     return 180. * t / _pi.to(t.device).type(t.dtype)
 
-# %% ../nbs/01_quaternions.ipynb 13
+# %% ../nbs/01_quaternions.ipynb 12
 @torch.jit.script
 def multiplyQuat(q1, q2):
     """quat1*quat2"""
@@ -38,17 +38,17 @@ def multiplyQuat(q1, q2):
     o4 = q1[..., 0] * q2[..., 3] + q1[..., 1] * q2[..., 2] - q1[..., 2] * q2[..., 1] + q1[..., 3] * q2[..., 0]
     return torch.stack([o1,o2,o3,o4],dim=-1)
 
-# %% ../nbs/01_quaternions.ipynb 18
+# %% ../nbs/01_quaternions.ipynb 17
 def norm_quaternion(q):
     return q / q.norm( p=2,dim=-1)[...,None]
 
-# %% ../nbs/01_quaternions.ipynb 20
+# %% ../nbs/01_quaternions.ipynb 19
 _conjugate_quaternion = tensor([1,-1,-1,-1])
 
 def conjQuat(q):
     return q*_conjugate_quaternion.to(q.device).type(q.dtype)
 
-# %% ../nbs/01_quaternions.ipynb 22
+# %% ../nbs/01_quaternions.ipynb 21
 def diffQuat(q1,q2,norm=True):
     if norm:
         nq1 = norm_quaternion(q1)
@@ -73,18 +73,18 @@ def relativeQuat(q1, q2):
     
     return torch.stack([o1,o2,o3,o4],dim=-1)
 
-# %% ../nbs/01_quaternions.ipynb 24
+# %% ../nbs/01_quaternions.ipynb 23
 def safe_acos(t,eps = 4e-8):
     '''numericaly stable variant of arcuscosine'''
 #     eps = 4e-8 #minimum value for acos(1) != 0
     return t.clamp(-1.0 + eps, 1.0 - eps).acos()
 
-# %% ../nbs/01_quaternions.ipynb 26
+# %% ../nbs/01_quaternions.ipynb 25
 def safe_acos_double(t,eps = 1e-16):
     '''numericaly stable variant of arcuscosine, uses 64bit floats for internal computation for increased accuracy and gradient propagation'''
     return t.type(torch.float64).clamp(-1.0 + eps, 1.0 - eps).acos().type(t.dtype)
 
-# %% ../nbs/01_quaternions.ipynb 28
+# %% ../nbs/01_quaternions.ipynb 27
 def inclinationAngle(q1,q2):
     
     q = diffQuat(q1,q2)
@@ -94,7 +94,7 @@ def relativeAngle(q1,q2):
     q = diffQuat(q1,q2)
     return 2*safe_acos_double((q[..., 0]).abs())
 
-# %% ../nbs/01_quaternions.ipynb 30
+# %% ../nbs/01_quaternions.ipynb 29
 def rollAngle(q1,q2):
     q = diffQuat(q1,q2)
     w,x,y,z= q[...,0],q[...,1],q[...,2],q[...,3]
@@ -109,25 +109,25 @@ def pitchAngle(q1,q2):
     t2 = t2.clamp(-1.0, 1.0 )
     return torch.asin(t2)
 
-# %% ../nbs/01_quaternions.ipynb 32
+# %% ../nbs/01_quaternions.ipynb 31
 _unit_quaternion = tensor([1.,0,0,0])
 def inclinationAngleAbs(q):
     q = diffQuat(q,_unit_quaternion[None,:])
     return 2*((q[..., 3]**2 + q[..., 0]**2).sqrt()).acos()
 
-# %% ../nbs/01_quaternions.ipynb 34
+# %% ../nbs/01_quaternions.ipynb 33
 def rand_quat():
     q = torch.rand((4))*2-1
     q /= q.norm()
     return q
 
-# %% ../nbs/01_quaternions.ipynb 35
+# %% ../nbs/01_quaternions.ipynb 34
 def rot_vec(v,q):
     v = F.pad(v, (1,0), "constant", 0)
     return multiplyQuat(conjQuat(q),multiplyQuat(v,q))[...,1:]
 #     return multiplyQuat(q,multiplyQuat(v,conjQuat(q)))[...,1:]
 
-# %% ../nbs/01_quaternions.ipynb 38
+# %% ../nbs/01_quaternions.ipynb 37
 def quatFromAngleAxis(angle, axis):
     if len(axis.shape) == 2:
         N = max(angle.shape[0], axis.shape[0])
@@ -143,7 +143,7 @@ def quatFromAngleAxis(angle, axis):
     quat = torch.cat([torch.cos(angle/2)[:,None],axis*torch.sin(angle/2)[:, None]],dim=-1)
     return quat
 
-# %% ../nbs/01_quaternions.ipynb 39
+# %% ../nbs/01_quaternions.ipynb 38
 def quatInterp(quat, ind, extend=False):
     """
     Interpolates an array of quaternions of (non-integer) indices using Slerp. Sampling indices are in the range
@@ -199,76 +199,76 @@ def quatInterp(quat, ind, extend=False):
     
     return quat_out.type_as(quat)
 
-# %% ../nbs/01_quaternions.ipynb 45
+# %% ../nbs/01_quaternions.ipynb 44
 def inclination_loss(q1,q2):
     q = diffQuat(q1,q2)
     q_abs = (q[..., 3]**2 + q[..., 0]**2).sqrt()-1
     return (q_abs**2).mean().sqrt()
 
-# %% ../nbs/01_quaternions.ipynb 47
+# %% ../nbs/01_quaternions.ipynb 46
 def inclination_loss_abs(q1,q2):
     q = diffQuat(q1,q2)
     q_abs = (q[..., 3]**2 + q[..., 0]**2).sqrt()-1
     return q_abs.abs().mean()
 
-# %% ../nbs/01_quaternions.ipynb 49
+# %% ../nbs/01_quaternions.ipynb 48
 def inclination_loss_squared(q1,q2):
     q = diffQuat(q1,q2)
     q_abs = (q[..., 3]**2 + q[..., 0]**2).sqrt()-1
     return (q_abs**2).mean()
 
-# %% ../nbs/01_quaternions.ipynb 51
+# %% ../nbs/01_quaternions.ipynb 50
 def inclination_loss_smooth(q1,q2):
     q = diffQuat(q1,q2)
     q_abs = (q[..., 3]**2 + q[..., 0]**2).sqrt()-1
     return F.smooth_l1_loss(q_abs,torch.zeros_like(q_abs))
 
-# %% ../nbs/01_quaternions.ipynb 53
+# %% ../nbs/01_quaternions.ipynb 52
 def abs_inclination(q1,q2):
     inclination = inclinationAngle(q1,q2)
     return  inclination.abs().mean()
 
-# %% ../nbs/01_quaternions.ipynb 55
+# %% ../nbs/01_quaternions.ipynb 54
 def ms_inclination(q1,q2):
     inclination = inclinationAngle(q1,q2)
     return  (inclination**2).mean()
 
-# %% ../nbs/01_quaternions.ipynb 57
+# %% ../nbs/01_quaternions.ipynb 56
 def rms_inclination(q1,q2):
     inclination = inclinationAngle(q1,q2)
     return (inclination**2).mean().sqrt()
 
-# %% ../nbs/01_quaternions.ipynb 59
+# %% ../nbs/01_quaternions.ipynb 58
 def smooth_inclination(q1,q2):
     inclination = inclinationAngle(q1,q2)
     return F.smooth_l1_loss(inclination,torch.zeros_like(inclination))
 
-# %% ../nbs/01_quaternions.ipynb 61
+# %% ../nbs/01_quaternions.ipynb 60
 def rms_inclination_deg(q1,q2):
     inclination = inclinationAngle(q1,q2)
     return  rad2deg((inclination**2).mean().sqrt())
 
-# %% ../nbs/01_quaternions.ipynb 63
+# %% ../nbs/01_quaternions.ipynb 62
 def rms_pitch_deg(q1,q2):
     inclination = pitchAngle(q1,q2)
     return  rad2deg((inclination**2).mean().sqrt())
 
-# %% ../nbs/01_quaternions.ipynb 65
+# %% ../nbs/01_quaternions.ipynb 64
 def rms_roll_deg(q1,q2):
     inclination = rollAngle(q1,q2)
     return  rad2deg((inclination**2).mean().sqrt())
 
-# %% ../nbs/01_quaternions.ipynb 67
+# %% ../nbs/01_quaternions.ipynb 66
 def mean_inclination_deg(q1,q2):
     inclination = inclinationAngle(q1,q2)
     return  rad2deg(inclination.mean())
 
-# %% ../nbs/01_quaternions.ipynb 69
+# %% ../nbs/01_quaternions.ipynb 68
 def angle_loss(q1,q2):
     q = diffQuat(q1,q2)
     return (q[..., 0]-1).abs().mean()
 
-# %% ../nbs/01_quaternions.ipynb 70
+# %% ../nbs/01_quaternions.ipynb 69
 def angle_loss_opt(q1,q2):
     q1 = norm_quaternion(q1)
     q2 = norm_quaternion(q2)
@@ -277,31 +277,31 @@ def angle_loss_opt(q1,q2):
     q = q1[..., 0] * q2[..., 0] - q1[..., 1] * q2[..., 1] - q1[..., 2] * q2[..., 2] - q1[..., 3] * q2[..., 3]
     return (q-1).abs().mean()
 
-# %% ../nbs/01_quaternions.ipynb 71
+# %% ../nbs/01_quaternions.ipynb 70
 def ms_rel_angle(q1,q2):
     rel_angle = relativeAngle(q1,q2)
     return  (rel_angle**2).mean()
 
-# %% ../nbs/01_quaternions.ipynb 73
+# %% ../nbs/01_quaternions.ipynb 72
 def abs_rel_angle(q1,q2):
     rel_angle = relativeAngle(q1,q2)
     return  rel_angle.abs().mean()
 
-# %% ../nbs/01_quaternions.ipynb 74
+# %% ../nbs/01_quaternions.ipynb 73
 def rms_rel_angle_deg(q1,q2):
     rel_angle = relativeAngle(q1,q2)
     return  rad2deg((rel_angle**2).mean().sqrt())
 
-# %% ../nbs/01_quaternions.ipynb 76
+# %% ../nbs/01_quaternions.ipynb 75
 def mean_rel_angle_deg(q1,q2):
     rel_angle = relativeAngle(q1,q2)
     return  rad2deg(rel_angle.mean())
 
-# %% ../nbs/01_quaternions.ipynb 78
+# %% ../nbs/01_quaternions.ipynb 77
 def deg_rmse(inp, targ):
     return rad2deg(fun_rmse(inp, targ))
 
-# %% ../nbs/01_quaternions.ipynb 81
+# %% ../nbs/01_quaternions.ipynb 80
 from fastai.callback.hook import *
 @delegates()
 class QuaternionRegularizer(HookCallback):
@@ -326,13 +326,13 @@ class QuaternionRegularizer(HookCallback):
 #             import pdb; pdb.set_trace()
             self.learn.loss_grad += l_a 
 
-# %% ../nbs/01_quaternions.ipynb 82
+# %% ../nbs/01_quaternions.ipynb 81
 def augmentation_groups(u_groups):
     '''returns the rotation list corresponding to the input groups'''
     u_groups = np.cumsum([0] + u_groups)
     return [[u_groups[i],u_groups[i+1]-1] for i in range(len(u_groups)-1)]
 
-# %% ../nbs/01_quaternions.ipynb 84
+# %% ../nbs/01_quaternions.ipynb 83
 class QuaternionAugmentation(Transform):
     "A transform that before_call its state at each `__call__`"
     split_idx = 0
@@ -362,7 +362,7 @@ class QuaternionAugmentation(Transform):
     def encodes(self, x:(TensorQuaternionInclination,TensorQuaternionAngle)):
         return multiplyQuat(x,self.r_quat)
 
-# %% ../nbs/01_quaternions.ipynb 88
+# %% ../nbs/01_quaternions.ipynb 87
 from scipy.signal import resample
 class Quaternion_ResamplingModel(nn.Module):
     '''
@@ -400,7 +400,7 @@ class Quaternion_ResamplingModel(nn.Module):
         
         return res
 
-# %% ../nbs/01_quaternions.ipynb 91
+# %% ../nbs/01_quaternions.ipynb 90
 def relativeQuat_np(q1, q2):
     """inv(quat1)*quat2"""
     if isinstance(q1, np.ndarray) and q1.shape == (4,):
@@ -563,7 +563,7 @@ def quatInterp_np(quat, ind, extend=True):
 
     return quat_out
 
-# %% ../nbs/01_quaternions.ipynb 92
+# %% ../nbs/01_quaternions.ipynb 91
 import h5py
 
 
@@ -604,7 +604,7 @@ class HDF2Quaternion(HDF2Sequence):
 
         return seq
 
-# %% ../nbs/01_quaternions.ipynb 93
+# %% ../nbs/01_quaternions.ipynb 92
 class QuaternionBlock(TransformBlock):
     def __init__(self, seq_extract,padding=False):
         return super().__init__(type_tfms=[seq_extract],
@@ -616,10 +616,10 @@ class QuaternionBlock(TransformBlock):
     def from_hdf(cls, clm_names, seq_cls=TensorQuaternionInclination,padding=False, **kwargs):
         return cls(HDF2Quaternion(clm_names,to_cls=seq_cls,**kwargs), padding)
 
-# %% ../nbs/01_quaternions.ipynb 97
+# %% ../nbs/01_quaternions.ipynb 96
 class TensorInclination(TensorSequences): pass
 
-# %% ../nbs/01_quaternions.ipynb 98
+# %% ../nbs/01_quaternions.ipynb 97
 import h5py
 class HDF2Inclination(HDF2Sequence):
         
@@ -631,7 +631,7 @@ class HDF2Inclination(HDF2Sequence):
             seq = array(inclinationAngleAbs(tensor(seq))[:,None])
             return seq
 
-# %% ../nbs/01_quaternions.ipynb 99
+# %% ../nbs/01_quaternions.ipynb 98
 class InclinationBlock(TransformBlock):
     def __init__(self, seq_extract,padding=False):
         return super().__init__(type_tfms=[seq_extract],
@@ -643,7 +643,7 @@ class InclinationBlock(TransformBlock):
     def from_hdf(cls, clm_names, seq_cls=TensorInclination,padding=False, **kwargs):
         return cls(HDF2Inclination(clm_names,to_cls=seq_cls,**kwargs), padding)
 
-# %% ../nbs/01_quaternions.ipynb 102
+# %% ../nbs/01_quaternions.ipynb 101
 def plot_scalar_inclination(axs,in_sig,targ_sig,out_sig=None, **kwargs):
 #     import pdb; pdb.set_trace()
     first_targ = targ_sig[0].repeat(targ_sig.shape[0],1)
@@ -660,7 +660,7 @@ def plot_scalar_inclination(axs,in_sig,targ_sig,out_sig=None, **kwargs):
         
     axs[-1].plot(in_sig)
 
-# %% ../nbs/01_quaternions.ipynb 103
+# %% ../nbs/01_quaternions.ipynb 102
 def plot_quaternion_inclination(axs,in_sig,targ_sig,out_sig=None, **kwargs):
 #     import pdb; pdb.set_trace()
     axs[0].plot(rad2deg(inclinationAngleAbs(targ_sig)).detach().numpy())
@@ -682,7 +682,7 @@ def plot_quaternion_inclination(axs,in_sig,targ_sig,out_sig=None, **kwargs):
         
     axs[-1].plot(in_sig)
 
-# %% ../nbs/01_quaternions.ipynb 104
+# %% ../nbs/01_quaternions.ipynb 103
 def plot_quaternion_rel_angle(axs,in_sig,targ_sig,out_sig=None, **kwargs):
 #     import pdb; pdb.set_trace()
     first_targ = targ_sig[0].repeat(targ_sig.shape[0],1)
@@ -700,7 +700,7 @@ def plot_quaternion_rel_angle(axs,in_sig,targ_sig,out_sig=None, **kwargs):
         
     axs[-1].plot(in_sig)
 
-# %% ../nbs/01_quaternions.ipynb 106
+# %% ../nbs/01_quaternions.ipynb 105
 @typedispatch
 def show_results(x:TensorSequences, y:TensorInclination, samples, outs, ctxs=None, max_n=2, **kwargs):
     n_samples = min(len(samples), max_n)
@@ -713,7 +713,7 @@ def show_results(x:TensorSequences, y:TensorInclination, samples, outs, ctxs=Non
         plot_seqs_multi_figures(n_samples,n_targ,samples,plot_scalar_inclination,outs, **kwargs)
     return ctxs
 
-# %% ../nbs/01_quaternions.ipynb 107
+# %% ../nbs/01_quaternions.ipynb 106
 @typedispatch
 def show_batch(x:TensorSequences, y:TensorInclination, samples, ctxs=None, max_n=6, **kwargs):
     n_samples = min(len(samples), max_n)
@@ -726,7 +726,7 @@ def show_batch(x:TensorSequences, y:TensorInclination, samples, ctxs=None, max_n
         plot_seqs_multi_figures(n_samples,n_targ,samples,plot_scalar_inclination, **kwargs)
     return ctxs
 
-# %% ../nbs/01_quaternions.ipynb 108
+# %% ../nbs/01_quaternions.ipynb 107
 @typedispatch
 def show_results(x:TensorSequences, y:TensorQuaternionInclination, samples, outs, ctxs=None, max_n=2, **kwargs):
     if 'quat' in kwargs: return show_results(x,TensorSequencesOutput(y), samples,outs, ctxs, max_n , **kwargs)
@@ -740,7 +740,7 @@ def show_results(x:TensorSequences, y:TensorQuaternionInclination, samples, outs
         plot_seqs_multi_figures(n_samples,n_targ,samples,plot_quaternion_inclination,outs,**kwargs)
     return ctxs
 
-# %% ../nbs/01_quaternions.ipynb 109
+# %% ../nbs/01_quaternions.ipynb 108
 @typedispatch
 def show_batch(x:TensorSequences, y:TensorQuaternionInclination, samples, ctxs=None, max_n=6, **kwargs):
     n_samples = min(len(samples), max_n)
@@ -753,7 +753,7 @@ def show_batch(x:TensorSequences, y:TensorQuaternionInclination, samples, ctxs=N
         plot_seqs_multi_figures(n_samples,n_targ,samples,plot_quaternion_inclination)
     return ctxs
 
-# %% ../nbs/01_quaternions.ipynb 110
+# %% ../nbs/01_quaternions.ipynb 109
 @typedispatch
 def show_results(x:TensorSequences, y:TensorQuaternionAngle, samples, outs, ctxs=None, max_n=2, **kwargs):
     n_samples = min(len(samples), max_n)
@@ -766,7 +766,7 @@ def show_results(x:TensorSequences, y:TensorQuaternionAngle, samples, outs, ctxs
         plot_seqs_multi_figures(n_samples,n_targ,samples,plot_quaternion_rel_angle,outs, **kwargs)
     return ctxs
 
-# %% ../nbs/01_quaternions.ipynb 111
+# %% ../nbs/01_quaternions.ipynb 110
 @typedispatch
 def show_batch(x:TensorSequences, y:TensorQuaternionAngle, samples, ctxs=None, max_n=6, **kwargs):
     n_samples = min(len(samples), max_n)
