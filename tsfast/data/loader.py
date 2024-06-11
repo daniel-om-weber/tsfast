@@ -4,19 +4,17 @@
 __all__ = ['TbpttDl', 'reset_model_state', 'TbpttResetCB', 'WeightedDL_Factory', 'uniform_p_of_category', 'uniform_p_of_float',
            'uniform_p_of_float_with_gaps', 'BatchLimit_Factory']
 
-# %% ../../nbs/00_data/04_loader.ipynb 3
+# %% ../../nbs/00_data/04_loader.ipynb 2
 from .core import *
 from .transforms import *
 from .split import *
 from .block import *
-# from tsfast.models import *
+
 from ..learner import *
-# from tsfast.learner import *
+
 from fastai.basics import *
 
-import math
-
-# %% ../../nbs/00_data/04_loader.ipynb 6
+# %% ../../nbs/00_data/04_loader.ipynb 5
 from torch.utils.data.dataloader import _MultiProcessingDataLoaderIter,_SingleProcessDataLoaderIter,_DatasetKind
 _loaders = (_MultiProcessingDataLoaderIter,_SingleProcessDataLoaderIter)
 
@@ -110,12 +108,12 @@ class TbpttDl(TfmdDL):
                 yield trunc_b, (None if torch.utils.data.get_worker_info() is None else torch.utils.data.get_worker_info().id)
         
 
-# %% ../../nbs/00_data/04_loader.ipynb 14
+# %% ../../nbs/00_data/04_loader.ipynb 13
 def reset_model_state(model):
     for m in model.modules():
         if hasattr(m,'reset_state'): m.reset_state()
 
-# %% ../../nbs/00_data/04_loader.ipynb 15
+# %% ../../nbs/00_data/04_loader.ipynb 14
 class TbpttResetCB(Callback):
     "`Callback` resets the rnn model with every new sequence for tbptt, calls `reset_state` in every module of the model"
         
@@ -128,7 +126,7 @@ class TbpttResetCB(Callback):
     def after_fit(self): 
         reset_model_state(self.learn.model)
 
-# %% ../../nbs/00_data/04_loader.ipynb 23
+# %% ../../nbs/00_data/04_loader.ipynb 22
 def WeightedDL_Factory(cls):
     '''
     Weighted Dataloader that provides control over sampling probabilities.
@@ -170,7 +168,7 @@ def WeightedDL_Factory(cls):
             return idxs
     return WeightedDL
 
-# %% ../../nbs/00_data/04_loader.ipynb 29
+# %% ../../nbs/00_data/04_loader.ipynb 28
 def uniform_p_of_category(cat_name):  
     '''Scales sampling weights for an even distribution between every category'''
     def _inner(df):
@@ -193,7 +191,7 @@ def uniform_p_of_category(cat_name):
     
     return _inner
 
-# %% ../../nbs/00_data/04_loader.ipynb 30
+# %% ../../nbs/00_data/04_loader.ipynb 29
 def uniform_p_of_float(var_name,bins = 10):
     '''Scales sampling weights for an even distribution of the continous variable by creating equi sized bins'''
     def _inner(df):
@@ -218,7 +216,7 @@ def uniform_p_of_float(var_name,bins = 10):
 
     return _inner
 
-# %% ../../nbs/00_data/04_loader.ipynb 31
+# %% ../../nbs/00_data/04_loader.ipynb 30
 def uniform_p_of_float_with_gaps(var_name,bins = 100):
     '''Scales sampling weights for an even distribution of the continous variable by creating equi sized bins'''
     def _inner(df):
@@ -246,7 +244,7 @@ def uniform_p_of_float_with_gaps(var_name,bins = 100):
 
     return _inner
 
-# %% ../../nbs/00_data/04_loader.ipynb 44
+# %% ../../nbs/00_data/04_loader.ipynb 43
 def BatchLimit_Factory(cls):
     '''
     Batch limited Dataloader that provides an upper limit for the number of mini batches per epoch
