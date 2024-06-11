@@ -1,0 +1,9 @@
+project:
+  output-dir: docs
+
+website:
+  title: "tsfast"
+  site-url: "https://daniel-om-weber.github.io/tsfast/"
+  description: "A description of your project"
+  repo-branch: master
+  repo-url: "https://github.com/daniel-om-weber/tsfast"
