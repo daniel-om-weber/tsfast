@@ -1,0 +1,33 @@
+website:
+  sidebar:
+    contents:
+      - index.ipynb
+      - 01_quaternions.ipynb
+      - 03_spectogram.ipynb
+      - 04_tune.ipynb
+      - section: data
+        contents:
+          - data/00_core.ipynb
+          - data/01_transforms.ipynb
+          - data/02_split.ipynb
+          - data/03_block.ipynb
+          - data/04_loader.ipynb
+      - section: datasets
+        contents:
+          - datasets/00_core.ipynb
+          - datasets/01_external.ipynb
+      - section: learner
+        contents:
+          - learner/01_callbacks.ipynb
+          - learner/02_losses.ipynb
+          - learner/03_learner.ipynb
+      - section: models
+        contents:
+          - models/00_layers.ipynb
+          - models/01_rnn.ipynb
+          - models/02_cnn.ipynb
+      - section: prediction
+        contents:
+          - prediction/00_core.ipynb
+          - prediction/01_ar.ipynb
+          - prediction/02_fransys.ipynb

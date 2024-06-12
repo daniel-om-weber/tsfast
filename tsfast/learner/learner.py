@@ -73,7 +73,7 @@ def AR_TCNLearner(dls,hl_depth=3,alpha=1,beta=1,early_stop=0,metrics=None,n_skip
     model = AR_Model(TCN(inp+out,out,hl_depth,**kwargs),ar=False)
     model.init_normalize(dls.one_batch())
     
-    cbs=[ARInitCB(),TimeSeriesRegularizer(alpha=alpha,beta=beta,modules=[model.model.conv_layers[-1]]),SaveModelCallback()]
+    cbs=[ARInitCB(),TimeSeriesRegularizer(alpha=alpha,beta=beta,modules=[model.model.conv_layers[-1]])]#SaveModelCallback()
     if early_stop > 0:
         cbs += [EarlyStoppingCallback(patience=early_stop)]
         
@@ -91,7 +91,7 @@ def AR_RNNLearner(dls,alpha=0,beta=0,early_stop=0,metrics=None,n_skip=0,fname='m
     model = AR_Model(SimpleRNN(inp+out,out,**kwargs),ar=False)
     model.init_normalize(dls.one_batch())
     
-    cbs=[ARInitCB(),TimeSeriesRegularizer(alpha=alpha,beta=beta,modules=[model.model.rnn]),SaveModelCallback()]
+    cbs=[ARInitCB(),TimeSeriesRegularizer(alpha=alpha,beta=beta,modules=[model.model.rnn])]#SaveModelCallback()
     if early_stop > 0:
         cbs += [EarlyStoppingCallback(patience=early_stop)]
         
