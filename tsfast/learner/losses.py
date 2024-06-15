@@ -9,7 +9,7 @@ from ..data import *
 from ..models import *
 from fastai.basics import *
 
-# %% ../../nbs/02_learner/02_losses.ipynb 7
+# %% ../../nbs/02_learner/02_losses.ipynb 6
 import functools
 
 def ignore_nan(func):
@@ -23,10 +23,10 @@ def ignore_nan(func):
         return func(*args, **kwargs)
     return ignore_nan_decorator
 
-# %% ../../nbs/02_learner/02_losses.ipynb 12
+# %% ../../nbs/02_learner/02_losses.ipynb 11
 mse_nan = ignore_nan(mse)
 
-# %% ../../nbs/02_learner/02_losses.ipynb 14
+# %% ../../nbs/02_learner/02_losses.ipynb 13
 import functools
 
 def float64_func(func):
@@ -38,7 +38,7 @@ def float64_func(func):
         return func(*args, **kwargs).type(typ)
     return float64_func_decorator
 
-# %% ../../nbs/02_learner/02_losses.ipynb 16
+# %% ../../nbs/02_learner/02_losses.ipynb 15
 def SkipNLoss(fn,n_skip=0):
     '''Loss-Function modifier that skips the first n samples of sequential data'''
     @functools.wraps(fn)
@@ -47,7 +47,7 @@ def SkipNLoss(fn,n_skip=0):
     
     return _inner
 
-# %% ../../nbs/02_learner/02_losses.ipynb 18
+# %% ../../nbs/02_learner/02_losses.ipynb 17
 def CutLoss(fn,l_cut=0,r_cut=None):
     '''Loss-Function modifier that skips the first n samples of sequential data'''
     @functools.wraps(fn)
@@ -56,7 +56,7 @@ def CutLoss(fn,l_cut=0,r_cut=None):
     
     return _inner
 
-# %% ../../nbs/02_learner/02_losses.ipynb 20
+# %% ../../nbs/02_learner/02_losses.ipynb 19
 def weighted_mae(input, target):
     max_weight = 1.0
     min_weight = 0.1
@@ -68,7 +68,7 @@ def weighted_mae(input, target):
 
     return ((input-target).abs()*weights).sum(dim=1).mean()
 
-# %% ../../nbs/02_learner/02_losses.ipynb 22
+# %% ../../nbs/02_learner/02_losses.ipynb 21
 def RandSeqLenLoss(fn,min_idx=1,max_idx=None,mid_idx=None):
     '''Loss-Function modifier that truncates the sequence length of every sequence in the minibatch inidiviually randomly.
     At the moment slow for very big batchsizes.'''
@@ -82,35 +82,35 @@ def RandSeqLenLoss(fn,min_idx=1,max_idx=None,mid_idx=None):
         return torch.stack([fn(input[i,:len_list[i]],target[i,:len_list[i]]) for i in range(bs)]).mean()
     return _inner
 
-# %% ../../nbs/02_learner/02_losses.ipynb 24
+# %% ../../nbs/02_learner/02_losses.ipynb 23
 def fun_rmse(inp, targ): 
     '''rmse loss function defined as a function not as a AccumMetric'''
     return torch.sqrt(F.mse_loss(inp, targ))
 
-# %% ../../nbs/02_learner/02_losses.ipynb 26
+# %% ../../nbs/02_learner/02_losses.ipynb 25
 def cos_sim_loss(inp, targ): 
     '''rmse loss function defined as a function not as a AccumMetric'''
     return (1-F.cosine_similarity(inp,targ,dim=-1)).mean()
 
-# %% ../../nbs/02_learner/02_losses.ipynb 28
+# %% ../../nbs/02_learner/02_losses.ipynb 27
 def cos_sim_loss_pow(inp, targ): 
     '''rmse loss function defined as a function not as a AccumMetric'''
     return (1-F.cosine_similarity(inp,targ,dim=-1)).pow(2).mean()
 
-# %% ../../nbs/02_learner/02_losses.ipynb 30
+# %% ../../nbs/02_learner/02_losses.ipynb 29
 def nrmse(inp, targ): 
     '''rmse loss function scaled by variance of each target variable'''
     mse = (inp-targ).pow(2).mean(dim=[0,1])
     var = targ.var(dim=[0,1])
     return (mse/var).sqrt().mean()
 
-# %% ../../nbs/02_learner/02_losses.ipynb 33
+# %% ../../nbs/02_learner/02_losses.ipynb 32
 def nrmse_std(inp, targ): 
     '''rmse loss function scaled by standard deviation of each target variable'''
     mse = (inp-targ).pow(2).mean(dim=[0,1])
     var = targ.std(dim=[0,1])
     return (mse/var).sqrt().mean()
 
-# %% ../../nbs/02_learner/02_losses.ipynb 35
+# %% ../../nbs/02_learner/02_losses.ipynb 34
 def mean_vaf(inp,targ):
     return (1-((targ-inp).var()/targ.var()))*100

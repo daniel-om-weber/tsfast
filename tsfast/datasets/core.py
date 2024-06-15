@@ -77,7 +77,7 @@ def extract_mean_std_from_hdffiles(
     means = sums / counts
     stds = np.sqrt((squares / counts) - (means ** 2))
     
-    return means, stds
+    return means.astype(np.float32), stds.astype(np.float32)
 
 # %% ../../nbs/01_datasets/00_core.ipynb 14
 def extract_mean_std_from_dataset(lst_files,u,x,y):
@@ -193,7 +193,7 @@ def create_dls(
     #add the test dataloader
     test_hdf_files =  hdf_files.filter(lambda o:Path(o).parent.name == 'test')
     if prediction:
-        items = CreateDict([DfHDFCreateWindows(win_sz=win_sz,stp_sz=valid_stp_sz,clm=u[0])])(test_hdf_files)
+        items = CreateDict([DfHDFCreateWindows(win_sz=win_sz,stp_sz=win_sz,clm=u[0])])(test_hdf_files)
         test_dl = dls.test_dl(items,bs=bs, with_labels=True)
     else:
         items = CreateDict()(test_hdf_files)

@@ -9,7 +9,8 @@ __all__ = ['create_dls_wh', 'create_dls_wh_prediction', 'create_dls_silverbox', 
            'create_dls_quad_pelican', 'create_dls_quad_pelican_prediction', 'quad_pi_u', 'quad_pi_x_v', 'quad_pi_x_q',
            'quad_pi_x_w', 'quad_pi_x', 'quad_pi_y_vdot', 'quad_pi_y_wdot', 'quad_pi_y', 'create_dls_quad_pi',
            'create_dls_quad_pi_prediction', 'broad_u_imu_acc', 'broad_u_imu_gyr', 'broad_u_imu_mag', 'broad_y_opt_pos',
-           'broad_y_opt_quat', 'broad_u', 'create_dls_broad', 'create_dls_broad_prediction', 'get_default_dataset_path',
+           'broad_y_opt_quat', 'broad_u', 'create_dls_broad', 'create_dls_broad_prediction',
+           'external_datasets_simulation', 'external_datasets_prediction', 'get_default_dataset_path',
            'get_dataset_path', 'clean_default_dataset_path', 'create_dls_downl']
 
 # %% ../../nbs/01_datasets/01_external.ipynb 2
@@ -37,7 +38,7 @@ def get_dataset_path():
     if env_path:
         return Path(env_path)
     else:
-        return get_default_data_path()
+        return get_default_dataset_path()
 
 # %% ../../nbs/01_datasets/01_external.ipynb 8
 def clean_default_dataset_path():
@@ -70,14 +71,14 @@ create_dls_wh = partial(
     create_dls_downl, 
     download_function=wiener_hammerstein,
     u=['u0'],y=['y0'],
-    win_sz=100,
+    win_sz=400,
 )
 
 create_dls_wh_prediction = partial(
     create_dls_downl, 
     download_function=wiener_hammerstein,
     u=['u0'],y=['y0'],
-    win_sz=100,
+    win_sz=400,
     prediction=True
 )
 
@@ -86,14 +87,14 @@ create_dls_silverbox = partial(
     create_dls_downl, 
     download_function=silverbox,
     u=['u0'],y=['y0'],
-    win_sz=100,
+    win_sz=400,
 )
 
 create_dls_silverbox_prediction = partial(
     create_dls_downl, 
     download_function=silverbox,
     u=['u0'],y=['y0'],
-    win_sz=100,
+    win_sz=400,
     prediction=True
 )
 
@@ -102,14 +103,14 @@ create_dls_cascaded_tanks = partial(
     create_dls_downl, 
     download_function=cascaded_tanks,
     u=['u0'],y=['y0'],
-    win_sz=100,
+    win_sz=400,
 )
 
 create_dls_cascaded_tanks_prediction = partial(
     create_dls_downl, 
     download_function=cascaded_tanks,
     u=['u0'],y=['y0'],
-    win_sz=100,
+    win_sz=400,
     prediction=True
 )
 
@@ -118,14 +119,14 @@ create_dls_emps = partial(
     create_dls_downl, 
     download_function=emps,
     u=['u0'],y=['y0'],
-    win_sz=100,
+    win_sz=300,
 )
 
 create_dls_emps_prediction = partial(
     create_dls_downl, 
     download_function=emps,
     u=['u0'],y=['y0'],
-    win_sz=100,
+    win_sz=300,
     prediction=True
 )
 
@@ -160,14 +161,16 @@ create_dls_robot_forward = partial(
     create_dls_downl, 
     download_function=robot_forward,
     u=robot_u_forward,y=robot_y,
-    win_sz=100,
+    win_sz=300,
+    valid_stp_sz=4,
 )
 
 create_dls_robot_forward_prediction = partial(
     create_dls_downl, 
     download_function=robot_forward,
     u=robot_u_forward,y=robot_y,
-    win_sz=100,
+    win_sz=250,
+    valid_stp_sz=4,
     prediction=True
 )
 
@@ -176,14 +179,16 @@ create_dls_robot_inverse = partial(
     create_dls_downl, 
     download_function=robot_inverse,
     u=robot_u_inverse,y=robot_y,
-    win_sz=100,
+    win_sz=300,
+    valid_stp_sz=4,
 )
 
 create_dls_robot_inverse_prediction = partial(
     create_dls_downl, 
     download_function=robot_inverse,
     u=robot_u_inverse,y=robot_y,
-    win_sz=100,
+    win_sz=250,
+    valid_stp_sz=4,
     prediction=True
 )
 
@@ -220,14 +225,16 @@ create_dls_quad_pelican = partial(
     create_dls_downl, 
     download_function=quad_pelican,
     u=pelican_u_motors,y=pelican_y_euler_rates+pelican_y_vel,
-    win_sz=100,
+    win_sz=300,
+    valid_stp_sz=40
 )
 
 create_dls_quad_pelican_prediction = partial(
     create_dls_downl, 
     download_function=quad_pelican,
     u=pelican_u_motors,y=pelican_y_euler_rates+pelican_y_vel,
-    win_sz=100,
+    win_sz=300,
+    valid_stp_sz=40,
     prediction=True
 )
 
@@ -248,14 +255,16 @@ create_dls_quad_pi = partial(
     create_dls_downl, 
     download_function=quad_pi,
     u=quad_pi_u,y=quad_pi_y,
-    win_sz=100,
+    win_sz=200,
+    valid_stp_sz=20,
 )
 
 create_dls_quad_pi_prediction = partial(
     create_dls_downl, 
     download_function=quad_pi,
     u=quad_pi_u,y=quad_pi_y,
-    win_sz=100,
+    win_sz=120,
+    valid_stp_sz=20,
     prediction=True
 )
 
@@ -283,3 +292,28 @@ create_dls_broad_prediction = partial(
     win_sz=100,
     prediction=True
 )
+
+# %% ../../nbs/01_datasets/01_external.ipynb 48
+external_datasets_simulation = [
+    create_dls_wh,
+    create_dls_silverbox,
+    create_dls_robot_forward,
+    create_dls_noisy_wh,
+    # create_dls_broad,
+    create_dls_emps
+]
+
+# %% ../../nbs/01_datasets/01_external.ipynb 49
+external_datasets_prediction = [
+    # create_dls_broad_prediction,
+    create_dls_cascaded_tanks_prediction,
+    create_dls_emps_prediction,
+    create_dls_noisy_wh_prediction,
+    create_dls_quad_pelican_prediction,
+    create_dls_quad_pi_prediction,
+    create_dls_robot_forward_prediction,
+    create_dls_robot_inverse_prediction,
+    create_dls_ship_prediction,
+    create_dls_silverbox_prediction,
+    create_dls_wh_prediction
+]

@@ -11,7 +11,7 @@ from ..models import *
 from fastai.basics import *
 # from fastai.callback.tracker import *
 
-# %% ../../nbs/02_learner/01_callbacks.ipynb 8
+# %% ../../nbs/02_learner/01_callbacks.ipynb 7
 class GradientClipping(Callback):
     "`Callback` cutts of the gradient of every minibtch at `clip_val`"
     def __init__(self, clip_val=10): self.clip_val = clip_val
@@ -19,7 +19,7 @@ class GradientClipping(Callback):
     def after_backward(self):
         nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_val)
 
-# %% ../../nbs/02_learner/01_callbacks.ipynb 10
+# %% ../../nbs/02_learner/01_callbacks.ipynb 9
 class GradientNormPrint(Callback):
     "`Callback` prints the norm of the gradient of every minibtch"
     # def __init__(self, clip_val=10): self.clip_val = clip_val
@@ -33,7 +33,7 @@ class GradientNormPrint(Callback):
         norm = torch.cat(grads).norm()
         print(f'Gradient norm: {norm:.2f}')
 
-# %% ../../nbs/02_learner/01_callbacks.ipynb 12
+# %% ../../nbs/02_learner/01_callbacks.ipynb 11
 class GradientBatchFiltering(Callback):
     "`Callback` skips batches with a gradient norm larger than `filter_val`"
     def __init__(self, filter_val=10): self.filter_val = filter_val
@@ -51,7 +51,7 @@ class GradientBatchFiltering(Callback):
             raise CancelBatchException()
         # print(f'Gradient norm: {norm:.2f}')
 
-# %% ../../nbs/02_learner/01_callbacks.ipynb 14
+# %% ../../nbs/02_learner/01_callbacks.ipynb 13
 class WeightClipping(Callback):
     "`Callback` that clips the weights of a given module at `clip_limit` after every iteration"
     def __init__(self, module, clip_limit = 1):
@@ -63,7 +63,7 @@ class WeightClipping(Callback):
         for p in self.module.parameters():
             p.data.clamp_(-self.clip_limit,self.clip_limit)
 
-# %% ../../nbs/02_learner/01_callbacks.ipynb 16
+# %% ../../nbs/02_learner/01_callbacks.ipynb 15
 class SkipFirstNCallback(Callback):
     "`Callback` skips first n samples from prediction and target, optionally `with_loss`"
     def __init__(self, n_skip = 0):
@@ -81,7 +81,7 @@ class SkipFirstNCallback(Callback):
                     else:
                         self.learn.yb = self.yb[:,self.n_skip:]
 
-# %% ../../nbs/02_learner/01_callbacks.ipynb 17
+# %% ../../nbs/02_learner/01_callbacks.ipynb 16
 class SkipNaNCallback(Callback):
     "`Callback` skips minibatches with a NaN loss"
     def after_loss(self): 
@@ -90,14 +90,14 @@ class SkipNaNCallback(Callback):
             self.opt.zero_grad()
             raise CancelBatchException()
 
-# %% ../../nbs/02_learner/01_callbacks.ipynb 18
+# %% ../../nbs/02_learner/01_callbacks.ipynb 17
 class CancelNaNCallback(Callback):
     "`Callback` cancels trainig minibatches with a NaN loss"
     def after_loss(self): 
         if torch.isnan(self.learn.loss):
             raise CancelTrainException()
 
-# %% ../../nbs/02_learner/01_callbacks.ipynb 19
+# %% ../../nbs/02_learner/01_callbacks.ipynb 18
 class VarySeqLen(Callback):
     "`Callback` varies sequence length of every mini batch"
     def __init__(self, min_len = 50):
@@ -118,7 +118,7 @@ class VarySeqLen(Callback):
                     
                 self.learn.yb = tuple([y[:,:lim] for y in self.yb])
 
-# %% ../../nbs/02_learner/01_callbacks.ipynb 21
+# %% ../../nbs/02_learner/01_callbacks.ipynb 20
 from fastai.callback.all import *
 class CB_TruncateSequence(Callback):
     "`Callback` varies sequence length of every mini batch"
@@ -139,11 +139,11 @@ class CB_TruncateSequence(Callback):
                     self.learn.xb = tuple([x[:,:-lim] for x in self.xb])
                     self.learn.yb = tuple([y[:,:-lim] for y in self.yb])
 
-# %% ../../nbs/02_learner/01_callbacks.ipynb 22
+# %% ../../nbs/02_learner/01_callbacks.ipynb 21
 def sched_lin_p(start, end, pos, p=0.75): 
     return end if pos >= p else start + pos/p*(end-start)
 
-# %% ../../nbs/02_learner/01_callbacks.ipynb 23
+# %% ../../nbs/02_learner/01_callbacks.ipynb 22
 def sched_ramp(start, end, pos, p_left=0.1, p_right=0.5):
     if pos >= p_right: 
         return end
@@ -152,7 +152,7 @@ def sched_ramp(start, end, pos, p_left=0.1, p_right=0.5):
     else: 
         return start + (end - start) * (pos - p_left) / (p_right - p_left)
 
-# %% ../../nbs/02_learner/01_callbacks.ipynb 26
+# %% ../../nbs/02_learner/01_callbacks.ipynb 25
 class CB_AddLoss(Callback):
     '''Callback that adds the results of a given loss_function to the mini_batch after the original loss function has been applied'''
     def __init__(self,_loss_func,alpha=1.0):
@@ -166,7 +166,7 @@ class CB_AddLoss(Callback):
         self.learn.loss_grad = loss + self.learn.loss_grad
         self.learn.loss = loss + self.learn.loss
 
-# %% ../../nbs/02_learner/01_callbacks.ipynb 29
+# %% ../../nbs/02_learner/01_callbacks.ipynb 28
 class BatchLossFilter(Callback):
     """ 
     Callback that selects the hardest samples in every batch representing a percentage of the total loss.
@@ -196,7 +196,7 @@ class BatchLossFilter(Callback):
         self.learn.yb = tuple(ybi[idxs] for ybi in self.learn.yb)  # Filter the output batch
         self.learn.pred = self.pred[idxs]  # Update the predictions to match the filtered batch
 
-# %% ../../nbs/02_learner/01_callbacks.ipynb 32
+# %% ../../nbs/02_learner/01_callbacks.ipynb 31
 from fastai.callback.hook import *
 @delegates()
 class TimeSeriesRegularizer(HookCallback):
@@ -232,14 +232,14 @@ class TimeSeriesRegularizer(HookCallback):
             l_b = float(self.beta) * h_diff.pow(2).mean()
             self.learn.loss_grad += l_b
 
-# %% ../../nbs/02_learner/01_callbacks.ipynb 34
+# %% ../../nbs/02_learner/01_callbacks.ipynb 33
 class ARInitCB(Callback):
     '''Adds the target variable to the input tuple for autoregression'''
     def before_batch(self):
 #         import pdb; pdb.set_trace()
         self.learn.xb = tuple([*self.xb,*self.yb])
 
-# %% ../../nbs/02_learner/01_callbacks.ipynb 36
+# %% ../../nbs/02_learner/01_callbacks.ipynb 35
 from matplotlib.lines import Line2D
 def plot_grad_flow(named_parameters):
     '''Plots the gradients flowing through different layers in the net during training.
@@ -272,7 +272,7 @@ def plot_grad_flow(named_parameters):
                 Line2D([0], [0], color="b", lw=4),
                 Line2D([0], [0], color="k", lw=4)], ['max-gradient', 'mean-gradient', 'zero-gradient'])
 
-# %% ../../nbs/02_learner/01_callbacks.ipynb 37
+# %% ../../nbs/02_learner/01_callbacks.ipynb 36
 class CB_PlotGradient(Callback):
     '''Plot the Gradient Distribution for every trainable parameter'''
     
