@@ -6,8 +6,9 @@ __all__ = ['create_dls_test', 'extract_mean_std_from_dls', 'dict_file_save', 'di
 
 # %% ../../nbs/01_datasets/00_core.ipynb 2
 from fastai.data.all import *
-
 from ..data import *
+
+from ..data.loader import *
 import h5py
 from nbdev.config import get_config
 
