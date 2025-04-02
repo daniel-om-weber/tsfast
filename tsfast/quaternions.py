@@ -18,6 +18,7 @@ from .models import *
 from .learner import *
 
 from fastai.basics import *
+import warnings
 
 # %% ../nbs/01_quaternions.ipynb 4
 class TensorQuaternionInclination(TensorSequences): pass
@@ -82,7 +83,13 @@ def safe_acos(t,eps = 4e-8):
 # %% ../nbs/01_quaternions.ipynb 25
 def safe_acos_double(t,eps = 1e-16):
     '''numericaly stable variant of arcuscosine, uses 64bit floats for internal computation for increased accuracy and gradient propagation'''
-    return t.type(torch.float64).clamp(-1.0 + eps, 1.0 - eps).acos().type(t.dtype)
+    try:
+        # Try to use float64 for higher precision
+        return t.type(torch.float64).clamp(-1.0 + eps, 1.0 - eps).acos().type(t.dtype)
+    except TypeError as e:
+        # If float64 is not supported on this device, warn the user and fall back to float32
+        warnings.warn(f"Float64 precision not supported on {t.device} device. Falling back to float32. This may reduce numerical accuracy of quaternion operations. Error: {e}")
+        return t.clamp(-1.0 + 1e-6, 1.0 - 1e-6).acos()
 
 # %% ../nbs/01_quaternions.ipynb 27
 def inclinationAngle(q1,q2):

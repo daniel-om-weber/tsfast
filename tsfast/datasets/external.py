@@ -3,15 +3,16 @@
 # %% auto 0
 __all__ = ['create_dls_wh', 'create_dls_wh_prediction', 'create_dls_silverbox', 'create_dls_silverbox_prediction',
            'create_dls_cascaded_tanks', 'create_dls_cascaded_tanks_prediction', 'create_dls_emps',
-           'create_dls_emps_prediction', 'create_dls_noisy_wh', 'create_dls_noisy_wh_prediction', 'u', 'y',
-           'create_dls_robot_forward', 'create_dls_robot_forward_prediction', 'create_dls_robot_inverse',
-           'create_dls_robot_inverse_prediction', 'ship_u', 'ship_y', 'create_dls_ship', 'create_dls_ship_prediction',
-           'create_dls_quad_pelican', 'create_dls_quad_pelican_prediction', 'quad_pi_u', 'quad_pi_x_v', 'quad_pi_x_q',
-           'quad_pi_x_w', 'quad_pi_x', 'quad_pi_y_vdot', 'quad_pi_y_wdot', 'quad_pi_y', 'create_dls_quad_pi',
-           'create_dls_quad_pi_prediction', 'broad_u_imu_acc', 'broad_u_imu_gyr', 'broad_u_imu_mag', 'broad_y_opt_pos',
-           'broad_y_opt_quat', 'broad_u', 'create_dls_broad', 'create_dls_broad_prediction',
-           'external_datasets_simulation', 'external_datasets_prediction', 'get_default_dataset_path',
-           'get_dataset_path', 'clean_default_dataset_path', 'create_dls_downl']
+           'create_dls_emps_prediction', 'create_dls_ced', 'create_dls_ced_prediction', 'create_dls_noisy_wh',
+           'create_dls_noisy_wh_prediction', 'u', 'y', 'create_dls_robot_forward',
+           'create_dls_robot_forward_prediction', 'create_dls_robot_inverse', 'create_dls_robot_inverse_prediction',
+           'ship_u', 'ship_y', 'create_dls_ship', 'create_dls_ship_prediction', 'create_dls_quad_pelican',
+           'create_dls_quad_pelican_prediction', 'quad_pi_u', 'quad_pi_x_v', 'quad_pi_x_q', 'quad_pi_x_w', 'quad_pi_x',
+           'quad_pi_y_vdot', 'quad_pi_y_wdot', 'quad_pi_y', 'create_dls_quad_pi', 'create_dls_quad_pi_prediction',
+           'broad_u_imu_acc', 'broad_u_imu_gyr', 'broad_u_imu_mag', 'broad_y_opt_pos', 'broad_y_opt_quat', 'broad_u',
+           'create_dls_broad', 'create_dls_broad_prediction', 'external_datasets_simulation',
+           'external_datasets_prediction', 'get_default_dataset_path', 'get_dataset_path', 'clean_default_dataset_path',
+           'create_dls_downl']
 
 # %% ../../nbs/01_datasets/01_external.ipynb 2
 from fastai.data.all import *
@@ -71,50 +72,51 @@ create_dls_wh = partial(
     create_dls_downl, 
     download_function=wiener_hammerstein,
     u=['u0'],y=['y0'],
-    win_sz=400,
+    win_sz=200,
 )
 
 create_dls_wh_prediction = partial(
     create_dls_downl, 
     download_function=wiener_hammerstein,
     u=['u0'],y=['y0'],
-    win_sz=400,
+    win_sz=200,
     prediction=True
 )
 
-# %% ../../nbs/01_datasets/01_external.ipynb 15
+# %% ../../nbs/01_datasets/01_external.ipynb 16
 create_dls_silverbox = partial(
     create_dls_downl, 
     download_function=silverbox,
     u=['u0'],y=['y0'],
-    win_sz=400,
+    win_sz=200,
 )
 
 create_dls_silverbox_prediction = partial(
     create_dls_downl, 
     download_function=silverbox,
     u=['u0'],y=['y0'],
-    win_sz=400,
+    win_sz=200,
     prediction=True
 )
 
-# %% ../../nbs/01_datasets/01_external.ipynb 18
+# %% ../../nbs/01_datasets/01_external.ipynb 19
 create_dls_cascaded_tanks = partial(
     create_dls_downl, 
     download_function=cascaded_tanks,
     u=['u0'],y=['y0'],
-    win_sz=400,
+    win_sz=50,
+    stp_sz=1
 )
 
 create_dls_cascaded_tanks_prediction = partial(
     create_dls_downl, 
     download_function=cascaded_tanks,
     u=['u0'],y=['y0'],
-    win_sz=400,
+    win_sz=50,
     prediction=True
 )
 
-# %% ../../nbs/01_datasets/01_external.ipynb 21
+# %% ../../nbs/01_datasets/01_external.ipynb 23
 create_dls_emps = partial(
     create_dls_downl, 
     download_function=emps,
@@ -130,7 +132,23 @@ create_dls_emps_prediction = partial(
     prediction=True
 )
 
-# %% ../../nbs/01_datasets/01_external.ipynb 24
+# %% ../../nbs/01_datasets/01_external.ipynb 26
+create_dls_ced = partial(
+    create_dls_downl, 
+    download_function=ced,
+    u=['u0'],y=['y0'],
+    win_sz=50,
+)
+
+create_dls_ced_prediction = partial(
+    create_dls_downl, 
+    download_function=ced,
+    u=['u0'],y=['y0'],
+    win_sz=50,
+    prediction=True
+)
+
+# %% ../../nbs/01_datasets/01_external.ipynb 29
 create_dls_noisy_wh = partial(
     create_dls_downl, 
     download_function=noisy_wh,
@@ -148,12 +166,12 @@ create_dls_noisy_wh_prediction = partial(
     prediction=True
 )
 
-# %% ../../nbs/01_datasets/01_external.ipynb 27
+# %% ../../nbs/01_datasets/01_external.ipynb 32
 robot_u_forward = [f'u{i}' for i in range(6)]
 robot_u_inverse = [f'u{i}' for i in range(18)]
 robot_y = [f'y{i}' for i in range(6)]
 
-# %% ../../nbs/01_datasets/01_external.ipynb 28
+# %% ../../nbs/01_datasets/01_external.ipynb 33
 u = [f'u{i}' for i in range(6)]
 y = [f'y{i}' for i in range(6)]
 
@@ -174,7 +192,7 @@ create_dls_robot_forward_prediction = partial(
     prediction=True
 )
 
-# %% ../../nbs/01_datasets/01_external.ipynb 30
+# %% ../../nbs/01_datasets/01_external.ipynb 35
 create_dls_robot_inverse = partial(
     create_dls_downl, 
     download_function=robot_inverse,
@@ -192,7 +210,7 @@ create_dls_robot_inverse_prediction = partial(
     prediction=True
 )
 
-# %% ../../nbs/01_datasets/01_external.ipynb 33
+# %% ../../nbs/01_datasets/01_external.ipynb 38
 ship_u = ['n','deltal','deltar','Vw']
 ship_y = ['alpha_x','alpha_y','u','v','p','r','phi']
 
@@ -211,7 +229,7 @@ create_dls_ship_prediction = partial(
     prediction=True
 )
 
-# %% ../../nbs/01_datasets/01_external.ipynb 36
+# %% ../../nbs/01_datasets/01_external.ipynb 41
 pelican_u_motors = [f'motors{i}' for i in range(1,4+1)]
 pelican_u_motors_cmd = [f'motors_cmd{i}' for i in range(1,4+1)]
 pelican_y_euler = [f'euler{i}' for i in range(1,3+1)]
@@ -220,7 +238,7 @@ pelican_y_pos = [f'pos{i}' for i in range(1,3+1)]
 pelican_y_vel = [f'vel{i}' for i in range(1,3+1)]
 pelican_y_rate = [f'pqr{i}' for i in range(1,3+1)]
 
-# %% ../../nbs/01_datasets/01_external.ipynb 37
+# %% ../../nbs/01_datasets/01_external.ipynb 42
 create_dls_quad_pelican = partial(
     create_dls_downl, 
     download_function=quad_pelican,
@@ -238,7 +256,7 @@ create_dls_quad_pelican_prediction = partial(
     prediction=True
 )
 
-# %% ../../nbs/01_datasets/01_external.ipynb 40
+# %% ../../nbs/01_datasets/01_external.ipynb 45
 quad_pi_u = ['u_0','u_1','u_2','u_3']
 
 quad_pi_x_v = ['v_x','v_y','v_z']
@@ -250,7 +268,7 @@ quad_pi_y_vdot = ['vdot_x','vdot_y','vdot_z']
 quad_pi_y_wdot = ['wdot_x','wdot_y','wdot_z']
 quad_pi_y = quad_pi_y_vdot + quad_pi_y_wdot
 
-# %% ../../nbs/01_datasets/01_external.ipynb 41
+# %% ../../nbs/01_datasets/01_external.ipynb 46
 create_dls_quad_pi = partial(
     create_dls_downl, 
     download_function=quad_pi,
@@ -268,7 +286,7 @@ create_dls_quad_pi_prediction = partial(
     prediction=True
 )
 
-# %% ../../nbs/01_datasets/01_external.ipynb 44
+# %% ../../nbs/01_datasets/01_external.ipynb 49
 broad_u_imu_acc = [f'imu_acc{i}' for i in range(3)]
 broad_u_imu_gyr = [f'imu_gyr{i}' for i in range(3)]
 broad_u_imu_mag = [f'imu_mag{i}' for i in range(3)]
@@ -277,7 +295,7 @@ broad_y_opt_quat = [f'opt_quat{i}' for i in range(4)]
 
 broad_u = broad_u_imu_acc+broad_u_imu_gyr
 
-# %% ../../nbs/01_datasets/01_external.ipynb 45
+# %% ../../nbs/01_datasets/01_external.ipynb 50
 create_dls_broad = partial(
     create_dls_downl, 
     download_function=broad,
@@ -293,21 +311,23 @@ create_dls_broad_prediction = partial(
     prediction=True
 )
 
-# %% ../../nbs/01_datasets/01_external.ipynb 48
+# %% ../../nbs/01_datasets/01_external.ipynb 53
 external_datasets_simulation = [
     create_dls_wh,
     create_dls_silverbox,
     create_dls_robot_forward,
     create_dls_noisy_wh,
+    create_dls_ced,
     # create_dls_broad,
     create_dls_emps
 ]
 
-# %% ../../nbs/01_datasets/01_external.ipynb 49
+# %% ../../nbs/01_datasets/01_external.ipynb 54
 external_datasets_prediction = [
     # create_dls_broad_prediction,
     create_dls_cascaded_tanks_prediction,
     create_dls_emps_prediction,
+    create_dls_ced_prediction,
     create_dls_noisy_wh_prediction,
     create_dls_quad_pelican_prediction,
     create_dls_quad_pi_prediction,

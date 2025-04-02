@@ -8,6 +8,7 @@ __all__ = ['mse_nan', 'ignore_nan', 'float64_func', 'SkipNLoss', 'CutLoss', 'wei
 from ..data import *
 from ..models import *
 from fastai.basics import *
+import warnings
 
 # %% ../../nbs/02_learner/02_losses.ipynb 6
 import functools
@@ -28,14 +29,24 @@ mse_nan = ignore_nan(mse)
 
 # %% ../../nbs/02_learner/02_losses.ipynb 13
 import functools
+import warnings
 
 def float64_func(func):
     '''calculate function internally with float64 and convert the result back'''
     @functools.wraps(func)
     def float64_func_decorator(*args, **kwargs):
         typ = args[0].dtype
-        args = tuple([x.double() if issubclass(type(x),Tensor ) else x for x in args]) #remove nan values
-        return func(*args, **kwargs).type(typ)
+        try:
+            # Try to use float64 for higher precision
+            args = tuple([x.double() if issubclass(type(x),Tensor) else x for x in args])
+            return func(*args, **kwargs).type(typ)
+        except TypeError as e:
+            # If float64 is not supported on this device, warn the user and fall back to float32
+            if "doesn't support float64" in str(e):
+                warnings.warn(f"Float64 precision not supported on {args[0].device} device. Using original precision. This may reduce numerical accuracy. Error: {e}")
+                return func(*args, **kwargs)
+            else:
+                raise # Re-raise if it's some other error
     return float64_func_decorator
 
 # %% ../../nbs/02_learner/02_losses.ipynb 15
@@ -61,12 +72,25 @@ def weighted_mae(input, target):
     max_weight = 1.0
     min_weight = 0.1
     seq_len = input.shape[1]
-    weights = torch.logspace(start=torch.log10(torch.tensor(max_weight)),
-                             end=torch.log10(torch.tensor(min_weight)),
-                             steps=seq_len,device=input.device)
+
+    device = input.device
+    if device.type == 'mps':
+        # Compute on CPU because MPS does not support logspace yet
+        weights = torch.logspace(start=torch.log10(torch.tensor(max_weight)),
+                                end=torch.log10(torch.tensor(min_weight)),
+                                steps=seq_len, device='cpu').to(device)
+        warnings.warn(f"torch.logspace not supported on {device} device. Using cpu. This may reduce numerical performance")
+    else:
+        # Compute directly on the target device 
+        weights = torch.logspace(start=torch.log10(torch.tensor(max_weight)),
+                                end=torch.log10(torch.tensor(min_weight)),
+                                steps=seq_len, device=device)
+
+
     weights = (weights / weights.sum())[None,:,None]
 
     return ((input-target).abs()*weights).sum(dim=1).mean()
+
 
 # %% ../../nbs/02_learner/02_losses.ipynb 21
 def RandSeqLenLoss(fn,min_idx=1,max_idx=None,mid_idx=None):
