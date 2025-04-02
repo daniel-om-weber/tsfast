@@ -8,7 +8,7 @@ from ..data import *
 from .layers import *
 from .rnn import *
 from fastai.basics import *
-from torch.nn.utils import weight_norm
+from torch.nn.utils.parametrizations import weight_norm
 
 # %% ../../nbs/03_models/02_cnn.ipynb 6
 @delegates(nn.Conv1d, keep=True)
