@@ -19,8 +19,7 @@ import ray
 from ray import tune
 from ray.tune.schedulers import *
 from ray.tune.experiment.trial import ExportFormat
-from ray import train
-from ray.train import Checkpoint
+from ray.tune import Checkpoint
 
 # %% ../nbs/04_tune.ipynb 8
 def log_uniform(min_bound, max_bound, base=10):
@@ -133,7 +132,7 @@ def learner_optimize(config):
         lrn = create_lrn(dls,config)
         
         # load checkpoint data if provided
-        checkpoint: train.Checkpoint = train.get_checkpoint()
+        checkpoint: tune.Checkpoint = tune.get_checkpoint()
         if checkpoint:
             with checkpoint.as_directory() as checkpoint_dir:
                 lrn.model.load_state_dict(torch.load(checkpoint_dir + 'model.pth'))
@@ -183,7 +182,7 @@ class CBRayReporter(Callback):
             #the model has to be saved to the checkpoint directory on creation
             #that is why a seperate callback for model saving is not trivial
             save_model(file, self.learn.model,opt=None) 
-            ray.train.report(metrics, checkpoint=Checkpoint.from_directory(temp_checkpoint_dir))
+            ray.tune.report(metrics, checkpoint=Checkpoint.from_directory(temp_checkpoint_dir))
 
 # %% ../nbs/04_tune.ipynb 21
 class HPOptimizer():
