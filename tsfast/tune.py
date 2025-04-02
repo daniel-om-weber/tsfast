@@ -18,9 +18,9 @@ from fastai.callback.core import Callback
 import ray
 from ray import tune
 from ray.tune.schedulers import *
-# from ray.tune.experiment.trial import ExportFormat
-# from ray import train
-# from ray.train import Checkpoint
+from ray.tune.experiment.trial import ExportFormat
+from ray import train
+from ray.train import Checkpoint
 
 # %% ../nbs/04_tune.ipynb 8
 def log_uniform(min_bound, max_bound, base=10):
