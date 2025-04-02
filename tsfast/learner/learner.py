@@ -36,7 +36,7 @@ def RNNLearner(dls,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,*
 
 # %% ../../nbs/02_learner/03_learner.ipynb 12
 @delegates(TCN, keep=True)
-def TCNLearner(dls,hl_depth=3,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,**kwargs):
+def TCNLearner(dls,hl_depth=3,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=None,cbs=None,**kwargs):
     inp,out = get_inp_out_size(dls)
     n_skip = 2**hl_depth if n_skip is None else n_skip
     model = TCN(inp,out,hl_depth,**kwargs)
