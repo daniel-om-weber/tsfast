@@ -22,19 +22,23 @@ def get_inp_out_size(dls):
 
 # %% ../../nbs/02_learner/03_learner.ipynb 9
 @delegates(SimpleRNN, keep=True)
-def RNNLearner(dls,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,**kwargs):
+def RNNLearner(dls,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,stateful=False,opt_func=ranger,cbs=None,**kwargs):
     inp,out = get_inp_out_size(dls)
-    model = SimpleRNN(inp,out,**kwargs)
+    model = SimpleRNN(inp,out,stateful=stateful,**kwargs)
   
     skip = partial(SkipNLoss,n_skip=n_skip)
         
     metrics= [skip(f) for f in metrics]
-    loss_func = skip(loss_func)
+
+    if not stateful: loss_func = skip(loss_func)
         
-    lrn = Learner(dls,model,loss_func=loss_func,opt_func=ranger,metrics=metrics,cbs=cbs)
+    lrn = Learner(dls,model,loss_func=loss_func,opt_func=opt_func,metrics=metrics,cbs=cbs)
+
+    if stateful: lrn.add_cb(TbpttResetCB())
+
     return lrn
 
-# %% ../../nbs/02_learner/03_learner.ipynb 12
+# %% ../../nbs/02_learner/03_learner.ipynb 13
 @delegates(TCN, keep=True)
 def TCNLearner(dls,hl_depth=3,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=None,cbs=None,**kwargs):
     inp,out = get_inp_out_size(dls)
@@ -49,7 +53,7 @@ def TCNLearner(dls,hl_depth=3,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=N
     lrn = Learner(dls,model,loss_func=loss_func,opt_func=ranger,metrics=metrics,cbs=cbs)
     return lrn
 
-# %% ../../nbs/02_learner/03_learner.ipynb 15
+# %% ../../nbs/02_learner/03_learner.ipynb 16
 @delegates(CRNN, keep=True)
 def CRNNLearner(dls,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,**kwargs):
     inp,out = get_inp_out_size(dls)
@@ -63,7 +67,7 @@ def CRNNLearner(dls,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,
     lrn = Learner(dls,model,loss_func=loss_func,opt_func=ranger,metrics=metrics,cbs=cbs)
     return lrn
 
-# %% ../../nbs/02_learner/03_learner.ipynb 18
+# %% ../../nbs/02_learner/03_learner.ipynb 19
 @delegates(TCN, keep=True)
 def AR_TCNLearner(dls,hl_depth=3,alpha=1,beta=1,early_stop=0,metrics=None,n_skip=None,**kwargs):
     n_skip = 2**hl_depth if n_skip is None else n_skip
@@ -82,7 +86,7 @@ def AR_TCNLearner(dls,hl_depth=3,alpha=1,beta=1,early_stop=0,metrics=None,n_skip
     lrn = Learner(dls,model,loss_func=nn.MSELoss(),opt_func=ranger,metrics=metrics,cbs=cbs)
     return lrn
 
-# %% ../../nbs/02_learner/03_learner.ipynb 20
+# %% ../../nbs/02_learner/03_learner.ipynb 22
 @delegates(SimpleRNN, keep=True)
 def AR_RNNLearner(dls,alpha=0,beta=0,early_stop=0,metrics=None,n_skip=0,fname='model',**kwargs):
     skip = partial(SkipNLoss,n_skip=n_skip)
