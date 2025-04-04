@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.6.37">
+<meta name="generator" content="quarto-1.6.42">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -58,7 +58,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </style>
 
 
-<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script><script src="../site_libs/quarto-nav/quarto-nav.js"></script>
 <script src="../site_libs/quarto-nav/headroom.min.js"></script>
 <script src="../site_libs/clipboard/clipboard.min.js"></script>
 <script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
@@ -70,10 +70,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-29e2c20b02301cfff04dc8050bf30c7e.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-2f5df379a58b258e96c21c0638c20c03.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-d8ad1fb6f2d0baa37db2496516e2fbe4.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-6685f57f7611d95a701d58b4cc6878c0.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -101,6 +101,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     "search-label": "Search"
   }
 }</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" integrity="sha512-c3Nl8+7g4LMSTdrm621y7kf9v3SDPnhxLNhcjFJbKECVnmZHTdo+IRO05sNLTH/D3vA6u1X32ehoLC7WFVdheg==" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+<script src="https://unpkg.com/@jupyter-widgets/html-manager@*/dist/embed-amd.js" crossorigin="anonymous"></script>
 
 
 <link rel="stylesheet" href="styles.css">
@@ -108,12 +112,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <meta property="og:description" content="Corefunctionality for creating dataloaders objects from downloaded datasets">
 <meta property="og:image" content="https://daniel-om-weber.github.io/tsfast/01_datasets/01_external_files/figure-html/cell-10-output-1.png">
 <meta property="og:site_name" content="tsfast">
-<meta property="og:image:height" content="290">
+<meta property="og:image:height" content="289">
 <meta property="og:image:width" content="889">
 <meta name="twitter:title" content="Corefunctions – tsfast">
 <meta name="twitter:description" content="Corefunctionality for creating dataloaders objects from downloaded datasets">
 <meta name="twitter:image" content="https://daniel-om-weber.github.io/tsfast/01_datasets/01_external_files/figure-html/cell-10-output-1.png">
-<meta name="twitter:image-height" content="290">
+<meta name="twitter:image-height" content="289">
 <meta name="twitter:image-width" content="889">
 <meta name="twitter:card" content="summary_large_image">
 </head>
@@ -296,6 +300,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#silverbox-benchmark-dataset" id="toc-silverbox-benchmark-dataset" class="nav-link" data-scroll-target="#silverbox-benchmark-dataset">Silverbox Benchmark Dataset</a></li>
   <li><a href="#cascaded-tanks-benchmark-dataset" id="toc-cascaded-tanks-benchmark-dataset" class="nav-link" data-scroll-target="#cascaded-tanks-benchmark-dataset">Cascaded Tanks Benchmark Dataset</a></li>
   <li><a href="#emps-benchmark-dataset" id="toc-emps-benchmark-dataset" class="nav-link" data-scroll-target="#emps-benchmark-dataset">EMPS Benchmark Dataset</a></li>
+  <li><a href="#emps-benchmark-dataset-1" id="toc-emps-benchmark-dataset-1" class="nav-link" data-scroll-target="#emps-benchmark-dataset-1">EMPS Benchmark Dataset</a></li>
   <li><a href="#wiener-hammerstein-with-process-noise-benchmark-dataset" id="toc-wiener-hammerstein-with-process-noise-benchmark-dataset" class="nav-link" data-scroll-target="#wiener-hammerstein-with-process-noise-benchmark-dataset">Wiener Hammerstein with Process Noise Benchmark Dataset</a></li>
   <li><a href="#industrial-robot-benchmark-dataset" id="toc-industrial-robot-benchmark-dataset" class="nav-link" data-scroll-target="#industrial-robot-benchmark-dataset">Industrial Robot Benchmark Dataset</a></li>
   <li><a href="#ship-benchmark-dataset" id="toc-ship-benchmark-dataset" class="nav-link" data-scroll-target="#ship-benchmark-dataset">Ship Benchmark Dataset</a></li>
@@ -335,7 +340,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <!-- WARNING: THIS FILE WAS AUTOGENERATED! DO NOT EDIT! -->
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/datasets/external.py#L26" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/datasets/external.py#L27" target="_blank" style="float:right; font-size:smaller">source</a></p>
 <section id="get_default_dataset_path" class="level3">
 <h3 class="anchored" data-anchor-id="get_default_dataset_path">get_default_dataset_path</h3>
 <blockquote class="blockquote">
@@ -345,11 +350,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div id="cell-3" class="cell">
 <div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>get_default_dataset_path()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
-<pre><code>Path('/home/pheenix/.tsfast/datasets')</code></pre>
+<pre><code>Path('/Users/daniel/.tsfast/datasets')</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/datasets/external.py#L33" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/datasets/external.py#L34" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="get_dataset_path" class="level3">
 <h3 class="anchored" data-anchor-id="get_dataset_path">get_dataset_path</h3>
@@ -370,11 +375,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>os.environ[<span class="st">'TSFAST_PATH'</span>] <span class="op">=</span> <span class="st">''</span></span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>get_dataset_path()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
-<pre><code>Path('/home/pheenix/.tsfast/datasets')</code></pre>
+<pre><code>Path('/Users/daniel/.tsfast/datasets')</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/datasets/external.py#L44" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/datasets/external.py#L45" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="clean_default_dataset_path" class="level3">
 <h3 class="anchored" data-anchor-id="clean_default_dataset_path">clean_default_dataset_path</h3>
@@ -383,7 +388,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </blockquote>
 <p><em>Removes the default directory where the datasets are stored</em></p>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/datasets/external.py#L50" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/datasets/external.py#L51" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="create_dls_downl" class="level3">
 <h3 class="anchored" data-anchor-id="create_dls_downl">create_dls_downl</h3>
@@ -504,7 +509,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 <tr class="even">
 <td>kwargs</td>
-<td></td>
+<td>VAR_KEYWORD</td>
 <td></td>
 <td></td>
 </tr>
@@ -547,14 +552,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 </div>
-</section>
-<section id="silverbox-benchmark-dataset" class="level3">
-<h3 class="anchored" data-anchor-id="silverbox-benchmark-dataset">Silverbox Benchmark Dataset</h3>
-<div id="cell-13" class="cell">
-<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_silverbox()</span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span>
-<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_silverbox_prediction()</span>
-<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-12" class="cell">
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>dls[<span class="op">-</span><span class="dv">1</span>].show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
@@ -562,28 +561,17 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </figure>
 </div>
 </div>
-<div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="01_external_files/figure-html/cell-11-output-2.png" class="img-fluid figure-img"></p>
-</figure>
-</div>
-</div>
 </div>
 </section>
-<section id="cascaded-tanks-benchmark-dataset" class="level3">
-<h3 class="anchored" data-anchor-id="cascaded-tanks-benchmark-dataset">Cascaded Tanks Benchmark Dataset</h3>
-<div id="cell-15" class="cell">
-<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_cascaded_tanks()</span>
+<section id="silverbox-benchmark-dataset" class="level3">
+<h3 class="anchored" data-anchor-id="silverbox-benchmark-dataset">Silverbox Benchmark Dataset</h3>
+<div id="cell-14" class="cell">
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_silverbox()</span>
 <span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_cascaded_tanks_prediction()</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_silverbox_prediction()</span>
 <span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="01_external_files/figure-html/cell-12-output-1.png" class="img-fluid figure-img"></p>
-</figure>
-</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Dataset not found. Downloading it to "/Users/daniel/.tsfast/datasets/silverbox"</code></pre>
 </div>
 <div class="cell-output cell-output-display">
 <div>
@@ -592,38 +580,29 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </figure>
 </div>
 </div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="01_external_files/figure-html/cell-12-output-3.png" class="img-fluid figure-img"></p>
+</figure>
+</div>
+</div>
 </div>
 </section>
-<section id="emps-benchmark-dataset" class="level3">
-<h3 class="anchored" data-anchor-id="emps-benchmark-dataset">EMPS Benchmark Dataset</h3>
+<section id="cascaded-tanks-benchmark-dataset" class="level3">
+<h3 class="anchored" data-anchor-id="cascaded-tanks-benchmark-dataset">Cascaded Tanks Benchmark Dataset</h3>
+<div id="cell-16" class="cell">
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_cascaded_tanks()</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(dls.items)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<pre><code>815</code></pre>
+</div>
+</div>
 <div id="cell-17" class="cell">
-<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_emps()</span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_emps_prediction()</span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="01_external_files/figure-html/cell-13-output-1.png" class="img-fluid figure-img"></p>
-</figure>
-</div>
-</div>
-<div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="01_external_files/figure-html/cell-13-output-2.png" class="img-fluid figure-img"></p>
-</figure>
-</div>
-</div>
-</div>
-</section>
-<section id="wiener-hammerstein-with-process-noise-benchmark-dataset" class="level3">
-<h3 class="anchored" data-anchor-id="wiener-hammerstein-with-process-noise-benchmark-dataset">Wiener Hammerstein with Process Noise Benchmark Dataset</h3>
-<div id="cell-19" class="cell">
-<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_noisy_wh()</span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_noisy_wh_prediction()</span>
-<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_cascaded_tanks()</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_cascaded_tanks_prediction()</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
@@ -640,19 +619,15 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 </section>
-<section id="industrial-robot-benchmark-dataset" class="level3">
-<h3 class="anchored" data-anchor-id="industrial-robot-benchmark-dataset">Industrial Robot Benchmark Dataset</h3>
-<div id="cell-21" class="cell">
-<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_robot_forward()</span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_robot_forward_prediction()</span>
-<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="01_external_files/figure-html/cell-15-output-1.png" class="img-fluid figure-img"></p>
-</figure>
-</div>
+<section id="emps-benchmark-dataset" class="level3">
+<h3 class="anchored" data-anchor-id="emps-benchmark-dataset">EMPS Benchmark Dataset</h3>
+<div id="cell-19" class="cell">
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_emps()</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_emps_prediction()</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Dataset not found. Downloading it to "/Users/daniel/.tsfast/datasets/emps"</code></pre>
 </div>
 <div class="cell-output cell-output-display">
 <div>
@@ -661,18 +636,24 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </figure>
 </div>
 </div>
-</div>
-<div id="cell-22" class="cell">
-<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_robot_inverse()</span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span>
-<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_robot_inverse_prediction()</span>
-<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="01_external_files/figure-html/cell-16-output-1.png" class="img-fluid figure-img"></p>
+<p><img src="01_external_files/figure-html/cell-15-output-3.png" class="img-fluid figure-img"></p>
 </figure>
 </div>
+</div>
+</div>
+</section>
+<section id="emps-benchmark-dataset-1" class="level3">
+<h3 class="anchored" data-anchor-id="emps-benchmark-dataset-1">EMPS Benchmark Dataset</h3>
+<div id="cell-21" class="cell">
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_ced()</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_ced_prediction()</span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Dataset not found. Downloading it to "/Users/daniel/.tsfast/datasets/ced"</code></pre>
 </div>
 <div class="cell-output cell-output-display">
 <div>
@@ -681,21 +662,24 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </figure>
 </div>
 </div>
-</div>
-</section>
-<section id="ship-benchmark-dataset" class="level3">
-<h3 class="anchored" data-anchor-id="ship-benchmark-dataset">Ship Benchmark Dataset</h3>
-<div id="cell-24" class="cell">
-<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_ship()</span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span>
-<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_ship_prediction()</span>
-<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="01_external_files/figure-html/cell-17-output-1.png" class="img-fluid figure-img"></p>
+<p><img src="01_external_files/figure-html/cell-16-output-3.png" class="img-fluid figure-img"></p>
 </figure>
 </div>
+</div>
+</div>
+</section>
+<section id="wiener-hammerstein-with-process-noise-benchmark-dataset" class="level3">
+<h3 class="anchored" data-anchor-id="wiener-hammerstein-with-process-noise-benchmark-dataset">Wiener Hammerstein with Process Noise Benchmark Dataset</h3>
+<div id="cell-23" class="cell">
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_noisy_wh()</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_noisy_wh_prediction()</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Dataset not found. Downloading it to "/Users/daniel/.tsfast/datasets/noisy_wh"</code></pre>
 </div>
 <div class="cell-output cell-output-display">
 <div>
@@ -704,21 +688,24 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </figure>
 </div>
 </div>
-</div>
-</section>
-<section id="quadrotor-pelican-dataset" class="level3">
-<h3 class="anchored" data-anchor-id="quadrotor-pelican-dataset">Quadrotor Pelican Dataset</h3>
-<div id="cell-26" class="cell">
-<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_quad_pelican()</span>
-<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span>
-<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_quad_pelican_prediction()</span>
-<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="01_external_files/figure-html/cell-18-output-1.png" class="img-fluid figure-img"></p>
+<p><img src="01_external_files/figure-html/cell-17-output-3.png" class="img-fluid figure-img"></p>
 </figure>
 </div>
+</div>
+</div>
+</section>
+<section id="industrial-robot-benchmark-dataset" class="level3">
+<h3 class="anchored" data-anchor-id="industrial-robot-benchmark-dataset">Industrial Robot Benchmark Dataset</h3>
+<div id="cell-25" class="cell">
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_robot_forward()</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_robot_forward_prediction()</span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Dataset not found. Downloading it to "/Users/daniel/.tsfast/datasets/robot_forward"</code></pre>
 </div>
 <div class="cell-output cell-output-display">
 <div>
@@ -727,21 +714,21 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </figure>
 </div>
 </div>
-</div>
-</section>
-<section id="quadrotor-pi-dataset" class="level3">
-<h3 class="anchored" data-anchor-id="quadrotor-pi-dataset">Quadrotor PI Dataset</h3>
-<div id="cell-28" class="cell">
-<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_quad_pi()</span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span>
-<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_quad_pi_prediction()</span>
-<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="01_external_files/figure-html/cell-19-output-1.png" class="img-fluid figure-img"></p>
+<p><img src="01_external_files/figure-html/cell-18-output-3.png" class="img-fluid figure-img"></p>
 </figure>
 </div>
+</div>
+</div>
+<div id="cell-26" class="cell">
+<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_robot_inverse()</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_robot_inverse_prediction()</span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Dataset not found. Downloading it to "/Users/daniel/.tsfast/datasets/robot_inverse"</code></pre>
 </div>
 <div class="cell-output cell-output-display">
 <div>
@@ -750,34 +737,162 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </figure>
 </div>
 </div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="01_external_files/figure-html/cell-19-output-3.png" class="img-fluid figure-img"></p>
+</figure>
+</div>
+</div>
 </div>
 </section>
-<section id="broad-dataset" class="level3">
-<h3 class="anchored" data-anchor-id="broad-dataset">BROAD Dataset</h3>
-<div id="cell-30" class="cell">
-<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_broad()</span>
-<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span>
-<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_broad_prediction()</span>
-<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-stderr">
-<pre><code>Exception ignored in: &lt;bound method IPythonKernel._clean_thread_parent_frames of &lt;ipykernel.ipkernel.IPythonKernel object&gt;&gt;
-Traceback (most recent call last):
-  File "/home/pheenix/miniconda3/envs/env_tsfast/lib/python3.11/site-packages/ipykernel/ipkernel.py", line 775, in _clean_thread_parent_frames
-    def _clean_thread_parent_frames(
+<section id="ship-benchmark-dataset" class="level3">
+<h3 class="anchored" data-anchor-id="ship-benchmark-dataset">Ship Benchmark Dataset</h3>
+<div id="cell-28" class="cell">
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_ship()</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_ship_prediction()</span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"3c640d03160349c1a1c91ec29a7c1fa9","version_major":2,"version_minor":0,"quarto_mimetype":"application/vnd.jupyter.widget-view+json"}
+</script>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Dataset not found. Downloading it to "/Users/daniel/.tsfast/datasets/ship"
 
-KeyboardInterrupt: </code></pre>
+</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<pre style="white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace">🎉 <span style="font-weight: bold">Connected to </span><span style="color: #008000; text-decoration-color: #008000; font-weight: bold">'https://darus.uni-stuttgart.de/'</span>
+</pre>
+</div>
+<div class="cell-output cell-output-display">
+<pre style="white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace"></pre>
+</div>
+<div class="cell-output cell-output-display">
+<pre style="white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace"><span style="font-weight: bold">Fetching dataset </span><span style="color: #008000; text-decoration-color: #008000; font-weight: bold">'doi:10.18419/darus-2905'</span><span style="font-weight: bold"> from </span><span style="color: #008000; text-decoration-color: #008000; font-weight: bold">'https://darus.uni-stuttgart.de/'</span>
+
+</pre>
+</div>
+<div class="cell-output cell-output-display">
+<pre style="white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace">╭────────────────────────────────────────── <span style="font-weight: bold">Dataset Information</span> ──────────────────────────────────────────╮
+│ Title: <span style="font-weight: bold">A Simulated 4-DOF Ship Motion Dataset for System Identification under Environmental Disturbances</span> │
+│ Version: latest                                                                                         │
+│ Files: 126                                                                                              │
+╰─────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+</pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"e95dc2ab354c4e04a66796f2249f82a4","version_major":2,"version_minor":0,"quarto_mimetype":"application/vnd.jupyter.widget-view+json"}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<pre style="white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace"><span style="font-weight: bold">Downloading files</span>
+
+</pre>
+</div>
+<div class="cell-output cell-output-display">
+<pre style="white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace"></pre>
+</div>
+<div class="cell-output cell-output-display">
+<pre style="white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace">╰── <span style="font-weight: bold">✅ Done </span>
+
+</pre>
 </div>
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="01_external_files/figure-html/cell-20-output-2.png" class="img-fluid figure-img"></p>
+<p><img src="01_external_files/figure-html/cell-20-output-11.png" class="img-fluid figure-img"></p>
 </figure>
 </div>
 </div>
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="01_external_files/figure-html/cell-20-output-3.png" class="img-fluid figure-img"></p>
+<p><img src="01_external_files/figure-html/cell-20-output-12.png" class="img-fluid figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="quadrotor-pelican-dataset" class="level3">
+<h3 class="anchored" data-anchor-id="quadrotor-pelican-dataset">Quadrotor Pelican Dataset</h3>
+<div id="cell-30" class="cell">
+<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_quad_pelican()</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_quad_pelican_prediction()</span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Dataset not found. Downloading it to "/Users/daniel/.tsfast/datasets/quad_pelican"</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="01_external_files/figure-html/cell-21-output-2.png" class="img-fluid figure-img"></p>
+</figure>
+</div>
+</div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="01_external_files/figure-html/cell-21-output-3.png" class="img-fluid figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="quadrotor-pi-dataset" class="level3">
+<h3 class="anchored" data-anchor-id="quadrotor-pi-dataset">Quadrotor PI Dataset</h3>
+<div id="cell-32" class="cell">
+<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_quad_pi()</span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_quad_pi_prediction()</span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Dataset not found. Downloading it to "/Users/daniel/.tsfast/datasets/quad_pi"</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>File exists: /Users/daniel/Library/Application Support/nonlinear_benchmarks/Quadrotor_pi/bags.zip</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="01_external_files/figure-html/cell-22-output-3.png" class="img-fluid figure-img"></p>
+</figure>
+</div>
+</div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="01_external_files/figure-html/cell-22-output-4.png" class="img-fluid figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="broad-dataset" class="level3">
+<h3 class="anchored" data-anchor-id="broad-dataset">BROAD Dataset</h3>
+<div id="cell-34" class="cell">
+<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_broad()</span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_broad_prediction()</span>
+<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Dataset not found. Downloading it to "/Users/daniel/.tsfast/datasets/broad"</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="01_external_files/figure-html/cell-23-output-2.png" class="img-fluid figure-img"></p>
+</figure>
+</div>
+</div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="01_external_files/figure-html/cell-23-output-3.png" class="img-fluid figure-img"></p>
 </figure>
 </div>
 </div>
@@ -785,16 +900,19 @@ KeyboardInterrupt: </code></pre>
 </section>
 <section id="all-datasets" class="level2">
 <h2 class="anchored" data-anchor-id="all-datasets">All datasets</h2>
-<div id="cell-32" class="cell">
-<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="co"># #| hide</span></span>
-<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>os.remove(<span class="st">'dls_normalize.p'</span>)</span>
-<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a><span class="co">#clean_default_dataset_path()</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-36" class="cell">
+<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="co"># #| hide</span></span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>os.remove(<span class="st">'dls_normalize.p'</span>)</span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a><span class="co">#clean_default_dataset_path()</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 
 
 </section>
 
 </main> <!-- /main -->
+<script type="application/vnd.jupyter.widget-state+json">
+{"state":{},"version_major":2,"version_minor":0}
+</script>
 <script id="quarto-html-after-body" type="application/javascript">
 window.document.addEventListener("DOMContentLoaded", function (event) {
   const toggleBodyColorMode = (bsSheetEl) => {

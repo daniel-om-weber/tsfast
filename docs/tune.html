@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.6.37">
+<meta name="generator" content="quarto-1.6.42">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -70,10 +70,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="site_libs/quarto-html/anchor.min.js"></script>
 <link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-29e2c20b02301cfff04dc8050bf30c7e.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-2f5df379a58b258e96c21c0638c20c03.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap-d8ad1fb6f2d0baa37db2496516e2fbe4.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-6685f57f7611d95a701d58b4cc6878c0.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -346,7 +346,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="optimizer-core">optimizer core</h2>
 <p>First we need a log uniform distibution for variables with vast value ranges</p>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/tune.py#L26" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/tune.py#L25" target="_blank" style="float:right; font-size:smaller">source</a></p>
 <section id="log_uniform" class="level3">
 <h3 class="anchored" data-anchor-id="log_uniform">log_uniform</h3>
 <blockquote class="blockquote">
@@ -356,15 +356,15 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div id="cell-8" class="cell">
 <div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>[log_uniform(<span class="fl">1e-8</span>, <span class="fl">1e-2</span>)() <span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">5</span>)]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
-<pre><code>[0.002131766003085386,
- 0.008612817457735213,
- 9.615362126317482e-06,
- 9.737950809705226e-05,
- 2.0019459676710384e-08]</code></pre>
+<pre><code>[4.591524992137234e-08,
+ 0.003755410605938488,
+ 2.920688605923387e-07,
+ 3.4750213799838236e-06,
+ 2.1312097874133118e-08]</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/tune.py#L35" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/tune.py#L34" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="learnertrainable" class="level3">
 <h3 class="anchored" data-anchor-id="learnertrainable">LearnerTrainable</h3>
@@ -414,7 +414,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tbody>
 </table>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/tune.py#L77" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/tune.py#L76" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="cbraysavemodel" class="level3">
 <h3 class="anchored" data-anchor-id="cbraysavemodel">CBRaySaveModel</h3>
@@ -491,7 +491,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tbody>
 </table>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/tune.py#L92" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/tune.py#L91" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="stop_shared_memory_managers" class="level3">
 <h3 class="anchored" data-anchor-id="stop_shared_memory_managers">stop_shared_memory_managers</h3>
@@ -500,7 +500,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </blockquote>
 <p><em>Iteratively finds and stops all SharedMemoryManager instances contained within the provided object.</em></p>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/tune.py#L123" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/tune.py#L122" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="learner_optimize" class="level3">
 <h3 class="anchored" data-anchor-id="learner_optimize">learner_optimize</h3>
@@ -632,7 +632,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 <p>The mutation config dictionary consists of functions that sample from a distribution. In order to retrieve a dictionary with one realisation we need the function sample_config</p>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/tune.py#L153" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/tune.py#L152" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="sample_config" class="level3">
 <h3 class="anchored" data-anchor-id="sample_config">sample_config</h3>
@@ -640,7 +640,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <pre><code> sample_config (config)</code></pre>
 </blockquote>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/tune.py#L160" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/tune.py#L159" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="cbrayreporter" class="level3">
 <h3 class="anchored" data-anchor-id="cbrayreporter">CBRayReporter</h3>
@@ -658,7 +658,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </blockquote>
 <p><em><code>Callback</code> reports progress after every epoch to the ray tune logger</em></p>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/tune.py#L189" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/tune.py#L188" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="hpoptimizer" class="level3">
 <h3 class="anchored" data-anchor-id="hpoptimizer">HPOptimizer</h3>
@@ -728,7 +728,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 <div id="cell-30" class="cell">
 <div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="co"># hp_opt.optimize(optimize_func=TrainableModel,</span></span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="co">#                 resources_per_trial={"gpu": 4},</span></span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="co">#                 resources_per_trial={"cpu": 4},</span></span>
 <span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a><span class="co">#                 config=search_space)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <div id="cell-31" class="cell">
