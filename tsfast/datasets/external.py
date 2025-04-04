@@ -73,6 +73,9 @@ create_dls_wh = partial(
     download_function=wiener_hammerstein,
     u=['u0'],y=['y0'],
     win_sz=200,
+    max_batches_training=1000,
+    max_batches_valid=100,
+    valid_stp_sz=30
 )
 
 create_dls_wh_prediction = partial(
@@ -89,6 +92,9 @@ create_dls_silverbox = partial(
     download_function=silverbox,
     u=['u0'],y=['y0'],
     win_sz=200,
+    max_batches_training=1000,
+    max_batches_valid=100,
+    valid_stp_sz=30
 )
 
 create_dls_silverbox_prediction = partial(
