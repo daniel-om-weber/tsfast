@@ -31,3 +31,6 @@ website:
           - prediction/00_core.ipynb
           - prediction/01_ar.ipynb
           - prediction/02_fransys.ipynb
+      - section: inference
+        contents:
+          - inference/00_core.ipynb
