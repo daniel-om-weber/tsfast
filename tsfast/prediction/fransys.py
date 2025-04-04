@@ -352,11 +352,11 @@ def FranSysLearner(dls,init_sz,attach_output=False,loss_func=nn.L1Loss(),metrics
 
     if attach_output:
         model = FranSys(inp,out,init_sz,**kwargs)
-    else:
-        model = FranSys(inp-out,out,init_sz,**kwargs)
         pred_callback = PredictionCallback(0)
         pred_callback.init_normalize(dls.one_batch())
         cbs.append(pred_callback)
+    else:
+        model = FranSys(inp-out,out,init_sz,**kwargs)
   
     skip = partial(SkipNLoss,n_skip=init_sz)
         
