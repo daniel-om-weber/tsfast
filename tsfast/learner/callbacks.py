@@ -2,7 +2,7 @@
 
 # %% auto 0
 __all__ = ['GradientClipping', 'GradientNormPrint', 'GradientBatchFiltering', 'WeightClipping', 'SkipFirstNCallback',
-           'SkipNaNCallback', 'CancelNaNCallback', 'VarySeqLen', 'CB_TruncateSequence', 'sched_lin_p', 'sched_ramp',
+           'SkipNaNCallback', 'CancelNaNCallback', 'VarySeqLen', 'sched_lin_p', 'sched_ramp', 'CB_TruncateSequence',
            'CB_AddLoss', 'BatchLossFilter', 'TimeSeriesRegularizer', 'ARInitCB', 'plot_grad_flow', 'CB_PlotGradient']
 
 # %% ../../nbs/02_learner/01_callbacks.ipynb 2
@@ -119,10 +119,23 @@ class VarySeqLen(Callback):
                 self.learn.yb = tuple([y[:,:lim] for y in self.yb])
 
 # %% ../../nbs/02_learner/01_callbacks.ipynb 20
+def sched_lin_p(start, end, pos, p=0.75): 
+    return end if pos >= p else start + pos/p*(end-start)
+
+# %% ../../nbs/02_learner/01_callbacks.ipynb 21
+def sched_ramp(start, end, pos, p_left=0.2, p_right=0.6):
+    if pos >= p_right: 
+        return end
+    elif pos <= p_left: 
+        return start
+    else: 
+        return start + (end - start) * (pos - p_left) / (p_right - p_left)
+
+# %% ../../nbs/02_learner/01_callbacks.ipynb 23
 from fastai.callback.all import *
 class CB_TruncateSequence(Callback):
     "`Callback` varies sequence length of every mini batch"
-    def __init__(self, truncate_length = 50,scheduler=sched_lin):
+    def __init__(self, truncate_length = 50,scheduler=sched_ramp):
         self._truncate_length = truncate_length
         self._scheduler = scheduler
 
@@ -138,19 +151,6 @@ class CB_TruncateSequence(Callback):
             #         import pdb; pdb.set_trace()
                     self.learn.xb = tuple([x[:,:-lim] for x in self.xb])
                     self.learn.yb = tuple([y[:,:-lim] for y in self.yb])
-
-# %% ../../nbs/02_learner/01_callbacks.ipynb 21
-def sched_lin_p(start, end, pos, p=0.75): 
-    return end if pos >= p else start + pos/p*(end-start)
-
-# %% ../../nbs/02_learner/01_callbacks.ipynb 22
-def sched_ramp(start, end, pos, p_left=0.1, p_right=0.5):
-    if pos >= p_right: 
-        return end
-    elif pos <= p_left: 
-        return start
-    else: 
-        return start + (end - start) * (pos - p_left) / (p_right - p_left)
 
 # %% ../../nbs/02_learner/01_callbacks.ipynb 25
 class CB_AddLoss(Callback):
