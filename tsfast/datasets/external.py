@@ -110,7 +110,8 @@ create_dls_cascaded_tanks = partial(
     create_dls_downl, 
     download_function=cascaded_tanks,
     u=['u0'],y=['y0'],
-    win_sz=50,
+    win_sz=150,
+    bs=16,
     stp_sz=1
 )
 
@@ -127,14 +128,14 @@ create_dls_emps = partial(
     create_dls_downl, 
     download_function=emps,
     u=['u0'],y=['y0'],
-    win_sz=300,
+    win_sz=1000,
 )
 
 create_dls_emps_prediction = partial(
     create_dls_downl, 
     download_function=emps,
     u=['u0'],y=['y0'],
-    win_sz=300,
+    win_sz=500,
     prediction=True
 )
 
@@ -143,14 +144,18 @@ create_dls_ced = partial(
     create_dls_downl, 
     download_function=ced,
     u=['u0'],y=['y0'],
-    win_sz=50,
+    win_sz=100,
+    bs=16,
+    stp_sz=1
 )
 
 create_dls_ced_prediction = partial(
     create_dls_downl, 
     download_function=ced,
     u=['u0'],y=['y0'],
-    win_sz=50,
+    win_sz=100,
+    bs=16,
+    stp_sz=1,
     prediction=True
 )
 
