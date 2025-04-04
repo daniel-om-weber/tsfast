@@ -54,7 +54,7 @@ def SkipNLoss(fn,n_skip=0):
     '''Loss-Function modifier that skips the first n samples of sequential data'''
     @functools.wraps(fn)
     def _inner( input, target):
-        return fn(input[:,n_skip:],target[:,n_skip:])
+        return fn(input[:,n_skip:].contiguous(),target[:,n_skip:].contiguous())
     
     return _inner
 
