@@ -344,15 +344,24 @@ class FranSysCallback_variable_init(Callback):
                 self.learn.model.init_sz = self.init_sz_valid
 
 # %% ../../nbs/04_prediction/02_fransys.ipynb 26
+from .core import PredictionCallback
+
 @delegates(FranSys, keep=True)
-def FranSysLearner(dls,init_sz,loss_func=nn.MSELoss(),metrics=[fun_rmse],cbs=None,**kwargs):
+def FranSysLearner(dls,init_sz,attach_output=False,loss_func=nn.L1Loss(),metrics=[fun_rmse],opt_func=Adam,cbs=[],**kwargs):
     inp,out = get_inp_out_size(dls)
-    model = FranSys(inp-out,out,init_sz,**kwargs)
+
+    if attach_output:
+        model = FranSys(inp,out,init_sz,**kwargs)
+    else:
+        model = FranSys(inp-out,out,init_sz,**kwargs)
+        pred_callback = PredictionCallback(0)
+        pred_callback.init_normalize(dls.one_batch())
+        cbs.append(pred_callback)
   
     skip = partial(SkipNLoss,n_skip=init_sz)
         
     metrics= [skip(f) for f in metrics]
     loss_func = skip(loss_func)
         
-    lrn = Learner(dls,model,loss_func=loss_func,metrics=metrics,cbs=cbs)
+    lrn = Learner(dls,model,loss_func=loss_func,metrics=metrics,cbs=cbs,opt_func=opt_func)
     return lrn
