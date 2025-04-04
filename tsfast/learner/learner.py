@@ -22,7 +22,7 @@ def get_inp_out_size(dls):
 
 # %% ../../nbs/02_learner/03_learner.ipynb 9
 @delegates(SimpleRNN, keep=True)
-def RNNLearner(dls,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,stateful=False,opt_func=ranger,cbs=None,**kwargs):
+def RNNLearner(dls,loss_func=nn.L1Loss(),metrics=[fun_rmse],n_skip=0,stateful=False,opt_func=Adam,cbs=None,**kwargs):
     inp,out = get_inp_out_size(dls)
     model = SimpleRNN(inp,out,stateful=stateful,**kwargs)
   
@@ -32,7 +32,7 @@ def RNNLearner(dls,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,stateful=F
 
     if not stateful: loss_func = skip(loss_func)
         
-    lrn = Learner(dls,model,loss_func=loss_func,opt_func=opt_func,metrics=metrics,cbs=cbs)
+    lrn = Learner(dls,model,loss_func=loss_func,opt_func=opt_func,metrics=metrics,cbs=cbs,lr=3e-3)
 
     if stateful: lrn.add_cb(TbpttResetCB())
 
@@ -40,7 +40,7 @@ def RNNLearner(dls,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,stateful=F
 
 # %% ../../nbs/02_learner/03_learner.ipynb 13
 @delegates(TCN, keep=True)
-def TCNLearner(dls,hl_depth=3,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=None,cbs=None,**kwargs):
+def TCNLearner(dls,hl_depth=3,loss_func=nn.L1Loss(),metrics=[fun_rmse],n_skip=None,opt_func=Adam,cbs=None,**kwargs):
     inp,out = get_inp_out_size(dls)
     n_skip = 2**hl_depth if n_skip is None else n_skip
     model = TCN(inp,out,hl_depth,**kwargs)
@@ -50,12 +50,12 @@ def TCNLearner(dls,hl_depth=3,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=N
     metrics= [skip(f) for f in metrics]
     loss_func = skip(loss_func)
         
-    lrn = Learner(dls,model,loss_func=loss_func,opt_func=ranger,metrics=metrics,cbs=cbs)
+    lrn = Learner(dls,model,loss_func=loss_func,opt_func=opt_func,metrics=metrics,cbs=cbs,lr=3e-3)
     return lrn
 
 # %% ../../nbs/02_learner/03_learner.ipynb 16
 @delegates(CRNN, keep=True)
-def CRNNLearner(dls,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,**kwargs):
+def CRNNLearner(dls,loss_func=nn.L1Loss(),metrics=[fun_rmse],n_skip=0,opt_func=Adam,cbs=None,**kwargs):
     inp,out = get_inp_out_size(dls)
     model = CRNN(inp,out,**kwargs)
   
@@ -64,12 +64,12 @@ def CRNNLearner(dls,loss_func=nn.MSELoss(),metrics=[fun_rmse],n_skip=0,cbs=None,
     metrics= [skip(f) for f in metrics]
     loss_func = skip(loss_func)
         
-    lrn = Learner(dls,model,loss_func=loss_func,opt_func=ranger,metrics=metrics,cbs=cbs)
+    lrn = Learner(dls,model,loss_func=loss_func,opt_func=opt_func,metrics=metrics,cbs=cbs,lr=3e-3)
     return lrn
 
 # %% ../../nbs/02_learner/03_learner.ipynb 19
 @delegates(TCN, keep=True)
-def AR_TCNLearner(dls,hl_depth=3,alpha=1,beta=1,early_stop=0,metrics=None,n_skip=None,**kwargs):
+def AR_TCNLearner(dls,hl_depth=3,alpha=1,beta=1,early_stop=0,metrics=None,n_skip=None,opt_func=Adam,**kwargs):
     n_skip = 2**hl_depth if n_skip is None else n_skip
     skip = partial(SkipNLoss,n_skip=n_skip)
     
@@ -83,12 +83,12 @@ def AR_TCNLearner(dls,hl_depth=3,alpha=1,beta=1,early_stop=0,metrics=None,n_skip
         
     if metrics is None: metrics=SkipNLoss(fun_rmse,n_skip)
         
-    lrn = Learner(dls,model,loss_func=nn.MSELoss(),opt_func=ranger,metrics=metrics,cbs=cbs)
+    lrn = Learner(dls,model,loss_func=nn.L1Loss(),opt_func=opt_func,metrics=metrics,cbs=cbs,lr=3e-3)
     return lrn
 
 # %% ../../nbs/02_learner/03_learner.ipynb 22
 @delegates(SimpleRNN, keep=True)
-def AR_RNNLearner(dls,alpha=0,beta=0,early_stop=0,metrics=None,n_skip=0,fname='model',**kwargs):
+def AR_RNNLearner(dls,alpha=0,beta=0,early_stop=0,metrics=None,n_skip=0,opt_func=Adam,**kwargs):
     skip = partial(SkipNLoss,n_skip=n_skip)
     
     inp,out = get_inp_out_size(dls)
@@ -101,5 +101,5 @@ def AR_RNNLearner(dls,alpha=0,beta=0,early_stop=0,metrics=None,n_skip=0,fname='m
         
     if metrics is None: metrics=SkipNLoss(fun_rmse,n_skip)
         
-    lrn = Learner(dls,model,loss_func=nn.MSELoss(),opt_func=ranger,metrics=metrics,cbs=cbs)
+    lrn = Learner(dls,model,loss_func=nn.L1Loss(),opt_func=opt_func,metrics=metrics,cbs=cbs,lr=3e-3)
     return lrn
