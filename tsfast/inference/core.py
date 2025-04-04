@@ -36,37 +36,92 @@ class InferenceWrapper:
              raise ValueError("Could not extract mean/std from learner's DataLoaders. Ensure normalization was used during training.")
 
         # Create and store the NormalizedModel
+        # Assuming the normalization stats are for the combined input if fransys is used
         self.norm_model = NormalizedModel(self.core_model, mean, std).to(self.device)
         self.norm_model.eval() # Set to evaluation mode
 
-    def inference(self, numpy_data: np.ndarray) -> np.ndarray:
-        # Add batch dimension if needed
-        if numpy_data.ndim == 1:
-            numpy_data_batched = np.expand_dims(numpy_data, axis=(0,-1))
-        elif numpy_data.ndim == 2:
-            numpy_data_batched = np.expand_dims(numpy_data, axis=0)
-        elif numpy_data.ndim == 3 and numpy_data.shape[0] == 1:
-            numpy_data_batched = numpy_data
-        else:
-             raise ValueError(f"Input data should have 2 dimensions [seq_len, features] or 3 dimensions [1, seq_len, features]. Provided shape: {numpy_data.shape}")
+    def inference(self, np_input: np.ndarray, np_output_init: np.ndarray = None) -> np.ndarray:
+        """
+        Performs inference on the input NumPy data.
 
-        input_tensor = torch.from_numpy(numpy_data_batched).float().to(self.device)
+        Args:
+            np_input: The primary input data as a NumPy array.
+                      Expected shapes: [seq_len] or [seq_len, features] or [1, seq_len, features].
+            np_output_init: Optional secondary input data (e.g., for FranSys) as a NumPy array.
+                            Expected shapes should be compatible with np_input after dimension expansion.
+
+        Returns:
+            The model's output as a NumPy array.
+        """
+        # Store original ndim for potential concatenation axis determination later
+        original_ndim = np_input.ndim
+
+        # Add batch and feature dimensions if needed
+        if np_input.ndim == 1: # [seq_len] -> [1, seq_len, 1]
+            np_input = np.expand_dims(np_input, axis=(0, -1))
+            if np_output_init is not None:
+                 if np_output_init.ndim == 1:
+                     np_output_init = np.expand_dims(np_output_init, axis=(0, -1))
+                 elif np_output_init.ndim == 2: # Handle [seq_len, features] case for init
+                      np_output_init = np.expand_dims(np_output_init, axis=0)
+                 elif np_output_init.ndim != 3:
+                     raise ValueError(f"np_output_init shape {np_output_init.shape} incompatible with 1D np_input")
+
+        elif np_input.ndim == 2: # [seq_len, features] -> [1, seq_len, features]
+            np_input = np.expand_dims(np_input, axis=0)
+            if np_output_init is not None:
+                if np_output_init.ndim == 1: # Expand [seq_len] -> [1, seq_len, 1]
+                    np_output_init = np.expand_dims(np_output_init, axis=(0, -1))
+                elif np_output_init.ndim == 2: # Expand [seq_len, features] -> [1, seq_len, features]
+                     np_output_init = np.expand_dims(np_output_init, axis=0)
+                elif np_output_init.ndim != 3:
+                     raise ValueError(f"np_output_init shape {np_output_init.shape} incompatible with 2D np_input")
+
+        elif np_input.ndim == 3: # [1, seq_len, features] -> No change needed
+            if np_input.shape[0] != 1:
+                 raise ValueError(f"Input data with 3 dimensions should have batch size 1. Provided shape: {np_input.shape}")
+            if np_output_init is not None:
+                 if np_output_init.ndim == 1: # Expand [seq_len] -> [1, seq_len, 1]
+                     np_output_init = np.expand_dims(np_output_init, axis=(0, -1))
+                 elif np_output_init.ndim == 2: # Expand [seq_len, features] -> [1, seq_len, features]
+                      np_output_init = np.expand_dims(np_output_init, axis=0)
+                 elif np_output_init.ndim != 3:
+                      raise ValueError(f"np_output_init shape {np_output_init.shape} incompatible with 3D np_input")
+        else:
+            raise ValueError(f"Input data should have 1, 2 or 3 dimensions. Provided shape: {np_input.shape}")
+
+        # Concatenate inputs if np_output_init is provided
+        if np_output_init is not None:
+            # Ensure sequence lengths match
+            if np_input.shape[1] != np_output_init.shape[1]:
+                raise ValueError(f"Sequence lengths of np_input ({np_input.shape[1]}) and np_output_init ({np_output_init.shape[1]}) must match.")
+            # Concatenate along the feature dimension (last axis)
+            try:
+                np_combined_input = np.concatenate((np_input, np_output_init), axis=-1)
+            except ValueError as e:
+                 raise ValueError(f"Could not concatenate inputs. Check shapes: np_input={np_input.shape}, np_output_init={np_output_init.shape}. Error: {e}")
+            input_tensor = torch.from_numpy(np_combined_input).float().to(self.device)
+        else:
+            input_tensor = torch.from_numpy(np_input).float().to(self.device)
+
 
         output_tensor = None
         with torch.no_grad():
-            reset_model_state(self.core_model)
+            reset_model_state(self.core_model) # Reset state before each inference call
             model_output = self.norm_model(input_tensor)
 
-            # Handle tuple outputs
+            # Handle tuple outputs (common in some RNNs)
             if isinstance(model_output, tuple):
                 output_tensor = model_output[0]
             else:
                 output_tensor = model_output
+
         if output_tensor is None:
             raise RuntimeError("Model did not return a valid output tensor.")
 
+        # Remove batch dimension and return as NumPy array
         return output_tensor.squeeze(0).cpu().numpy()
 
-    def __call__(self, numpy_data: np.ndarray) -> np.ndarray:
+    def __call__(self, np_input: np.ndarray, np_output_init: np.ndarray = None) -> np.ndarray:
         """Allows calling the predictor instance like a function."""
-        return self.inference(numpy_data)
+        return self.inference(np_input, np_output_init)
