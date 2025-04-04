@@ -40,7 +40,9 @@ class InferenceWrapper:
 
     def inference(self, numpy_data: np.ndarray) -> np.ndarray:
         # Add batch dimension if needed
-        if numpy_data.ndim == 2:
+        if numpy_data.ndim == 1:
+            numpy_data_batched = np.expand_dims(numpy_data, axis=(0,-1))
+        elif numpy_data.ndim == 2:
             numpy_data_batched = np.expand_dims(numpy_data, axis=0)
         elif numpy_data.ndim == 3 and numpy_data.shape[0] == 1:
             numpy_data_batched = numpy_data
