@@ -190,7 +190,7 @@ class FranSys(nn.Module):
                 h_init = self.rnn_diagnosis.output_to_hidden(out_diag,self.init_sz-1)
                 new_hidden = self.rnn_diagnosis.output_to_hidden(out_diag,-1)
                 
-                out_prog,_ = self.rnn_prognosis(x_prog[:,self.init_sz:],h_init)  
+                out_prog,_ = self.rnn_prognosis(x_prog[:,self.init_sz:].contiguous(),h_init)  
                 out_prog=torch.cat([out_diag[:,:,:self.init_sz],out_prog],2) 
             else:
                 #import pdb; pdb.set_trace()
