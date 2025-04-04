@@ -16,17 +16,18 @@ class InferenceWrapper:
     A wrapper class to simplify inference with a trained tsfast/fastai Learner
     on NumPy data. Handles normalization and state reset automatically.
     """
-    def __init__(self, learner):
+    def __init__(self, learner,device='cpu'):
         """
         Initializes the inferencer.
 
         Args:
             learner: The trained tsfast/fastai Learner object.
+            device = 'cpu': The device to run the inference on.
         """
         if not hasattr(learner, 'model') or not hasattr(learner, 'dls'):
             raise TypeError("Input 'learner' object does not appear to be a valid fastai/tsfast Learner.")
 
-        self.device = learner.dls.device
+        self.device = device
         self.core_model = learner.model.to(self.device)
 
         # Extract normalization stats
