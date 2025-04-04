@@ -48,7 +48,7 @@ class RNN(nn.Module):
         full_hid,new_hidden = [],[]
 #         import pdb; pdb.set_trace()
         for l, (rnn,hid_dp,nrm) in enumerate(zip(self.rnns,self.hidden_dps,self.norm_layers)):
-            r_output, h = rnn(r_input,h_init[l] if h_init is not None else None)
+            r_output, h = rnn(r_input.contiguous(),h_init[l] if h_init is not None else None)
             
             if self.normalization != '':
                 r_output = nrm(r_output)
