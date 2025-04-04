@@ -6,9 +6,9 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="description" content="Corefunctionality for data preparation of sequential data for pytorch, fastai models">
+<meta name="description" content="Pytorch Modules for Training Models for sequential data">
 
-<title>Corefunctions – tsfast</title>
+<title>Inference – tsfast</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -104,11 +104,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 
 <link rel="stylesheet" href="styles.css">
-<meta property="og:title" content="Corefunctions – tsfast">
-<meta property="og:description" content="Corefunctionality for data preparation of sequential data for pytorch, fastai models">
+<meta property="og:title" content="Inference – tsfast">
+<meta property="og:description" content="Pytorch Modules for Training Models for sequential data">
 <meta property="og:site_name" content="tsfast">
-<meta name="twitter:title" content="Corefunctions – tsfast">
-<meta name="twitter:description" content="Corefunctionality for data preparation of sequential data for pytorch, fastai models">
+<meta name="twitter:title" content="Inference – tsfast">
+<meta name="twitter:description" content="Pytorch Modules for Training Models for sequential data">
 <meta name="twitter:card" content="summary">
 </head>
 
@@ -133,7 +133,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item">Corefunctions</li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item">Inference</li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
     </div>
@@ -296,18 +296,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#split-in-training-validation" id="toc-split-in-training-validation" class="nav-link active" data-scroll-target="#split-in-training-validation">4. Split in Training, Validation</a>
-  <ul class="collapse">
-  <li><a href="#splitting-mit-vorgegebenem-index" id="toc-splitting-mit-vorgegebenem-index" class="nav-link" data-scroll-target="#splitting-mit-vorgegebenem-index">4.1 Splitting mit vorgegebenem Index</a></li>
-  <li><a href="#splitting-mit-allgemeiner-funktion" id="toc-splitting-mit-allgemeiner-funktion" class="nav-link" data-scroll-target="#splitting-mit-allgemeiner-funktion">4.2 Splitting mit allgemeiner Funktion</a></li>
-  <li><a href="#splitting-anhand-des-parent-folders" id="toc-splitting-anhand-des-parent-folders" class="nav-link" data-scroll-target="#splitting-anhand-des-parent-folders">4.3 Splitting anhand des Parent-Folders</a></li>
-  <li><a href="#parentsplitter" id="toc-parentsplitter" class="nav-link" data-scroll-target="#parentsplitter">ParentSplitter</a></li>
-  <li><a href="#percentage-splitter" id="toc-percentage-splitter" class="nav-link" data-scroll-target="#percentage-splitter">4.4 Percentage Splitter</a></li>
-  <li><a href="#percentagesplitter" id="toc-percentagesplitter" class="nav-link" data-scroll-target="#percentagesplitter">PercentageSplitter</a></li>
-  <li><a href="#apply-to-dictionary" id="toc-apply-to-dictionary" class="nav-link" data-scroll-target="#apply-to-dictionary">4.5 Apply To Dictionary</a></li>
-  <li><a href="#applytodict" id="toc-applytodict" class="nav-link" data-scroll-target="#applytodict">ApplyToDict</a></li>
-  <li><a href="#valid-column" id="toc-valid-column" class="nav-link" data-scroll-target="#valid-column">4.6 Valid Column</a></li>
-  </ul></li>
+  <li><a href="#inferencewrapper" id="toc-inferencewrapper" class="nav-link active" data-scroll-target="#inferencewrapper">InferenceWrapper</a></li>
   </ul>
 <div class="toc-actions"><ul><li><a href="https://github.com/daniel-om-weber/tsfast/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
     </div>
@@ -316,12 +305,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">Corefunctions</h1>
+<h1 class="title">Inference</h1>
 </div>
 
 <div>
   <div class="description">
-    Corefunctionality for data preparation of sequential data for pytorch, fastai models
+    Pytorch Modules for Training Models for sequential data
   </div>
 </div>
 
@@ -339,129 +328,31 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 
 <!-- WARNING: THIS FILE WAS AUTOGENERATED! DO NOT EDIT! -->
-<section id="split-in-training-validation" class="level2">
-<h2 class="anchored" data-anchor-id="split-in-training-validation">4. Split in Training, Validation</h2>
-<p>Splitting kann anhand von vorher bekannten Indizes, dem Dateipfad oder anderen allgemeinen Funktion durchgeführt werden.</p>
-<p>Splitting innerhalb einer Sequenzen sollte in der Praxis nur dann geschehen wenn eine einzige Sequenz vorhanden ist. Diese kann dann vorher manuell geteilt werden.</p>
-<section id="splitting-mit-vorgegebenem-index" class="level3">
-<h3 class="anchored" data-anchor-id="splitting-mit-vorgegebenem-index">4.1 Splitting mit vorgegebenem Index</h3>
+<hr>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/inference/core.py#L14" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="inferencewrapper" class="level3">
+<h3 class="anchored" data-anchor-id="inferencewrapper">InferenceWrapper</h3>
+<blockquote class="blockquote">
+<pre><code> InferenceWrapper (learner)</code></pre>
+</blockquote>
+<p><em>A wrapper class to simplify inference with a trained tsfast/fastai Learner on NumPy data. Handles normalization and state reset automatically.</em></p>
+<div id="cell-3" class="cell">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> tsfast.datasets.core <span class="im">import</span> create_dls_test</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> tsfast.learner.learner <span class="im">import</span> RNNLearner</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
 <div id="cell-4" class="cell">
-<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nbdev.config <span class="im">import</span> get_config</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> create_dls_test()</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>lrn <span class="op">=</span> RNNLearner(dls)</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> InferenceWrapper(lrn)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <div id="cell-5" class="cell">
-<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>project_root <span class="op">=</span> get_config().config_file.parent</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>f_path <span class="op">=</span> project_root <span class="op">/</span> <span class="st">'test_data/WienerHammerstein'</span></span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>hdf_files <span class="op">=</span> get_files(f_path,extensions<span class="op">=</span><span class="st">'.hdf5'</span>,recurse<span class="op">=</span><span class="va">True</span>).<span class="bu">sorted</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
-<div id="cell-6" class="cell">
-<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>splitter <span class="op">=</span> IndexSplitter([<span class="dv">1</span>,<span class="dv">2</span>])</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>test_eq(splitter(hdf_files),[[<span class="dv">0</span>],[<span class="dv">1</span>,<span class="dv">2</span>]])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
-<div id="cell-7" class="cell">
-<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>list_dict <span class="op">=</span> CreateDict()(hdf_files)</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>list_dict</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>model(np.random.randn(<span class="dv">100</span>, <span class="dv">1</span>)).shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
-<pre><code>[{'path': '/home/pheenix/Development/tsfast/test_data/WienerHammerstein/test/WienerHammerstein_test.hdf5'},
- {'path': '/home/pheenix/Development/tsfast/test_data/WienerHammerstein/train/WienerHammerstein_train.hdf5'},
- {'path': '/home/pheenix/Development/tsfast/test_data/WienerHammerstein/valid/WienerHammerstein_valid.hdf5'}]</code></pre>
-</div>
-</div>
-<div id="cell-8" class="cell">
-<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>test_eq(splitter(list_dict),splitter(hdf_files))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
-</section>
-<section id="splitting-mit-allgemeiner-funktion" class="level3">
-<h3 class="anchored" data-anchor-id="splitting-mit-allgemeiner-funktion">4.2 Splitting mit allgemeiner Funktion</h3>
-<p>Items, bei denen die definierte Funktion <code>True</code> zurück gibt, werden den Validierungsdatensatz zugeordnet, der Rest dem Training. In diesem Fall wird nach dem Übergeordneten Ordnernamen gesucht.</p>
-<div id="cell-10" class="cell">
-<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>splitter <span class="op">=</span> FuncSplitter(<span class="kw">lambda</span> o: Path(o).parent.name <span class="op">==</span> <span class="st">'valid'</span>)</span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>splitter(hdf_files)</span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>test_eq(splitter(hdf_files),[[<span class="dv">0</span>,<span class="dv">1</span>],[<span class="dv">2</span>]])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-display">
-<pre><code>((#2) [np.int64(0),np.int64(1)], (#1) [2])</code></pre>
-</div>
-</div>
-</section>
-<section id="splitting-anhand-des-parent-folders" class="level3">
-<h3 class="anchored" data-anchor-id="splitting-anhand-des-parent-folders">4.3 Splitting anhand des Parent-Folders</h3>
-<p>Splitter, der Explizit Training und Validierungsordner den Datensätzen zuordnet</p>
-<hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/data/split.py#L13" target="_blank" style="float:right; font-size:smaller">source</a></p>
-</section>
-<section id="parentsplitter" class="level3">
-<h3 class="anchored" data-anchor-id="parentsplitter">ParentSplitter</h3>
-<blockquote class="blockquote">
-<pre><code> ParentSplitter (train_name='train', valid_name='valid')</code></pre>
-</blockquote>
-<p><em>Split <code>items</code> from the parent folder names (<code>train_name</code> and <code>valid_name</code>).</em></p>
-<div id="cell-13" class="cell">
-<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>splitter <span class="op">=</span> ParentSplitter()</span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>test_eq(splitter(hdf_files),[[<span class="dv">1</span>],[<span class="dv">2</span>]])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
-<div id="cell-14" class="cell">
-<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>test_eq(splitter(list_dict),splitter(hdf_files))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
-</section>
-<section id="percentage-splitter" class="level3">
-<h3 class="anchored" data-anchor-id="percentage-splitter">4.4 Percentage Splitter</h3>
-<hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/data/split.py#L23" target="_blank" style="float:right; font-size:smaller">source</a></p>
-</section>
-<section id="percentagesplitter" class="level3">
-<h3 class="anchored" data-anchor-id="percentagesplitter">PercentageSplitter</h3>
-<blockquote class="blockquote">
-<pre><code> PercentageSplitter (pct=0.8)</code></pre>
-</blockquote>
-<p><em>Split <code>items</code> in order in relative quantity.</em></p>
-<div id="cell-17" class="cell">
-<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>splitter <span class="op">=</span> PercentageSplitter(<span class="fl">0.7</span>)</span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="co">#test_eq(splitter(hdf_files),[[0,1],[2]])</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
-</section>
-<section id="apply-to-dictionary" class="level3">
-<h3 class="anchored" data-anchor-id="apply-to-dictionary">4.5 Apply To Dictionary</h3>
-<p>In Case of the Datablock API your items are a list of dictionaries. If you want to apply a Splitter to the path stored within you need a wrapper function.</p>
-<hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/data/split.py#L31" target="_blank" style="float:right; font-size:smaller">source</a></p>
-</section>
-<section id="applytodict" class="level3">
-<h3 class="anchored" data-anchor-id="applytodict">ApplyToDict</h3>
-<blockquote class="blockquote">
-<pre><code> ApplyToDict (fn, key='path')</code></pre>
-</blockquote>
-<div id="cell-20" class="cell">
-<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>splitter <span class="op">=</span> FuncSplitter(<span class="kw">lambda</span> o: Path(o).parent.name <span class="op">==</span> <span class="st">'valid'</span>)</span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>test_fail(<span class="kw">lambda</span>: splitter(list_dict))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
-<div id="cell-21" class="cell">
-<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>dict_splitter <span class="op">=</span> ApplyToDict(splitter)</span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>test_eq(dict_splitter(list_dict),splitter(hdf_files))</span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>dict_splitter(list_dict)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-display">
-<pre><code>((#2) [np.int64(0),np.int64(1)], (#1) [2])</code></pre>
-</div>
-</div>
-</section>
-<section id="valid-column" class="level3">
-<h3 class="anchored" data-anchor-id="valid-column">4.6 Valid Column</h3>
-<p>Using the ‘valid’ column of the Dataframe that has been created by a transformation.</p>
-<div id="cell-23" class="cell">
-<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> tsfast.data.core <span class="im">import</span> CreateDict, ValidClmContains,DfHDFCreateWindows</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
-<div id="cell-24" class="cell">
-<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>tfm_src <span class="op">=</span> CreateDict([ValidClmContains([<span class="st">'valid'</span>]),DfHDFCreateWindows(win_sz<span class="op">=</span><span class="dv">100</span><span class="op">+</span><span class="dv">1</span>,stp_sz<span class="op">=</span><span class="dv">10</span>,clm<span class="op">=</span><span class="st">'u'</span>)])</span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>src_dicts <span class="op">=</span> tfm_src(hdf_files)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
-<div id="cell-25" class="cell">
-<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>valid_clm_splitter(src_dicts)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-display">
-<pre><code>((#16780) [np.int64(0),np.int64(1),np.int64(2),np.int64(3),np.int64(4),np.int64(5),np.int64(6),np.int64(7),np.int64(8),np.int64(9)...],
- (#1990) [16780,16781,16782,16783,16784,16785,16786,16787,16788,16789...])</code></pre>
+<pre><code>(100, 1)</code></pre>
 </div>
 </div>
 
 
-</section>
 </section>
 
 </main> <!-- /main -->
