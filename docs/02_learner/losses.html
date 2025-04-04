@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.6.37">
+<meta name="generator" content="quarto-1.6.42">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -70,10 +70,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-29e2c20b02301cfff04dc8050bf30c7e.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-2f5df379a58b258e96c21c0638c20c03.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-d8ad1fb6f2d0baa37db2496516e2fbe4.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-6685f57f7611d95a701d58b4cc6878c0.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -341,7 +341,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="loss-functions" class="level2">
 <h2 class="anchored" data-anchor-id="loss-functions">Loss Functions</h2>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L15" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L16" target="_blank" style="float:right; font-size:smaller">source</a></p>
 <section id="ignore_nan" class="level3">
 <h3 class="anchored" data-anchor-id="ignore_nan">ignore_nan</h3>
 <blockquote class="blockquote">
@@ -373,7 +373,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>test_close(mse_nan(y_p,y_t),<span class="fl">0.01</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L32" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L34" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="float64_func" class="level3">
 <h3 class="anchored" data-anchor-id="float64_func">float64_func</h3>
@@ -414,16 +414,20 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.057472</td>
-<td>0.059530</td>
+<td>0.061947</td>
+<td>0.062439</td>
 <td>00:01</td>
 </tr>
 </tbody>
 </table>
 </div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/var/folders/pc/13zbh_m514n1tp522cx9npt00000gn/T/ipykernel_31084/3967170634.py:17: UserWarning: Float64 precision not supported on mps:0 device. Using original precision. This may reduce numerical accuracy. Error: Cannot convert a MPS Tensor to float64 dtype as the MPS framework doesn't support float64. Please use float32 instead.
+  warnings.warn(f"Float64 precision not supported on {args[0].device} device. Using original precision. This may reduce numerical accuracy. Error: {e}")</code></pre>
+</div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L42" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L53" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="skipnloss" class="level3">
 <h3 class="anchored" data-anchor-id="skipnloss">SkipNLoss</h3>
@@ -432,7 +436,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </blockquote>
 <p><em>Loss-Function modifier that skips the first n samples of sequential data</em></p>
 <div id="cell-14" class="cell">
-<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>SkipNLoss(nn.MSELoss(),n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>SkipNLoss(nn.MSELoss(),n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
 <style>
@@ -464,8 +468,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.051443</td>
-<td>0.050879</td>
+<td>0.053954</td>
+<td>0.057464</td>
 <td>00:00</td>
 </tr>
 </tbody>
@@ -473,7 +477,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L51" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L62" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="cutloss" class="level3">
 <h3 class="anchored" data-anchor-id="cutloss">CutLoss</h3>
@@ -482,7 +486,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </blockquote>
 <p><em>Loss-Function modifier that skips the first n samples of sequential data</em></p>
 <div id="cell-16" class="cell">
-<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>CutLoss(nn.MSELoss(),l_cut<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>CutLoss(nn.MSELoss(),l_cut<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
 <style>
@@ -514,16 +518,16 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.028662</td>
-<td>0.018038</td>
-<td>00:00</td>
+<td>0.038947</td>
+<td>0.019629</td>
+<td>00:01</td>
 </tr>
 </tbody>
 </table>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L60" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L71" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="weighted_mae" class="level3">
 <h3 class="anchored" data-anchor-id="weighted_mae">weighted_mae</h3>
@@ -531,7 +535,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <pre><code> weighted_mae (input, target)</code></pre>
 </blockquote>
 <div id="cell-18" class="cell">
-<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>SkipNLoss(weighted_mae,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>SkipNLoss(weighted_mae,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
 <style>
@@ -563,170 +567,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.093035</td>
-<td>0.078785</td>
-<td>00:00</td>
-</tr>
-</tbody>
-</table>
-</div>
-</div>
-<hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L72" target="_blank" style="float:right; font-size:smaller">source</a></p>
-</section>
-<section id="randseqlenloss" class="level3">
-<h3 class="anchored" data-anchor-id="randseqlenloss">RandSeqLenLoss</h3>
-<blockquote class="blockquote">
-<pre><code> RandSeqLenLoss (fn, min_idx=1, max_idx=None, mid_idx=None)</code></pre>
-</blockquote>
-<p><em>Loss-Function modifier that truncates the sequence length of every sequence in the minibatch inidiviually randomly. At the moment slow for very big batchsizes.</em></p>
-<div id="cell-20" class="cell">
-<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>RandSeqLenLoss(nn.MSELoss())).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-display">
-
-<style>
-    /* Turns off some styling */
-    progress {
-        /* gets rid of default border in Firefox and Opera. */
-        border: none;
-        /* Needs to be in here for Safari polyfill so background images work as expected. */
-        background-size: auto;
-    }
-    progress:not([value]), progress:not([value])::-webkit-progress-bar {
-        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
-    }
-    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
-        background: #F44336;
-    }
-</style>
-</div>
-<div class="cell-output cell-output-display">
-
-    <div>
-      <progress value="0" class="" max="1" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/1 00:00&lt;?]
-    </div>
-    
-
-<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th">epoch</th>
-<th data-quarto-table-cell-role="th">train_loss</th>
-<th data-quarto-table-cell-role="th">valid_loss</th>
-<th data-quarto-table-cell-role="th">time</th>
-</tr>
-</thead>
-<tbody>
-</tbody>
-</table>
-<p>
-
-    </p><div>
-      <progress value="0" class="" max="12" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/12 00:00&lt;?]
-    </div>
-    
-</div>
-</div>
-<hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L86" target="_blank" style="float:right; font-size:smaller">source</a></p>
-</section>
-<section id="fun_rmse" class="level3">
-<h3 class="anchored" data-anchor-id="fun_rmse">fun_rmse</h3>
-<blockquote class="blockquote">
-<pre><code> fun_rmse (inp, targ)</code></pre>
-</blockquote>
-<p><em>rmse loss function defined as a function not as a AccumMetric</em></p>
-<div id="cell-22" class="cell">
-<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>nn.MSELoss(),metrics<span class="op">=</span>SkipNLoss(fun_rmse,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-display">
-
-<style>
-    /* Turns off some styling */
-    progress {
-        /* gets rid of default border in Firefox and Opera. */
-        border: none;
-        /* Needs to be in here for Safari polyfill so background images work as expected. */
-        background-size: auto;
-    }
-    progress:not([value]), progress:not([value])::-webkit-progress-bar {
-        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
-    }
-    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
-        background: #F44336;
-    }
-</style>
-</div>
-<div class="cell-output cell-output-display">
-<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th">epoch</th>
-<th data-quarto-table-cell-role="th">train_loss</th>
-<th data-quarto-table-cell-role="th">valid_loss</th>
-<th data-quarto-table-cell-role="th">fun_rmse</th>
-<th data-quarto-table-cell-role="th">time</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>0</td>
-<td>0.012053</td>
-<td>0.011027</td>
-<td>0.055338</td>
-<td>00:00</td>
-</tr>
-</tbody>
-</table>
-</div>
-</div>
-<hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L91" target="_blank" style="float:right; font-size:smaller">source</a></p>
-</section>
-<section id="cos_sim_loss" class="level3">
-<h3 class="anchored" data-anchor-id="cos_sim_loss">cos_sim_loss</h3>
-<blockquote class="blockquote">
-<pre><code> cos_sim_loss (inp, targ)</code></pre>
-</blockquote>
-<p><em>rmse loss function defined as a function not as a AccumMetric</em></p>
-<div id="cell-24" class="cell">
-<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>cos_sim_loss,metrics<span class="op">=</span>SkipNLoss(fun_rmse,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-display">
-
-<style>
-    /* Turns off some styling */
-    progress {
-        /* gets rid of default border in Firefox and Opera. */
-        border: none;
-        /* Needs to be in here for Safari polyfill so background images work as expected. */
-        background-size: auto;
-    }
-    progress:not([value]), progress:not([value])::-webkit-progress-bar {
-        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
-    }
-    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
-        background: #F44336;
-    }
-</style>
-</div>
-<div class="cell-output cell-output-display">
-<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th">epoch</th>
-<th data-quarto-table-cell-role="th">train_loss</th>
-<th data-quarto-table-cell-role="th">valid_loss</th>
-<th data-quarto-table-cell-role="th">fun_rmse</th>
-<th data-quarto-table-cell-role="th">time</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>0</td>
-<td>0.238007</td>
-<td>0.257800</td>
-<td>0.055498</td>
+<td>0.097519</td>
+<td>0.085769</td>
 <td>00:01</td>
 </tr>
 </tbody>
@@ -736,14 +578,64 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <hr>
 <p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L96" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
-<section id="cos_sim_loss_pow" class="level3">
-<h3 class="anchored" data-anchor-id="cos_sim_loss_pow">cos_sim_loss_pow</h3>
+<section id="randseqlenloss" class="level3">
+<h3 class="anchored" data-anchor-id="randseqlenloss">RandSeqLenLoss</h3>
 <blockquote class="blockquote">
-<pre><code> cos_sim_loss_pow (inp, targ)</code></pre>
+<pre><code> RandSeqLenLoss (fn, min_idx=1, max_idx=None, mid_idx=None)</code></pre>
+</blockquote>
+<p><em>Loss-Function modifier that truncates the sequence length of every sequence in the minibatch inidiviually randomly. At the moment slow for very big batchsizes.</em></p>
+<div id="cell-20" class="cell">
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>RandSeqLenLoss(nn.MSELoss())).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th">epoch</th>
+<th data-quarto-table-cell-role="th">train_loss</th>
+<th data-quarto-table-cell-role="th">valid_loss</th>
+<th data-quarto-table-cell-role="th">time</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>0</td>
+<td>0.035565</td>
+<td>0.036282</td>
+<td>00:07</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<hr>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L110" target="_blank" style="float:right; font-size:smaller">source</a></p>
+</section>
+<section id="fun_rmse" class="level3">
+<h3 class="anchored" data-anchor-id="fun_rmse">fun_rmse</h3>
+<blockquote class="blockquote">
+<pre><code> fun_rmse (inp, targ)</code></pre>
 </blockquote>
 <p><em>rmse loss function defined as a function not as a AccumMetric</em></p>
-<div id="cell-26" class="cell">
-<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>cos_sim_loss_pow,metrics<span class="op">=</span>SkipNLoss(fun_rmse,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-22" class="cell">
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>nn.MSELoss(),metrics<span class="op">=</span>SkipNLoss(fun_rmse,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
 <style>
@@ -776,17 +668,121 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.508688</td>
-<td>0.569000</td>
-<td>0.062938</td>
-<td>00:00</td>
+<td>0.011886</td>
+<td>0.011429</td>
+<td>0.059890</td>
+<td>00:01</td>
 </tr>
 </tbody>
 </table>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L101" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L115" target="_blank" style="float:right; font-size:smaller">source</a></p>
+</section>
+<section id="cos_sim_loss" class="level3">
+<h3 class="anchored" data-anchor-id="cos_sim_loss">cos_sim_loss</h3>
+<blockquote class="blockquote">
+<pre><code> cos_sim_loss (inp, targ)</code></pre>
+</blockquote>
+<p><em>rmse loss function defined as a function not as a AccumMetric</em></p>
+<div id="cell-24" class="cell">
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>cos_sim_loss,metrics<span class="op">=</span>SkipNLoss(fun_rmse,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th">epoch</th>
+<th data-quarto-table-cell-role="th">train_loss</th>
+<th data-quarto-table-cell-role="th">valid_loss</th>
+<th data-quarto-table-cell-role="th">fun_rmse</th>
+<th data-quarto-table-cell-role="th">time</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>0</td>
+<td>0.257034</td>
+<td>0.321500</td>
+<td>0.082296</td>
+<td>00:01</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<hr>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L120" target="_blank" style="float:right; font-size:smaller">source</a></p>
+</section>
+<section id="cos_sim_loss_pow" class="level3">
+<h3 class="anchored" data-anchor-id="cos_sim_loss_pow">cos_sim_loss_pow</h3>
+<blockquote class="blockquote">
+<pre><code> cos_sim_loss_pow (inp, targ)</code></pre>
+</blockquote>
+<p><em>rmse loss function defined as a function not as a AccumMetric</em></p>
+<div id="cell-26" class="cell">
+<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>cos_sim_loss_pow,metrics<span class="op">=</span>SkipNLoss(fun_rmse,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th">epoch</th>
+<th data-quarto-table-cell-role="th">train_loss</th>
+<th data-quarto-table-cell-role="th">valid_loss</th>
+<th data-quarto-table-cell-role="th">fun_rmse</th>
+<th data-quarto-table-cell-role="th">time</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>0</td>
+<td>0.611905</td>
+<td>0.641800</td>
+<td>0.082362</td>
+<td>00:01</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<hr>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L125" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="nrmse" class="level3">
 <h3 class="anchored" data-anchor-id="nrmse">nrmse</h3>
@@ -795,13 +791,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </blockquote>
 <p><em>rmse loss function scaled by variance of each target variable</em></p>
 <div id="cell-28" class="cell">
-<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>dls.one_batch()[<span class="dv">0</span>].shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>dls.one_batch()[<span class="dv">0</span>].shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <pre><code>torch.Size([64, 100, 1])</code></pre>
 </div>
 </div>
 <div id="cell-29" class="cell">
-<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>nn.MSELoss(),metrics<span class="op">=</span>SkipNLoss(nrmse,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>nn.MSELoss(),metrics<span class="op">=</span>SkipNLoss(nrmse,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
 <style>
@@ -834,17 +830,17 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.010482</td>
-<td>0.010386</td>
-<td>0.199243</td>
-<td>00:00</td>
+<td>0.011257</td>
+<td>0.010732</td>
+<td>0.209120</td>
+<td>00:01</td>
 </tr>
 </tbody>
 </table>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L108" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L132" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="nrmse_std" class="level3">
 <h3 class="anchored" data-anchor-id="nrmse_std">nrmse_std</h3>
@@ -853,7 +849,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </blockquote>
 <p><em>rmse loss function scaled by standard deviation of each target variable</em></p>
 <div id="cell-31" class="cell">
-<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>nn.MSELoss(),metrics<span class="op">=</span>SkipNLoss(nrmse_std,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>nn.MSELoss(),metrics<span class="op">=</span>SkipNLoss(nrmse_std,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
 <style>
@@ -886,17 +882,17 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.010121</td>
-<td>0.010095</td>
-<td>0.088533</td>
-<td>00:00</td>
+<td>0.010345</td>
+<td>0.010427</td>
+<td>0.097359</td>
+<td>00:01</td>
 </tr>
 </tbody>
 </table>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L115" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/losses.py#L139" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="mean_vaf" class="level3">
 <h3 class="anchored" data-anchor-id="mean_vaf">mean_vaf</h3>
@@ -904,7 +900,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <pre><code> mean_vaf (inp, targ)</code></pre>
 </blockquote>
 <div id="cell-33" class="cell">
-<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>nn.MSELoss(),metrics<span class="op">=</span>SkipNLoss(mean_vaf,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>nn.MSELoss(),metrics<span class="op">=</span>SkipNLoss(mean_vaf,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
 <style>
@@ -924,13 +920,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </style>
 </div>
 <div class="cell-output cell-output-display">
-
-    <div>
-      <progress value="0" class="" max="1" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/1 00:00&lt;?]
-    </div>
-    
-
 <table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
 <thead>
 <tr class="header">
@@ -942,15 +931,15 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 </thead>
 <tbody>
+<tr class="odd">
+<td>0</td>
+<td>0.010098</td>
+<td>0.009810</td>
+<td>97.335266</td>
+<td>00:01</td>
+</tr>
 </tbody>
 </table>
-<p>
-
-    </p><div>
-      <progress value="0" class="" max="12" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/12 00:00&lt;?]
-    </div>
-    
 </div>
 </div>
 

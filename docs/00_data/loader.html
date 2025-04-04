@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.6.37">
+<meta name="generator" content="quarto-1.6.42">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -69,10 +69,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-29e2c20b02301cfff04dc8050bf30c7e.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-2f5df379a58b258e96c21c0638c20c03.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-d8ad1fb6f2d0baa37db2496516e2fbe4.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-6685f57f7611d95a701d58b4cc6878c0.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -108,13 +108,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link rel="stylesheet" href="styles.css">
 <meta property="og:title" content="Truncated Backpropagation Through Time – tsfast">
 <meta property="og:description" content="A description of your project">
-<meta property="og:image" content="https://daniel-om-weber.github.io/tsfast/00_data/04_loader_files/figure-html/cell-7-output-1.png">
+<meta property="og:image" content="https://daniel-om-weber.github.io/tsfast/00_data/04_loader_files/figure-html/cell-8-output-1.png">
 <meta property="og:site_name" content="tsfast">
 <meta property="og:image:height" content="413">
 <meta property="og:image:width" content="559">
 <meta name="twitter:title" content="Truncated Backpropagation Through Time – tsfast">
 <meta name="twitter:description" content="A description of your project">
-<meta name="twitter:image" content="https://daniel-om-weber.github.io/tsfast/00_data/04_loader_files/figure-html/cell-7-output-1.png">
+<meta name="twitter:image" content="https://daniel-om-weber.github.io/tsfast/00_data/04_loader_files/figure-html/cell-8-output-1.png">
 <meta name="twitter:image-height" content="413">
 <meta name="twitter:image-width" content="559">
 <meta name="twitter:card" content="summary_large_image">
@@ -376,18 +376,29 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>                        SequenceBlock.from_hdf([<span class="st">'y'</span>],TensorSequencesOutput,clm_shift<span class="op">=</span>[<span class="dv">1</span>])),</span>
 <span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>                 get_items<span class="op">=</span>CreateDict(tfm_lst),</span>
 <span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>                 splitter<span class="op">=</span>ApplyToDict(ParentSplitter()))</span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>db <span class="op">=</span> seq.dataloaders(get_hdf_files(f_path),dl_type<span class="op">=</span>TbpttDl,sub_seq_len<span class="op">=</span><span class="dv">100</span>,num_workers<span class="op">=</span><span class="dv">6</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>db <span class="op">=</span> seq.dataloaders(get_hdf_files(f_path),dl_type<span class="op">=</span>TbpttDl,sub_seq_len<span class="op">=</span><span class="dv">99</span>,num_workers<span class="op">=</span><span class="dv">6</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/var/folders/pc/13zbh_m514n1tp522cx9npt00000gn/T/ipykernel_61433/1256818916.py:21: UserWarning: Sequence length (1000) is not perfectly divisible by sub_seq_len (99). The last segment of each sequence in TbpttDl will be shorter.
+  warnings.warn(</code></pre>
+</div>
 </div>
 <div id="cell-8" class="cell">
-<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>l <span class="op">=</span> [array(x[<span class="op">-</span><span class="dv">1</span>][<span class="dv">0</span>,:,<span class="dv">0</span>].cpu()) <span class="cf">for</span> x <span class="kw">in</span> db.train]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>db <span class="op">=</span> seq.dataloaders(get_hdf_files(f_path),dl_type<span class="op">=</span>TbpttDl,sub_seq_len<span class="op">=</span><span class="dv">100</span>,num_workers<span class="op">=</span><span class="dv">6</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <div id="cell-9" class="cell">
-<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>plt.figure()</span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>plt.plot(np.concatenate(l))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>l <span class="op">=</span> [array(x[<span class="op">-</span><span class="dv">1</span>][<span class="dv">0</span>,:,<span class="dv">0</span>].cpu()) <span class="cf">for</span> x <span class="kw">in</span> db.train]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/var/folders/pc/13zbh_m514n1tp522cx9npt00000gn/T/ipykernel_61433/3478302433.py:1: DeprecationWarning: __array__ implementation doesn't accept a copy keyword, so passing copy=False failed. __array__ must implement 'dtype' and 'copy' keyword arguments. To learn more, see the migration guide https://numpy.org/devdocs/numpy_2_0_migration_guide.html#adapting-to-changes-in-the-copy-keyword
+  l = [array(x[-1][0,:,0].cpu()) for x in db.train]</code></pre>
+</div>
+</div>
+<div id="cell-10" class="cell">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>plt.figure()</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>plt.plot(np.concatenate(l))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="04_loader_files/figure-html/cell-7-output-1.png" class="img-fluid figure-img"></p>
+<p><img src="04_loader_files/figure-html/cell-8-output-1.png" class="img-fluid figure-img"></p>
 </figure>
 </div>
 </div>
@@ -399,14 +410,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="tbptt_reset_callback">TBPTT_Reset_Callback</h2>
 <p>The stateful model needs to reset its hidden state, when a new sequence begins. The callback reads the reset flag and acts accordingly.</p>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/data/loader.py#L110" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/data/loader.py#L122" target="_blank" style="float:right; font-size:smaller">source</a></p>
 <section id="reset_model_state" class="level3">
 <h3 class="anchored" data-anchor-id="reset_model_state">reset_model_state</h3>
 <blockquote class="blockquote">
 <pre><code> reset_model_state (model)</code></pre>
 </blockquote>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/data/loader.py#L115" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/data/loader.py#L127" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="tbpttresetcb" class="level3">
 <h3 class="anchored" data-anchor-id="tbpttresetcb">TbpttResetCB</h3>
@@ -427,72 +438,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="example" class="level2">
 <h2 class="anchored" data-anchor-id="example">Example</h2>
-<div id="cell-15" class="cell">
-<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> tsfast.learner <span class="im">import</span> RNNLearner,SkipNLoss,fun_rmse</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
 <div id="cell-16" class="cell">
-<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>lrn <span class="op">=</span> RNNLearner(db,num_layers<span class="op">=</span><span class="dv">1</span>,rnn_type<span class="op">=</span><span class="st">'gru'</span>,stateful<span class="op">=</span><span class="va">False</span>,metrics<span class="op">=</span>[SkipNLoss(fun_rmse,<span class="dv">1</span>),fun_rmse])</span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>lrn.add_cb(TbpttResetCB())</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> tsfast.learner <span class="im">import</span> RNNLearner,SkipNLoss,fun_rmse</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div id="cell-17" class="cell">
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>lrn <span class="op">=</span> RNNLearner(db,num_layers<span class="op">=</span><span class="dv">1</span>,rnn_type<span class="op">=</span><span class="st">'gru'</span>,stateful<span class="op">=</span><span class="va">False</span>,metrics<span class="op">=</span>[SkipNLoss(fun_rmse,<span class="dv">1</span>),fun_rmse])</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>lrn.add_cb(TbpttResetCB())</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <pre><code>&lt;fastai.learner.Learner&gt;</code></pre>
 </div>
 </div>
-<div id="cell-17" class="cell">
-<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>lrn.fit_one_cycle(<span class="dv">1</span>,lr_max<span class="op">=</span><span class="fl">3e-2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-display">
-
-<style>
-    /* Turns off some styling */
-    progress {
-        /* gets rid of default border in Firefox and Opera. */
-        border: none;
-        /* Needs to be in here for Safari polyfill so background images work as expected. */
-        background-size: auto;
-    }
-    progress:not([value]), progress:not([value])::-webkit-progress-bar {
-        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
-    }
-    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
-        background: #F44336;
-    }
-</style>
-</div>
-<div class="cell-output cell-output-display">
-
-    <div>
-      <progress value="0" class="" max="1" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/1 00:00&lt;?]
-    </div>
-    
-
-<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th">epoch</th>
-<th data-quarto-table-cell-role="th">train_loss</th>
-<th data-quarto-table-cell-role="th">valid_loss</th>
-<th data-quarto-table-cell-role="th">fun_rmse</th>
-<th data-quarto-table-cell-role="th">fun_rmse</th>
-<th data-quarto-table-cell-role="th">time</th>
-</tr>
-</thead>
-<tbody>
-</tbody>
-</table>
-<p>
-
-    </p><div>
-      <progress value="0" class="" max="10" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/10 00:00&lt;?]
-    </div>
-    
-</div>
-</div>
 <div id="cell-18" class="cell">
-<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>db.train.sub_seq_len <span class="op">=</span> <span class="dv">10</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
-<div id="cell-19" class="cell">
-<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>lrn.fit_one_cycle(<span class="dv">1</span>,lr_max<span class="op">=</span><span class="fl">3e-2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>lrn.fit_one_cycle(<span class="dv">1</span>,lr_max<span class="op">=</span><span class="fl">3e-2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
 <style>
@@ -526,34 +483,21 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.002256</td>
-<td>0.000224</td>
-<td>0.014508</td>
-<td>0.014937</td>
-<td>00:00</td>
+<td>0.041026</td>
+<td>0.014218</td>
+<td>0.117919</td>
+<td>0.119088</td>
+<td>00:01</td>
 </tr>
 </tbody>
 </table>
 </div>
 </div>
-</section>
-<section id="weighted-sampling-dataloader" class="level1">
-<h1>Weighted Sampling Dataloader</h1>
-<p>A weighted sampling dataloader for nonuniforly distributed data. A factory method receives the base Dataloader class and returns the inherited weighted sampling dataloader class</p>
-<hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/data/loader.py#L128" target="_blank" style="float:right; font-size:smaller">source</a></p>
-<section id="weighteddl_factory" class="level3">
-<h3 class="anchored" data-anchor-id="weighteddl_factory">WeightedDL_Factory</h3>
-<blockquote class="blockquote">
-<pre><code> WeightedDL_Factory (cls)</code></pre>
-</blockquote>
-<p><em>Weighted Dataloader that provides control over sampling probabilities. wgts: probability array with probability for every item gets extracted from the pandas ‘p_sample’ column if given. Otherwise uniform sampling will be enabled</em></p>
-<div id="cell-23" class="cell">
-<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>dl <span class="op">=</span> WeightedDL_Factory(TfmdDL)([<span class="dv">1</span>,<span class="dv">2</span>]<span class="op">*</span><span class="dv">5</span>,bs<span class="op">=</span><span class="dv">10</span>,wgts<span class="op">=</span>[<span class="dv">2</span>,<span class="dv">1</span>]<span class="op">*</span><span class="dv">5</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-19" class="cell">
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>db.train.sub_seq_len <span class="op">=</span> <span class="dv">10</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div id="cell-24" class="cell">
-<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>lrn <span class="op">=</span> RNNLearner(db,num_layers<span class="op">=</span><span class="dv">1</span>,rnn_type<span class="op">=</span><span class="st">'gru'</span>,stateful<span class="op">=</span><span class="va">False</span>,metrics<span class="op">=</span>[SkipNLoss(fun_rmse,<span class="dv">1</span>),fun_rmse])</span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>lrn.fit_one_cycle(<span class="dv">1</span>,lr_max<span class="op">=</span><span class="fl">3e-2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-20" class="cell">
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>lrn.fit_one_cycle(<span class="dv">1</span>,lr_max<span class="op">=</span><span class="fl">3e-2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
 <style>
@@ -573,13 +517,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </style>
 </div>
 <div class="cell-output cell-output-display">
-
-    <div>
-      <progress value="0" class="" max="1" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/1 00:00&lt;?]
-    </div>
-    
-
 <table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
 <thead>
 <tr class="header">
@@ -592,26 +529,88 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 </thead>
 <tbody>
+<tr class="odd">
+<td>0</td>
+<td>0.001870</td>
+<td>0.000182</td>
+<td>0.013098</td>
+<td>0.013459</td>
+<td>00:01</td>
+</tr>
 </tbody>
 </table>
-<p>
-
-    </p><div>
-      <progress value="0" class="" max="100" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/100 00:00&lt;?]
-    </div>
-    
 </div>
+</div>
+</section>
+<section id="weighted-sampling-dataloader" class="level1">
+<h1>Weighted Sampling Dataloader</h1>
+<p>A weighted sampling dataloader for nonuniforly distributed data. A factory method receives the base Dataloader class and returns the inherited weighted sampling dataloader class</p>
+<hr>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/data/loader.py#L140" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="weighteddl_factory" class="level3">
+<h3 class="anchored" data-anchor-id="weighteddl_factory">WeightedDL_Factory</h3>
+<blockquote class="blockquote">
+<pre><code> WeightedDL_Factory (cls)</code></pre>
+</blockquote>
+<p><em>Weighted Dataloader that provides control over sampling probabilities. wgts: probability array with probability for every item gets extracted from the pandas ‘p_sample’ column if given. Otherwise uniform sampling will be enabled</em></p>
+<div id="cell-24" class="cell">
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>dl <span class="op">=</span> WeightedDL_Factory(TfmdDL)([<span class="dv">1</span>,<span class="dv">2</span>]<span class="op">*</span><span class="dv">5</span>,bs<span class="op">=</span><span class="dv">10</span>,wgts<span class="op">=</span>[<span class="dv">2</span>,<span class="dv">1</span>]<span class="op">*</span><span class="dv">5</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <div id="cell-25" class="cell">
-<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>dl.wgts</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>lrn <span class="op">=</span> RNNLearner(db,num_layers<span class="op">=</span><span class="dv">1</span>,rnn_type<span class="op">=</span><span class="st">'gru'</span>,stateful<span class="op">=</span><span class="va">False</span>,metrics<span class="op">=</span>[SkipNLoss(fun_rmse,<span class="dv">1</span>),fun_rmse])</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>lrn.fit_one_cycle(<span class="dv">1</span>,lr_max<span class="op">=</span><span class="fl">3e-2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th">epoch</th>
+<th data-quarto-table-cell-role="th">train_loss</th>
+<th data-quarto-table-cell-role="th">valid_loss</th>
+<th data-quarto-table-cell-role="th">fun_rmse</th>
+<th data-quarto-table-cell-role="th">fun_rmse</th>
+<th data-quarto-table-cell-role="th">time</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>0</td>
+<td>0.003003</td>
+<td>0.000201</td>
+<td>0.013787</td>
+<td>0.014168</td>
+<td>00:01</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div id="cell-26" class="cell">
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>dl.wgts</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <pre><code>array([0.13333333, 0.06666667, 0.13333333, 0.06666667, 0.13333333,
        0.06666667, 0.13333333, 0.06666667, 0.13333333, 0.06666667])</code></pre>
 </div>
 </div>
-<div id="cell-26" class="cell">
-<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>dl.one_batch()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-27" class="cell">
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>dl.one_batch()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <pre><code>tensor([1, 2, 1, 2, 1, 2, 1, 2, 1, 2])</code></pre>
 </div>
@@ -620,7 +619,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="itemlst-transform-for-weight-calculation" class="level2">
 <h2 class="anchored" data-anchor-id="itemlst-transform-for-weight-calculation">ItemLst Transform for weight calculation</h2>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/data/loader.py#L170" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/data/loader.py#L182" target="_blank" style="float:right; font-size:smaller">source</a></p>
 <section id="uniform_p_of_category" class="level3">
 <h3 class="anchored" data-anchor-id="uniform_p_of_category">uniform_p_of_category</h3>
 <blockquote class="blockquote">
@@ -628,7 +627,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </blockquote>
 <p><em>Scales sampling weights for an even distribution between every category</em></p>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/data/loader.py#L193" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/data/loader.py#L205" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="uniform_p_of_float" class="level3">
 <h3 class="anchored" data-anchor-id="uniform_p_of_float">uniform_p_of_float</h3>
@@ -637,7 +636,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </blockquote>
 <p><em>Scales sampling weights for an even distribution of the continous variable by creating equi sized bins</em></p>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/data/loader.py#L218" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/data/loader.py#L230" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="uniform_p_of_float_with_gaps" class="level3">
 <h3 class="anchored" data-anchor-id="uniform_p_of_float_with_gaps">uniform_p_of_float_with_gaps</h3>
@@ -645,16 +644,16 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <pre><code> uniform_p_of_float_with_gaps (var_name, bins=100)</code></pre>
 </blockquote>
 <p><em>Scales sampling weights for an even distribution of the continous variable by creating equi sized bins</em></p>
-<div id="cell-31" class="cell">
-<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> train_valid(df):   </span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">''' test function that extracts valid and train from the path string'''</span></span>
-<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>    df[<span class="st">'train'</span>] <span class="op">=</span> df.path.astype(<span class="bu">str</span>).<span class="bu">str</span>.contains(<span class="st">'train'</span>,regex<span class="op">=</span><span class="va">False</span>)</span>
-<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> df</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
 <div id="cell-32" class="cell">
-<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="co"># %%time</span></span>
-<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>tfm_lst <span class="op">=</span> [train_valid, DfHDFCreateWindows(win_sz<span class="op">=</span><span class="dv">1000</span><span class="op">+</span><span class="dv">1</span>,stp_sz<span class="op">=</span><span class="dv">1000</span>,clm<span class="op">=</span><span class="st">'u'</span>) ,uniform_p_of_category(<span class="st">'train'</span>),uniform_p_of_float(<span class="st">'l_slc'</span>),uniform_p_of_float_with_gaps(<span class="st">'r_slc'</span>)]</span>
-<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>apply_df_tfms(get_hdf_files(f_path),tfm_lst)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> train_valid(df):   </span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">''' test function that extracts valid and train from the path string'''</span></span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>    df[<span class="st">'train'</span>] <span class="op">=</span> df.path.astype(<span class="bu">str</span>).<span class="bu">str</span>.contains(<span class="st">'train'</span>,regex<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> df</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div id="cell-33" class="cell">
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="co"># %%time</span></span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>tfm_lst <span class="op">=</span> [train_valid, DfHDFCreateWindows(win_sz<span class="op">=</span><span class="dv">1000</span><span class="op">+</span><span class="dv">1</span>,stp_sz<span class="op">=</span><span class="dv">1000</span>,clm<span class="op">=</span><span class="st">'u'</span>) ,uniform_p_of_category(<span class="st">'train'</span>),uniform_p_of_float(<span class="st">'l_slc'</span>),uniform_p_of_float_with_gaps(<span class="st">'r_slc'</span>)]</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>apply_df_tfms(get_hdf_files(f_path),tfm_lst)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <div>
 
@@ -673,7 +672,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td data-quarto-table-cell-role="th">0</td>
-<td>/home/pheenix/Development/tsfast/test_data/WienerHammerstein/test/WienerHammerstein_test.hdf5</td>
+<td>/Users/daniel/Development/tsfast/test_data/WienerHammerstein/valid/WienerHammerstein_valid.hdf5</td>
 <td>False</td>
 <td>0</td>
 <td>1001</td>
@@ -681,7 +680,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 <tr class="even">
 <td data-quarto-table-cell-role="th">0</td>
-<td>/home/pheenix/Development/tsfast/test_data/WienerHammerstein/test/WienerHammerstein_test.hdf5</td>
+<td>/Users/daniel/Development/tsfast/test_data/WienerHammerstein/valid/WienerHammerstein_valid.hdf5</td>
 <td>False</td>
 <td>1000</td>
 <td>2001</td>
@@ -689,7 +688,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 <tr class="odd">
 <td data-quarto-table-cell-role="th">0</td>
-<td>/home/pheenix/Development/tsfast/test_data/WienerHammerstein/test/WienerHammerstein_test.hdf5</td>
+<td>/Users/daniel/Development/tsfast/test_data/WienerHammerstein/valid/WienerHammerstein_valid.hdf5</td>
 <td>False</td>
 <td>2000</td>
 <td>3001</td>
@@ -697,7 +696,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 <tr class="even">
 <td data-quarto-table-cell-role="th">0</td>
-<td>/home/pheenix/Development/tsfast/test_data/WienerHammerstein/test/WienerHammerstein_test.hdf5</td>
+<td>/Users/daniel/Development/tsfast/test_data/WienerHammerstein/valid/WienerHammerstein_valid.hdf5</td>
 <td>False</td>
 <td>3000</td>
 <td>4001</td>
@@ -705,7 +704,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 <tr class="odd">
 <td data-quarto-table-cell-role="th">0</td>
-<td>/home/pheenix/Development/tsfast/test_data/WienerHammerstein/test/WienerHammerstein_test.hdf5</td>
+<td>/Users/daniel/Development/tsfast/test_data/WienerHammerstein/valid/WienerHammerstein_valid.hdf5</td>
 <td>False</td>
 <td>4000</td>
 <td>5001</td>
@@ -721,43 +720,43 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 <tr class="odd">
 <td data-quarto-table-cell-role="th">2</td>
-<td>/home/pheenix/Development/tsfast/test_data/WienerHammerstein/valid/WienerHammerstein_valid.hdf5</td>
-<td>False</td>
-<td>14000</td>
-<td>15001</td>
-<td>0.002437</td>
+<td>/Users/daniel/Development/tsfast/test_data/WienerHammerstein/train/WienerHammerstein_train.hdf5</td>
+<td>True</td>
+<td>74000</td>
+<td>75001</td>
+<td>0.007357</td>
 </tr>
 <tr class="even">
 <td data-quarto-table-cell-role="th">2</td>
-<td>/home/pheenix/Development/tsfast/test_data/WienerHammerstein/valid/WienerHammerstein_valid.hdf5</td>
-<td>False</td>
-<td>15000</td>
-<td>16001</td>
-<td>0.002047</td>
+<td>/Users/daniel/Development/tsfast/test_data/WienerHammerstein/train/WienerHammerstein_train.hdf5</td>
+<td>True</td>
+<td>75000</td>
+<td>76001</td>
+<td>0.007357</td>
 </tr>
 <tr class="odd">
 <td data-quarto-table-cell-role="th">2</td>
-<td>/home/pheenix/Development/tsfast/test_data/WienerHammerstein/valid/WienerHammerstein_valid.hdf5</td>
-<td>False</td>
-<td>16000</td>
-<td>17001</td>
-<td>0.000390</td>
+<td>/Users/daniel/Development/tsfast/test_data/WienerHammerstein/train/WienerHammerstein_train.hdf5</td>
+<td>True</td>
+<td>76000</td>
+<td>77001</td>
+<td>0.007357</td>
 </tr>
 <tr class="even">
 <td data-quarto-table-cell-role="th">2</td>
-<td>/home/pheenix/Development/tsfast/test_data/WienerHammerstein/valid/WienerHammerstein_valid.hdf5</td>
-<td>False</td>
-<td>17000</td>
-<td>18001</td>
-<td>0.002437</td>
+<td>/Users/daniel/Development/tsfast/test_data/WienerHammerstein/train/WienerHammerstein_train.hdf5</td>
+<td>True</td>
+<td>77000</td>
+<td>78001</td>
+<td>0.006180</td>
 </tr>
 <tr class="odd">
 <td data-quarto-table-cell-role="th">2</td>
-<td>/home/pheenix/Development/tsfast/test_data/WienerHammerstein/valid/WienerHammerstein_valid.hdf5</td>
-<td>False</td>
-<td>18000</td>
-<td>19001</td>
-<td>0.002477</td>
+<td>/Users/daniel/Development/tsfast/test_data/WienerHammerstein/train/WienerHammerstein_train.hdf5</td>
+<td>True</td>
+<td>78000</td>
+<td>79001</td>
+<td>0.011124</td>
 </tr>
 </tbody>
 </table>
@@ -766,31 +765,31 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 </div>
-<div id="cell-33" class="cell">
-<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>seq <span class="op">=</span> DataBlock(blocks<span class="op">=</span>(SequenceBlock.from_hdf([<span class="st">'u'</span>,<span class="st">'y'</span>],TensorSequencesInput,clm_shift<span class="op">=</span>[<span class="op">-</span><span class="dv">1</span>,<span class="op">-</span><span class="dv">1</span>]),</span>
-<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>                        SequenceBlock.from_hdf([<span class="st">'y'</span>],TensorSequencesOutput,clm_shift<span class="op">=</span>[<span class="dv">1</span>])),</span>
-<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>                 get_items<span class="op">=</span>CreateDict(tfm_lst),</span>
-<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>                 splitter<span class="op">=</span>ApplyToDict(ParentSplitter()))</span>
-<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a><span class="co"># db = seq.dataloaders(get_hdf_files('test_data/battery'),dl_type=TbpttDl,sub_seq_len=200)</span></span>
-<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a>db <span class="op">=</span> seq.dataloaders(get_hdf_files(f_path),dl_type<span class="op">=</span>WeightedDL_Factory(TbpttDl),sub_seq_len<span class="op">=</span><span class="dv">500</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
 <div id="cell-34" class="cell">
-<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>db.train.wgts.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>seq <span class="op">=</span> DataBlock(blocks<span class="op">=</span>(SequenceBlock.from_hdf([<span class="st">'u'</span>,<span class="st">'y'</span>],TensorSequencesInput,clm_shift<span class="op">=</span>[<span class="op">-</span><span class="dv">1</span>,<span class="op">-</span><span class="dv">1</span>]),</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>                        SequenceBlock.from_hdf([<span class="st">'y'</span>],TensorSequencesOutput,clm_shift<span class="op">=</span>[<span class="dv">1</span>])),</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>                 get_items<span class="op">=</span>CreateDict(tfm_lst),</span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>                 splitter<span class="op">=</span>ApplyToDict(ParentSplitter()))</span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a><span class="co"># db = seq.dataloaders(get_hdf_files('test_data/battery'),dl_type=TbpttDl,sub_seq_len=200)</span></span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>db <span class="op">=</span> seq.dataloaders(get_hdf_files(f_path),dl_type<span class="op">=</span>WeightedDL_Factory(TbpttDl),sub_seq_len<span class="op">=</span><span class="dv">500</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div id="cell-35" class="cell">
+<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>db.train.wgts.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <pre><code>(79,)</code></pre>
 </div>
 </div>
-<div id="cell-35" class="cell">
-<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>db.train.wgts[:<span class="dv">5</span>],db.valid.wgts[:<span class="dv">5</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-36" class="cell">
+<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>db.train.wgts[:<span class="dv">5</span>],db.valid.wgts[:<span class="dv">5</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <pre><code>(array([0.0034722 , 0.0034722 , 0.00333331, 0.0069444 , 0.00666662]),
  array([0.03704676, 0.03704676, 0.03556485, 0.07409344, 0.0711297 ]))</code></pre>
 </div>
 </div>
-<div id="cell-36" class="cell">
-<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>lrn <span class="op">=</span> RNNLearner(db,num_layers<span class="op">=</span><span class="dv">1</span>,rnn_type<span class="op">=</span><span class="st">'gru'</span>,stateful<span class="op">=</span><span class="va">False</span>,metrics<span class="op">=</span>[SkipNLoss(fun_rmse,<span class="dv">1</span>),fun_rmse])</span>
-<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>lrn.add_cb(TbpttResetCB())</span>
-<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>lrn.fit_one_cycle(<span class="dv">1</span>,lr_max<span class="op">=</span><span class="fl">3e-2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-37" class="cell">
+<div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>lrn <span class="op">=</span> RNNLearner(db,num_layers<span class="op">=</span><span class="dv">1</span>,rnn_type<span class="op">=</span><span class="st">'gru'</span>,stateful<span class="op">=</span><span class="va">False</span>,metrics<span class="op">=</span>[SkipNLoss(fun_rmse,<span class="dv">1</span>),fun_rmse])</span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>lrn.add_cb(TbpttResetCB())</span>
+<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a>lrn.fit_one_cycle(<span class="dv">1</span>,lr_max<span class="op">=</span><span class="fl">3e-2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
 <style>
@@ -810,13 +809,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </style>
 </div>
 <div class="cell-output cell-output-display">
-
-    <div>
-      <progress value="0" class="" max="1" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/1 00:00&lt;?]
-    </div>
-    
-
 <table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
 <thead>
 <tr class="header">
@@ -829,69 +821,70 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 </thead>
 <tbody>
+<tr class="odd">
+<td>0</td>
+<td>0.061885</td>
+<td>0.060174</td>
+<td>0.245287</td>
+<td>0.245301</td>
+<td>00:01</td>
+</tr>
 </tbody>
 </table>
-<p>
-
-    </p><div>
-      <progress value="0" class="" max="2" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/2 00:00&lt;?]
-    </div>
-    
 </div>
 </div>
 </section>
 </section>
 <section id="importance-sampling-callback" class="level2">
 <h2 class="anchored" data-anchor-id="importance-sampling-callback">Importance Sampling Callback</h2>
-<div id="cell-38" class="cell">
-<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="co"># #| export</span></span>
-<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a><span class="co"># class ImportanceSampling(Callback):</span></span>
-<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a><span class="co">#     #modify the dataloader weights to sample items with higher loss more often</span></span>
-<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a><span class="co">#     def __init__(self, filter_criterion=nn.HuberLoss(reduction='none')):</span></span>
-<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a><span class="co">#         self.filter_criterion = filter_criterion</span></span>
-<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a><span class="co">#         self.loss_list = None #store loss of each item in the dataloader</span></span>
-<span id="cb33-7"><a href="#cb33-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb33-8"><a href="#cb33-8" aria-hidden="true" tabindex="-1"></a><span class="co">#     def begin_fit(self):</span></span>
-<span id="cb33-9"><a href="#cb33-9" aria-hidden="true" tabindex="-1"></a><span class="co">#         #empty the loss list at the beginning of each fit</span></span>
-<span id="cb33-10"><a href="#cb33-10" aria-hidden="true" tabindex="-1"></a><span class="co">#         self.loss_list = None</span></span>
-<span id="cb33-11"><a href="#cb33-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb33-12"><a href="#cb33-12" aria-hidden="true" tabindex="-1"></a><span class="co">#     def after_pred(self):</span></span>
-<span id="cb33-13"><a href="#cb33-13" aria-hidden="true" tabindex="-1"></a><span class="co">#         # store loss of each item in the batch</span></span>
-<span id="cb33-14"><a href="#cb33-14" aria-hidden="true" tabindex="-1"></a><span class="co">#         if not self.training: return</span></span>
-<span id="cb33-15"><a href="#cb33-15" aria-hidden="true" tabindex="-1"></a><span class="co">#         losses = self.filter_criterion(self.learn.pred, *self.learn.yb)</span></span>
-<span id="cb33-16"><a href="#cb33-16" aria-hidden="true" tabindex="-1"></a><span class="co">#         if losses.ndim &gt;= 2: losses = losses.mean(tuple(range(1,losses.ndim)))  # If loss is multi-dimensional, take the mean over all but the first dimension</span></span>
-<span id="cb33-17"><a href="#cb33-17" aria-hidden="true" tabindex="-1"></a><span class="co">#         #get the indices of each item in the batch from the dataloader</span></span>
-<span id="cb33-18"><a href="#cb33-18" aria-hidden="true" tabindex="-1"></a><span class="co">#         # import pdb; pdb.set_trace()</span></span>
-<span id="cb33-19"><a href="#cb33-19" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb33-20"><a href="#cb33-20" aria-hidden="true" tabindex="-1"></a><span class="co">#         #if the loss_list is empty, initialize it with dataloader wgts</span></span>
-<span id="cb33-21"><a href="#cb33-21" aria-hidden="true" tabindex="-1"></a><span class="co">#         if self.loss_list is None:</span></span>
-<span id="cb33-22"><a href="#cb33-22" aria-hidden="true" tabindex="-1"></a><span class="co">#             self.loss_list = self.learn.dls.train.wgts.clone()</span></span>
-<span id="cb33-23"><a href="#cb33-23" aria-hidden="true" tabindex="-1"></a><span class="co">#             #scale the loss_list mean to the mean loss of the batch</span></span>
-<span id="cb33-24"><a href="#cb33-24" aria-hidden="true" tabindex="-1"></a><span class="co">#             self.loss_list *= self.loss_list.numel()/losses.mean()</span></span>
-<span id="cb33-25"><a href="#cb33-25" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb33-26"><a href="#cb33-26" aria-hidden="true" tabindex="-1"></a><span class="co">#         #store the loss of each item in the loss_list</span></span>
-<span id="cb33-27"><a href="#cb33-27" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb33-28"><a href="#cb33-28" aria-hidden="true" tabindex="-1"></a><span class="co">#     def after_epoch(self):</span></span>
-<span id="cb33-29"><a href="#cb33-29" aria-hidden="true" tabindex="-1"></a><span class="co">#         #modify the dataloader weights to sample items with higher loss more often</span></span>
-<span id="cb33-30"><a href="#cb33-30" aria-hidden="true" tabindex="-1"></a><span class="co">#         if not self.training: return</span></span>
-<span id="cb33-31"><a href="#cb33-31" aria-hidden="true" tabindex="-1"></a><span class="co">#         self.learn.dls.train.wgts = self.loss_list</span></span>
-<span id="cb33-32"><a href="#cb33-32" aria-hidden="true" tabindex="-1"></a><span class="co">#         self.learn.dls.train.wgts /= self.learn.dls.train.wgts.sum()</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
 <div id="cell-39" class="cell">
-<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="co"># lrn = RNNLearner(db,num_layers=1,stateful=False,metrics=[SkipNLoss(fun_rmse,1),fun_rmse],cbs=ImportanceSampling())</span></span>
-<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a><span class="co"># lrn.fit(1)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="co"># #| export</span></span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a><span class="co"># class ImportanceSampling(Callback):</span></span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a><span class="co">#     #modify the dataloader weights to sample items with higher loss more often</span></span>
+<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a><span class="co">#     def __init__(self, filter_criterion=nn.HuberLoss(reduction='none')):</span></span>
+<span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a><span class="co">#         self.filter_criterion = filter_criterion</span></span>
+<span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a><span class="co">#         self.loss_list = None #store loss of each item in the dataloader</span></span>
+<span id="cb36-7"><a href="#cb36-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-8"><a href="#cb36-8" aria-hidden="true" tabindex="-1"></a><span class="co">#     def begin_fit(self):</span></span>
+<span id="cb36-9"><a href="#cb36-9" aria-hidden="true" tabindex="-1"></a><span class="co">#         #empty the loss list at the beginning of each fit</span></span>
+<span id="cb36-10"><a href="#cb36-10" aria-hidden="true" tabindex="-1"></a><span class="co">#         self.loss_list = None</span></span>
+<span id="cb36-11"><a href="#cb36-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-12"><a href="#cb36-12" aria-hidden="true" tabindex="-1"></a><span class="co">#     def after_pred(self):</span></span>
+<span id="cb36-13"><a href="#cb36-13" aria-hidden="true" tabindex="-1"></a><span class="co">#         # store loss of each item in the batch</span></span>
+<span id="cb36-14"><a href="#cb36-14" aria-hidden="true" tabindex="-1"></a><span class="co">#         if not self.training: return</span></span>
+<span id="cb36-15"><a href="#cb36-15" aria-hidden="true" tabindex="-1"></a><span class="co">#         losses = self.filter_criterion(self.learn.pred, *self.learn.yb)</span></span>
+<span id="cb36-16"><a href="#cb36-16" aria-hidden="true" tabindex="-1"></a><span class="co">#         if losses.ndim &gt;= 2: losses = losses.mean(tuple(range(1,losses.ndim)))  # If loss is multi-dimensional, take the mean over all but the first dimension</span></span>
+<span id="cb36-17"><a href="#cb36-17" aria-hidden="true" tabindex="-1"></a><span class="co">#         #get the indices of each item in the batch from the dataloader</span></span>
+<span id="cb36-18"><a href="#cb36-18" aria-hidden="true" tabindex="-1"></a><span class="co">#         # import pdb; pdb.set_trace()</span></span>
+<span id="cb36-19"><a href="#cb36-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-20"><a href="#cb36-20" aria-hidden="true" tabindex="-1"></a><span class="co">#         #if the loss_list is empty, initialize it with dataloader wgts</span></span>
+<span id="cb36-21"><a href="#cb36-21" aria-hidden="true" tabindex="-1"></a><span class="co">#         if self.loss_list is None:</span></span>
+<span id="cb36-22"><a href="#cb36-22" aria-hidden="true" tabindex="-1"></a><span class="co">#             self.loss_list = self.learn.dls.train.wgts.clone()</span></span>
+<span id="cb36-23"><a href="#cb36-23" aria-hidden="true" tabindex="-1"></a><span class="co">#             #scale the loss_list mean to the mean loss of the batch</span></span>
+<span id="cb36-24"><a href="#cb36-24" aria-hidden="true" tabindex="-1"></a><span class="co">#             self.loss_list *= self.loss_list.numel()/losses.mean()</span></span>
+<span id="cb36-25"><a href="#cb36-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-26"><a href="#cb36-26" aria-hidden="true" tabindex="-1"></a><span class="co">#         #store the loss of each item in the loss_list</span></span>
+<span id="cb36-27"><a href="#cb36-27" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb36-28"><a href="#cb36-28" aria-hidden="true" tabindex="-1"></a><span class="co">#     def after_epoch(self):</span></span>
+<span id="cb36-29"><a href="#cb36-29" aria-hidden="true" tabindex="-1"></a><span class="co">#         #modify the dataloader weights to sample items with higher loss more often</span></span>
+<span id="cb36-30"><a href="#cb36-30" aria-hidden="true" tabindex="-1"></a><span class="co">#         if not self.training: return</span></span>
+<span id="cb36-31"><a href="#cb36-31" aria-hidden="true" tabindex="-1"></a><span class="co">#         self.learn.dls.train.wgts = self.loss_list</span></span>
+<span id="cb36-32"><a href="#cb36-32" aria-hidden="true" tabindex="-1"></a><span class="co">#         self.learn.dls.train.wgts /= self.learn.dls.train.wgts.sum()</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <div id="cell-40" class="cell">
-<div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="co"># tfm_lst = [train_valid, DfHDFCreateWindows(win_sz=500+1,stp_sz=500,clm='u')]</span></span>
-<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a><span class="co"># seq = DataBlock(blocks=(SequenceBlock.from_hdf(['u','y'],TensorSequencesInput,clm_shift=[-1,-1]),</span></span>
-<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a><span class="co">#                         SequenceBlock.from_hdf(['y'],TensorSequencesOutput,clm_shift=[1])),</span></span>
-<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a><span class="co">#                  get_items=CreateDict(tfm_lst),</span></span>
-<span id="cb35-5"><a href="#cb35-5" aria-hidden="true" tabindex="-1"></a><span class="co">#                  splitter=ApplyToDict(ParentSplitter()))</span></span>
-<span id="cb35-6"><a href="#cb35-6" aria-hidden="true" tabindex="-1"></a><span class="co"># # db = seq.dataloaders(get_hdf_files('test_data/battery'),dl_type=TbpttDl,sub_seq_len=200)</span></span>
-<span id="cb35-7"><a href="#cb35-7" aria-hidden="true" tabindex="-1"></a><span class="co"># db = seq.dataloaders(get_hdf_files('test_data/battery'),dl_type=WeightedDL_Factory(TfmdDL))</span></span>
-<span id="cb35-8"><a href="#cb35-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb35-9"><a href="#cb35-9" aria-hidden="true" tabindex="-1"></a><span class="co"># RNNLearner(db,num_layers=1,stateful=False,metrics=[SkipNLoss(fun_rmse,1),fun_rmse],cbs=ImportanceSampling()).fit(1)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="co"># lrn = RNNLearner(db,num_layers=1,stateful=False,metrics=[SkipNLoss(fun_rmse,1),fun_rmse],cbs=ImportanceSampling())</span></span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a><span class="co"># lrn.fit(1)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div id="cell-41" class="cell">
+<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="co"># tfm_lst = [train_valid, DfHDFCreateWindows(win_sz=500+1,stp_sz=500,clm='u')]</span></span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a><span class="co"># seq = DataBlock(blocks=(SequenceBlock.from_hdf(['u','y'],TensorSequencesInput,clm_shift=[-1,-1]),</span></span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a><span class="co">#                         SequenceBlock.from_hdf(['y'],TensorSequencesOutput,clm_shift=[1])),</span></span>
+<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a><span class="co">#                  get_items=CreateDict(tfm_lst),</span></span>
+<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a><span class="co">#                  splitter=ApplyToDict(ParentSplitter()))</span></span>
+<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a><span class="co"># # db = seq.dataloaders(get_hdf_files('test_data/battery'),dl_type=TbpttDl,sub_seq_len=200)</span></span>
+<span id="cb38-7"><a href="#cb38-7" aria-hidden="true" tabindex="-1"></a><span class="co"># db = seq.dataloaders(get_hdf_files('test_data/battery'),dl_type=WeightedDL_Factory(TfmdDL))</span></span>
+<span id="cb38-8"><a href="#cb38-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-9"><a href="#cb38-9" aria-hidden="true" tabindex="-1"></a><span class="co"># RNNLearner(db,num_layers=1,stateful=False,metrics=[SkipNLoss(fun_rmse,1),fun_rmse],cbs=ImportanceSampling()).fit(1)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 </section>
@@ -899,42 +892,42 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h1>Mini Batch Limiter Dataloader</h1>
 <p>A weighted sampling dataloader for nonuniforly distributed data. A factory method receives the base Dataloader class and returns the inherited weighted sampling dataloader class</p>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/data/loader.py#L246" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/data/loader.py#L258" target="_blank" style="float:right; font-size:smaller">source</a></p>
 <section id="batchlimit_factory" class="level3">
 <h3 class="anchored" data-anchor-id="batchlimit_factory">BatchLimit_Factory</h3>
 <blockquote class="blockquote">
 <pre><code> BatchLimit_Factory (cls)</code></pre>
 </blockquote>
 <p><em>Batch limited Dataloader that provides an upper limit for the number of mini batches per epoch max_batches: upper limit for minibatch count per epoch</em></p>
-<div id="cell-44" class="cell">
-<div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>dl <span class="op">=</span> BatchLimit_Factory(TfmdDL)([<span class="dv">1</span>,<span class="dv">2</span>]<span class="op">*</span><span class="dv">5</span>,bs<span class="op">=</span><span class="dv">2</span>,max_batches<span class="op">=</span><span class="dv">3</span>,shuffle<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
 <div id="cell-45" class="cell">
-<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(dl)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a>dl <span class="op">=</span> BatchLimit_Factory(TfmdDL)([<span class="dv">1</span>,<span class="dv">2</span>]<span class="op">*</span><span class="dv">5</span>,bs<span class="op">=</span><span class="dv">2</span>,max_batches<span class="op">=</span><span class="dv">3</span>,shuffle<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div id="cell-46" class="cell">
+<div class="sourceCode cell-code" id="cb41"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(dl)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <pre><code>3</code></pre>
 </div>
 </div>
-<div id="cell-46" class="cell">
-<div class="sourceCode cell-code" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a>dl.get_idxs()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-47" class="cell">
+<div class="sourceCode cell-code" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a>dl.get_idxs()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <pre><code>[0, 1, 2, 3, 4, 5]</code></pre>
 </div>
 </div>
-<div id="cell-47" class="cell">
-<div class="sourceCode cell-code" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a>BatchLimit_Factory(TfmdDL)([<span class="dv">1</span>,<span class="dv">2</span>]<span class="op">*</span><span class="dv">5</span>,bs<span class="op">=</span><span class="dv">2</span>,max_batches<span class="op">=</span><span class="dv">3</span>,shuffle<span class="op">=</span><span class="va">True</span>).get_idxs()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-display">
-<pre><code>[1, 9, 4, 2, 3, 5]</code></pre>
-</div>
-</div>
 <div id="cell-48" class="cell">
-<div class="sourceCode cell-code" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a>[x <span class="cf">for</span> x <span class="kw">in</span> dl]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a>BatchLimit_Factory(TfmdDL)([<span class="dv">1</span>,<span class="dv">2</span>]<span class="op">*</span><span class="dv">5</span>,bs<span class="op">=</span><span class="dv">2</span>,max_batches<span class="op">=</span><span class="dv">3</span>,shuffle<span class="op">=</span><span class="va">True</span>).get_idxs()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<pre><code>[9, 5, 7, 4, 6, 3]</code></pre>
+</div>
+</div>
+<div id="cell-49" class="cell">
+<div class="sourceCode cell-code" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a>[x <span class="cf">for</span> x <span class="kw">in</span> dl]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <pre><code>[tensor([1, 2]), tensor([1, 2]), tensor([1, 2])]</code></pre>
 </div>
 </div>
-<div id="cell-49" class="cell">
-<div class="sourceCode cell-code" id="cb46"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(dl)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-50" class="cell">
+<div class="sourceCode cell-code" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(dl)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <pre><code>3</code></pre>
 </div>

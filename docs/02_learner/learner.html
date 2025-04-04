@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.6.37">
+<meta name="generator" content="quarto-1.6.42">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -70,10 +70,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-29e2c20b02301cfff04dc8050bf30c7e.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-2f5df379a58b258e96c21c0638c20c03.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-d8ad1fb6f2d0baa37db2496516e2fbe4.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-6685f57f7611d95a701d58b4cc6878c0.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -368,76 +368,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="rnnlearner">RNNLearner</h3>
 <blockquote class="blockquote">
 <pre><code> RNNLearner (dls, loss_func=MSELoss(), metrics=[&lt;function fun_rmse at
-             0x7f38c72698a0&gt;], n_skip=0, cbs=None, num_layers=1,
-             hidden_size=100, linear_layers=0, return_state=False,
-             hidden_p=0.0, input_p=0.0, weight_p=0.0, rnn_type='gru',
-             ret_full_hidden=False, stateful=False, normalization='',
-             **kwargs)</code></pre>
+             0x13bd15b40&gt;], n_skip=0, stateful=False, opt_func=&lt;function
+             ranger&gt;, cbs=None, num_layers=1, hidden_size=100,
+             linear_layers=0, return_state=False, hidden_p=0.0,
+             input_p=0.0, weight_p=0.0, rnn_type='gru',
+             ret_full_hidden=False, normalization='', **kwargs)</code></pre>
 </blockquote>
 <div id="cell-9" class="cell">
 <div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>RNNLearner(dls,rnn_type<span class="op">=</span><span class="st">'gru'</span>).fit(<span class="dv">1</span>,<span class="fl">1e-4</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-display">
-
-<style>
-    /* Turns off some styling */
-    progress {
-        /* gets rid of default border in Firefox and Opera. */
-        border: none;
-        /* Needs to be in here for Safari polyfill so background images work as expected. */
-        background-size: auto;
-    }
-    progress:not([value]), progress:not([value])::-webkit-progress-bar {
-        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
-    }
-    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
-        background: #F44336;
-    }
-</style>
-</div>
-<div class="cell-output cell-output-display">
-<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th">epoch</th>
-<th data-quarto-table-cell-role="th">train_loss</th>
-<th data-quarto-table-cell-role="th">valid_loss</th>
-<th data-quarto-table-cell-role="th">fun_rmse</th>
-<th data-quarto-table-cell-role="th">time</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>0</td>
-<td>0.050820</td>
-<td>0.054230</td>
-<td>0.232794</td>
-<td>00:01</td>
-</tr>
-</tbody>
-</table>
-</div>
-</div>
-</section>
-</section>
-<section id="tcn-learner" class="level2">
-<h2 class="anchored" data-anchor-id="tcn-learner">TCN Learner</h2>
-<p>Performs better on multi input data. Higher beta values allow a way smoother prediction. Way faster then RNNs in prediction.</p>
-<hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/learner.py#L39" target="_blank" style="float:right; font-size:smaller">source</a></p>
-<section id="tcnlearner" class="level3">
-<h3 class="anchored" data-anchor-id="tcnlearner">TCNLearner</h3>
-<blockquote class="blockquote">
-<pre><code> TCNLearner (dls, hl_depth=3, loss_func=MSELoss(), metrics=[&lt;function
-             fun_rmse at 0x7f38c72698a0&gt;], n_skip=0, cbs=None,
-             hl_width=10, act=&lt;class 'torch.nn.modules.activation.Mish'&gt;,
-             bn=False, stateful=False, **kwargs)</code></pre>
-</blockquote>
-<div id="cell-12" class="cell">
-<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>TCNLearner(dls).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-stderr">
-<pre><code>/home/pheenix/miniconda3/envs/env_tsfast/lib/python3.11/site-packages/torch/nn/utils/weight_norm.py:28: UserWarning: torch.nn.utils.weight_norm is deprecated in favor of torch.nn.utils.parametrizations.weight_norm.
-  warnings.warn("torch.nn.utils.weight_norm is deprecated in favor of torch.nn.utils.parametrizations.weight_norm.")</code></pre>
-</div>
 <div class="cell-output cell-output-display">
 
 <style>
@@ -486,22 +424,123 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     
 </div>
 </div>
+<div id="cell-10" class="cell">
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>RNNLearner(dls,rnn_type<span class="op">=</span><span class="st">'gru'</span>,stateful<span class="op">=</span><span class="va">True</span>).fit(<span class="dv">1</span>,<span class="fl">1e-4</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th">epoch</th>
+<th data-quarto-table-cell-role="th">train_loss</th>
+<th data-quarto-table-cell-role="th">valid_loss</th>
+<th data-quarto-table-cell-role="th">fun_rmse</th>
+<th data-quarto-table-cell-role="th">time</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>0</td>
+<td>0.064431</td>
+<td>0.069782</td>
+<td>0.263999</td>
+<td>00:01</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</section>
+</section>
+<section id="tcn-learner" class="level2">
+<h2 class="anchored" data-anchor-id="tcn-learner">TCN Learner</h2>
+<p>Performs better on multi input data. Higher beta values allow a way smoother prediction. Way faster then RNNs in prediction.</p>
+<hr>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/learner.py#L43" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="tcnlearner" class="level3">
+<h3 class="anchored" data-anchor-id="tcnlearner">TCNLearner</h3>
+<blockquote class="blockquote">
+<pre><code> TCNLearner (dls, hl_depth=3, loss_func=MSELoss(), metrics=[&lt;function
+             fun_rmse at 0x13bd15b40&gt;], n_skip=None, cbs=None,
+             hl_width=10, act=&lt;class 'torch.nn.modules.activation.Mish'&gt;,
+             bn=False, stateful=False, **kwargs)</code></pre>
+</blockquote>
+<div id="cell-13" class="cell">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>TCNLearner(dls).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th">epoch</th>
+<th data-quarto-table-cell-role="th">train_loss</th>
+<th data-quarto-table-cell-role="th">valid_loss</th>
+<th data-quarto-table-cell-role="th">fun_rmse</th>
+<th data-quarto-table-cell-role="th">time</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>0</td>
+<td>0.283792</td>
+<td>0.292823</td>
+<td>0.540813</td>
+<td>00:00</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
 </section>
 </section>
 <section id="crnn-learner" class="level2">
 <h2 class="anchored" data-anchor-id="crnn-learner">CRNN Learner</h2>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/learner.py#L54" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/learner.py#L58" target="_blank" style="float:right; font-size:smaller">source</a></p>
 <section id="crnnlearner" class="level3">
 <h3 class="anchored" data-anchor-id="crnnlearner">CRNNLearner</h3>
 <blockquote class="blockquote">
 <pre><code> CRNNLearner (dls, loss_func=MSELoss(), metrics=[&lt;function fun_rmse at
-              0x7f38c72698a0&gt;], n_skip=0, cbs=None, num_ft=10,
+              0x13bd15b40&gt;], n_skip=0, cbs=None, num_ft=10,
               num_cnn_layers=4, num_rnn_layers=2, hs_cnn=10, hs_rnn=10,
               hidden_p=0, input_p=0, weight_p=0, rnn_type='gru',
               stateful=False, **kwargs)</code></pre>
 </blockquote>
-<div id="cell-15" class="cell">
+<div id="cell-16" class="cell">
 <div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>CRNNLearner(dls,rnn_type<span class="op">=</span><span class="st">'gru'</span>).fit(<span class="dv">1</span>,<span class="fl">3e-2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
@@ -556,7 +595,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="autoregressive-learner" class="level2">
 <h2 class="anchored" data-anchor-id="autoregressive-learner">Autoregressive Learner</h2>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/learner.py#L68" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/learner.py#L72" target="_blank" style="float:right; font-size:smaller">source</a></p>
 <section id="ar_tcnlearner" class="level3">
 <h3 class="anchored" data-anchor-id="ar_tcnlearner">AR_TCNLearner</h3>
 <blockquote class="blockquote">
@@ -565,7 +604,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
                 'torch.nn.modules.activation.Mish'&gt;, bn=False,
                 stateful=False, **kwargs)</code></pre>
 </blockquote>
-<div id="cell-18" class="cell">
+<div id="cell-20" class="cell">
 <div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>AR_TCNLearner(dls).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
@@ -586,13 +625,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </style>
 </div>
 <div class="cell-output cell-output-display">
-
-    <div>
-      <progress value="0" class="" max="1" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/1 00:00&lt;?]
-    </div>
-    
-
 <table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
 <thead>
 <tr class="header">
@@ -604,19 +636,19 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 </thead>
 <tbody>
+<tr class="odd">
+<td>0</td>
+<td>0.086329</td>
+<td>0.092425</td>
+<td>0.304461</td>
+<td>00:00</td>
+</tr>
 </tbody>
 </table>
-<p>
-
-    </p><div>
-      <progress value="0" class="" max="12" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/12 00:00&lt;?]
-    </div>
-    
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/learner.py#L87" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/learner.py#L91" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="ar_rnnlearner" class="level3">
 <h3 class="anchored" data-anchor-id="ar_rnnlearner">AR_RNNLearner</h3>
@@ -628,7 +660,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
                 ret_full_hidden=False, stateful=False, normalization='',
                 **kwargs)</code></pre>
 </blockquote>
-<div id="cell-20" class="cell">
+<div id="cell-22" class="cell">
 <div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>AR_RNNLearner(dls).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
@@ -662,10 +694,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.058972</td>
-<td>0.063309</td>
-<td>0.251510</td>
-<td>00:00</td>
+<td>0.054857</td>
+<td>0.059088</td>
+<td>0.242928</td>
+<td>00:01</td>
 </tr>
 </tbody>
 </table>

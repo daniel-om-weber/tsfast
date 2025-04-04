@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.6.37">
+<meta name="generator" content="quarto-1.6.42">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -70,10 +70,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="site_libs/quarto-html/anchor.min.js"></script>
 <link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-29e2c20b02301cfff04dc8050bf30c7e.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-2f5df379a58b258e96c21c0638c20c03.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap-d8ad1fb6f2d0baa37db2496516e2fbe4.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-6685f57f7611d95a701d58b4cc6878c0.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -104,16 +104,21 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" integrity="sha512-c3Nl8+7g4LMSTdrm621y7kf9v3SDPnhxLNhcjFJbKECVnmZHTdo+IRO05sNLTH/D3vA6u1X32ehoLC7WFVdheg==" crossorigin="anonymous"></script>
 
 <script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
-<script src="https://unpkg.com/@jupyter-widgets/html-manager@*/dist/embed-amd.js" crossorigin="anonymous"></script>
 
 
 <link rel="stylesheet" href="styles.css">
 <meta property="og:title" content="Tensor Quaternion Module – tsfast">
 <meta property="og:description" content="Pytorch Models for Sequential Data">
+<meta property="og:image" content="https://daniel-om-weber.github.io/tsfast/01_quaternions_files/figure-html/cell-43-output-1.png">
 <meta property="og:site_name" content="tsfast">
+<meta property="og:image:height" content="431">
+<meta property="og:image:width" content="547">
 <meta name="twitter:title" content="Tensor Quaternion Module – tsfast">
 <meta name="twitter:description" content="Pytorch Models for Sequential Data">
-<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://daniel-om-weber.github.io/tsfast/01_quaternions_files/figure-html/cell-43-output-1.png">
+<meta name="twitter:image-height" content="431">
+<meta name="twitter:image-width" content="547">
+<meta name="twitter:card" content="summary_large_image">
 </head>
 
 <body class="nav-sidebar floating nav-fixed">
@@ -294,10 +299,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#basic-operations" id="toc-basic-operations" class="nav-link" data-scroll-target="#basic-operations">Basic Operations</a>
   <ul class="collapse">
   <li><a href="#rad2deg" id="toc-rad2deg" class="nav-link" data-scroll-target="#rad2deg">rad2deg</a></li>
-  <li><a href="#scriptfunction-object-at-0x7f7580126d50" id="toc-scriptfunction-object-at-0x7f7580126d50" class="nav-link" data-scroll-target="#scriptfunction-object-at-0x7f7580126d50">ScriptFunction object at 0x7f7580126d50&gt;</a></li>
+  <li><a href="#scriptfunction-object-at-0x10a23e340" id="toc-scriptfunction-object-at-0x10a23e340" class="nav-link" data-scroll-target="#scriptfunction-object-at-0x10a23e340">ScriptFunction object at 0x10a23e340&gt;</a></li>
   <li><a href="#norm_quaternion" id="toc-norm_quaternion" class="nav-link" data-scroll-target="#norm_quaternion">norm_quaternion</a></li>
   <li><a href="#conjquat" id="toc-conjquat" class="nav-link" data-scroll-target="#conjquat">conjQuat</a></li>
-  <li><a href="#scriptfunction-object-at-0x7f7580127530" id="toc-scriptfunction-object-at-0x7f7580127530" class="nav-link" data-scroll-target="#scriptfunction-object-at-0x7f7580127530">ScriptFunction object at 0x7f7580127530&gt;</a></li>
+  <li><a href="#scriptfunction-object-at-0x13ced6340" id="toc-scriptfunction-object-at-0x13ced6340" class="nav-link" data-scroll-target="#scriptfunction-object-at-0x13ced6340">ScriptFunction object at 0x13ced6340&gt;</a></li>
   <li><a href="#diffquat" id="toc-diffquat" class="nav-link" data-scroll-target="#diffquat">diffQuat</a></li>
   <li><a href="#safe_acos" id="toc-safe_acos" class="nav-link" data-scroll-target="#safe_acos">safe_acos</a></li>
   <li><a href="#safe_acos_double" id="toc-safe_acos_double" class="nav-link" data-scroll-target="#safe_acos_double">safe_acos_double</a></li>
@@ -394,7 +399,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="quaternion-type" class="level2">
 <h2 class="anchored" data-anchor-id="quaternion-type">Quaternion Type</h2>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L24" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L25" target="_blank" style="float:right; font-size:smaller">source</a></p>
 <section id="tensorquaternionangle" class="level3">
 <h3 class="anchored" data-anchor-id="tensorquaternionangle">TensorQuaternionAngle</h3>
 <blockquote class="blockquote">
@@ -402,7 +407,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </blockquote>
 <p><em>A <code>Tensor</code> which support subclass pickling, and maintains metadata when casting or after methods</em></p>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L23" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L24" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="tensorquaternioninclination" class="level3">
 <h3 class="anchored" data-anchor-id="tensorquaternioninclination">TensorQuaternionInclination</h3>
@@ -448,7 +453,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L28" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L29" target="_blank" style="float:right; font-size:smaller">source</a></p>
 <section id="rad2deg" class="level3">
 <h3 class="anchored" data-anchor-id="rad2deg">rad2deg</h3>
 <blockquote class="blockquote">
@@ -459,8 +464,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 <hr>
 </section>
-<section id="scriptfunction-object-at-0x7f7580126d50" class="level3">
-<h3 class="anchored" data-anchor-id="scriptfunction-object-at-0x7f7580126d50">ScriptFunction object at 0x7f7580126d50&gt;</h3>
+<section id="scriptfunction-object-at-0x10a23e340" class="level3">
+<h3 class="anchored" data-anchor-id="scriptfunction-object-at-0x10a23e340">ScriptFunction object at 0x10a23e340&gt;</h3>
 <p><em>quat1</em>quat2*</p>
 <div id="cell-13" class="cell">
 <div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># q = tq1.repeat(1000,1)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
@@ -478,7 +483,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>                                    [<span class="op">-</span><span class="fl">0.5000</span>,  <span class="fl">0.5000</span>,  <span class="fl">0.5000</span>,  <span class="fl">0.5000</span>]]))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L42" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L43" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="norm_quaternion" class="level3">
 <h3 class="anchored" data-anchor-id="norm_quaternion">norm_quaternion</h3>
@@ -491,7 +496,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>test_eq(norm_quaternion(tq1[<span class="va">None</span>,...]),tq1[<span class="va">None</span>,...])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L48" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L49" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="conjquat" class="level3">
 <h3 class="anchored" data-anchor-id="conjquat">conjQuat</h3>
@@ -504,11 +509,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 <hr>
 </section>
-<section id="scriptfunction-object-at-0x7f7580127530" class="level3">
-<h3 class="anchored" data-anchor-id="scriptfunction-object-at-0x7f7580127530">ScriptFunction object at 0x7f7580127530&gt;</h3>
+<section id="scriptfunction-object-at-0x13ced6340" class="level3">
+<h3 class="anchored" data-anchor-id="scriptfunction-object-at-0x13ced6340">ScriptFunction object at 0x13ced6340&gt;</h3>
 <p><em>quat1</em>inv(quat2)*</p>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L52" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L53" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="diffquat" class="level3">
 <h3 class="anchored" data-anchor-id="diffquat">diffQuat</h3>
@@ -521,7 +526,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>test_ne(diffQuat(tq1,tq2),diffQuat(tq1[<span class="va">None</span>,...],tq2[<span class="va">None</span>,...]))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L77" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L78" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="safe_acos" class="level3">
 <h3 class="anchored" data-anchor-id="safe_acos">safe_acos</h3>
@@ -534,7 +539,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>test_eq(safe_acos(tensor(<span class="op">-</span><span class="fl">0.</span>)),_pi<span class="op">/</span><span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L83" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L84" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="safe_acos_double" class="level3">
 <h3 class="anchored" data-anchor-id="safe_acos_double">safe_acos_double</h3>
@@ -547,7 +552,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>test_eq(safe_acos_double(tensor(<span class="op">-</span><span class="fl">0.</span>)),_pi<span class="op">/</span><span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L93" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L100" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="relativeangle" class="level3">
 <h3 class="anchored" data-anchor-id="relativeangle">relativeAngle</h3>
@@ -555,7 +560,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <pre><code> relativeAngle (q1, q2)</code></pre>
 </blockquote>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L88" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L95" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="inclinationangle" class="level3">
 <h3 class="anchored" data-anchor-id="inclinationangle">inclinationAngle</h3>
@@ -571,7 +576,7 @@ relative: tensor([1.2000e+02, 1.7075e-06])</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L105" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L112" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="pitchangle" class="level3">
 <h3 class="anchored" data-anchor-id="pitchangle">pitchAngle</h3>
@@ -579,7 +584,7 @@ relative: tensor([1.2000e+02, 1.7075e-06])</code></pre>
 <pre><code> pitchAngle (q1, q2)</code></pre>
 </blockquote>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L98" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L105" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="rollangle" class="level3">
 <h3 class="anchored" data-anchor-id="rollangle">rollAngle</h3>
@@ -595,7 +600,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L114" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L121" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="inclinationangleabs" class="level3">
 <h3 class="anchored" data-anchor-id="inclinationangleabs">inclinationAngleAbs</h3>
@@ -609,7 +614,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L119" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L126" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="rand_quat" class="level3">
 <h3 class="anchored" data-anchor-id="rand_quat">rand_quat</h3>
@@ -617,7 +622,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 <pre><code> rand_quat ()</code></pre>
 </blockquote>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L125" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L132" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="rot_vec" class="level3">
 <h3 class="anchored" data-anchor-id="rot_vec">rot_vec</h3>
@@ -631,15 +636,15 @@ pitch: tensor([-90.,   0.])</code></pre>
 <div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>r_quat <span class="op">=</span> rand_quat()</span>
 <span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>rot_vec(g,r_quat)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
-<pre><code>tensor([[-1.3618, -4.4243, -8.6491],
-        [-1.3618, -4.4243, -8.6491],
-        [-1.3618, -4.4243, -8.6491],
-        [-1.3618, -4.4243, -8.6491],
-        [-1.3618, -4.4243, -8.6491]])</code></pre>
+<pre><code>tensor([[ 1.3754,  7.8102, -5.7746],
+        [ 1.3754,  7.8102, -5.7746],
+        [ 1.3754,  7.8102, -5.7746],
+        [ 1.3754,  7.8102, -5.7746],
+        [ 1.3754,  7.8102, -5.7746]])</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L131" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L138" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="quatfromangleaxis" class="level3">
 <h3 class="anchored" data-anchor-id="quatfromangleaxis">quatFromAngleAxis</h3>
@@ -647,7 +652,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 <pre><code> quatFromAngleAxis (angle, axis)</code></pre>
 </blockquote>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L147" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L154" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="quatinterp" class="level3">
 <h3 class="anchored" data-anchor-id="quatinterp">quatInterp</h3>
@@ -681,9 +686,11 @@ pitch: tensor([-90.,   0.])</code></pre>
 <span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a>plt.plot(inclinationAngleAbs(q))</span>
 <span id="cb47-3"><a href="#cb47-3" aria-hidden="true" tabindex="-1"></a>plt.plot(x,inclinationAngleAbs(q_i))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
-<script type="application/vnd.jupyter.widget-view+json">
-{"model_id":"37743ce5e3004f3a908b152ef517474b","version_major":2,"version_minor":0,"quarto_mimetype":"application/vnd.jupyter.widget-view+json"}
-</script>
+<div>
+<figure class="figure">
+<p><img src="01_quaternions_files/figure-html/cell-43-output-1.png" class="img-fluid figure-img"></p>
+</figure>
+</div>
 </div>
 </div>
 </section>
@@ -691,7 +698,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 <section id="loss-functions" class="level2">
 <h2 class="anchored" data-anchor-id="loss-functions">Loss Functions</h2>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L203" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L210" target="_blank" style="float:right; font-size:smaller">source</a></p>
 <section id="inclination_loss" class="level3">
 <h3 class="anchored" data-anchor-id="inclination_loss">inclination_loss</h3>
 <blockquote class="blockquote">
@@ -704,7 +711,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L209" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L216" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="inclination_loss_abs" class="level3">
 <h3 class="anchored" data-anchor-id="inclination_loss_abs">inclination_loss_abs</h3>
@@ -718,7 +725,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L215" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L222" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="inclination_loss_squared" class="level3">
 <h3 class="anchored" data-anchor-id="inclination_loss_squared">inclination_loss_squared</h3>
@@ -733,7 +740,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L221" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L228" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="inclination_loss_smooth" class="level3">
 <h3 class="anchored" data-anchor-id="inclination_loss_smooth">inclination_loss_smooth</h3>
@@ -748,7 +755,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L227" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L234" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="abs_inclination" class="level3">
 <h3 class="anchored" data-anchor-id="abs_inclination">abs_inclination</h3>
@@ -762,7 +769,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L232" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L239" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="ms_inclination" class="level3">
 <h3 class="anchored" data-anchor-id="ms_inclination">ms_inclination</h3>
@@ -776,7 +783,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L237" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L244" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="rms_inclination" class="level3">
 <h3 class="anchored" data-anchor-id="rms_inclination">rms_inclination</h3>
@@ -790,7 +797,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L242" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L249" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="smooth_inclination" class="level3">
 <h3 class="anchored" data-anchor-id="smooth_inclination">smooth_inclination</h3>
@@ -804,7 +811,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L247" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L254" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="rms_inclination_deg" class="level3">
 <h3 class="anchored" data-anchor-id="rms_inclination_deg">rms_inclination_deg</h3>
@@ -818,7 +825,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L252" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L259" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="rms_pitch_deg" class="level3">
 <h3 class="anchored" data-anchor-id="rms_pitch_deg">rms_pitch_deg</h3>
@@ -832,7 +839,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L257" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L264" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="rms_roll_deg" class="level3">
 <h3 class="anchored" data-anchor-id="rms_roll_deg">rms_roll_deg</h3>
@@ -846,7 +853,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L262" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L269" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="mean_inclination_deg" class="level3">
 <h3 class="anchored" data-anchor-id="mean_inclination_deg">mean_inclination_deg</h3>
@@ -860,7 +867,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L267" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L274" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="angle_loss" class="level3">
 <h3 class="anchored" data-anchor-id="angle_loss">angle_loss</h3>
@@ -868,7 +875,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 <pre><code> angle_loss (q1, q2)</code></pre>
 </blockquote>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L272" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L279" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="angle_loss_opt" class="level3">
 <h3 class="anchored" data-anchor-id="angle_loss_opt">angle_loss_opt</h3>
@@ -876,7 +883,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 <pre><code> angle_loss_opt (q1, q2)</code></pre>
 </blockquote>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L281" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L288" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="ms_rel_angle" class="level3">
 <h3 class="anchored" data-anchor-id="ms_rel_angle">ms_rel_angle</h3>
@@ -890,7 +897,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L286" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L293" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="abs_rel_angle" class="level3">
 <h3 class="anchored" data-anchor-id="abs_rel_angle">abs_rel_angle</h3>
@@ -898,7 +905,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 <pre><code> abs_rel_angle (q1, q2)</code></pre>
 </blockquote>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L291" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L298" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="rms_rel_angle_deg" class="level3">
 <h3 class="anchored" data-anchor-id="rms_rel_angle_deg">rms_rel_angle_deg</h3>
@@ -912,7 +919,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L296" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L303" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="mean_rel_angle_deg" class="level3">
 <h3 class="anchored" data-anchor-id="mean_rel_angle_deg">mean_rel_angle_deg</h3>
@@ -926,7 +933,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L301" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L308" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="deg_rmse" class="level3">
 <h3 class="anchored" data-anchor-id="deg_rmse">deg_rmse</h3>
@@ -939,7 +946,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 <h2 class="anchored" data-anchor-id="callbacks">Callbacks</h2>
 <p>In order to assure that the output of the model are close to unit quaternions the distance will be added to the loss</p>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L307" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L314" target="_blank" style="float:right; font-size:smaller">source</a></p>
 <section id="quaternionregularizer" class="level3">
 <h3 class="anchored" data-anchor-id="quaternionregularizer">QuaternionRegularizer</h3>
 <blockquote class="blockquote">
@@ -949,7 +956,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 </blockquote>
 <p><em>Callback that adds AR and TAR to the loss, calculated by output of provided layer</em></p>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L330" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L337" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="augmentation_groups" class="level3">
 <h3 class="anchored" data-anchor-id="augmentation_groups">augmentation_groups</h3>
@@ -962,7 +969,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 <span id="cb99-2"><a href="#cb99-2" aria-hidden="true" tabindex="-1"></a>test_eq(augmentation_groups(u_raw_groups),[[<span class="dv">0</span>,<span class="dv">2</span>],[<span class="dv">3</span>,<span class="dv">5</span>]])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L336" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L343" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="quaternionaugmentation" class="level3">
 <h3 class="anchored" data-anchor-id="quaternionaugmentation">QuaternionAugmentation</h3>
@@ -984,8 +991,8 @@ pitch: tensor([-90.,   0.])</code></pre>
 <span id="cb101-11"><a href="#cb101-11" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb101-12"><a href="#cb101-12" aria-hidden="true" tabindex="-1"></a>lrn <span class="op">=</span> Learner(dls,model,loss_func<span class="op">=</span>ms_inclination,opt_func<span class="op">=</span>ranger,metrics<span class="op">=</span>metrics)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
-<pre><code>/home/pheenix/miniconda3/envs/env_tsfast/lib/python3.11/site-packages/torch/nn/utils/weight_norm.py:28: UserWarning: torch.nn.utils.weight_norm is deprecated in favor of torch.nn.utils.parametrizations.weight_norm.
-  warnings.warn("torch.nn.utils.weight_norm is deprecated in favor of torch.nn.utils.parametrizations.weight_norm.")</code></pre>
+<pre><code>/opt/homebrew/Caskroom/miniforge/base/envs/env_tsfast/lib/python3.10/site-packages/torch/nn/utils/weight_norm.py:143: FutureWarning: `torch.nn.utils.weight_norm` is deprecated in favor of `torch.nn.utils.parametrizations.weight_norm`.
+  WeightNorm.apply(module, name, dim)</code></pre>
 </div>
 </div>
 <div id="cell-88" class="cell">
@@ -1022,13 +1029,17 @@ pitch: tensor([-90.,   0.])</code></pre>
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>3.321246</td>
-<td>3.187154</td>
-<td>102.287865</td>
-<td>00:02</td>
+<td>2.289876</td>
+<td>1.290059</td>
+<td>65.076988</td>
+<td>00:01</td>
 </tr>
 </tbody>
 </table>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/var/folders/pc/13zbh_m514n1tp522cx9npt00000gn/T/ipykernel_31206/3976315585.py:9: UserWarning: Float64 precision not supported on mps:0 device. Falling back to float32. This may reduce numerical accuracy of quaternion operations. Error: Cannot convert a MPS Tensor to float64 dtype as the MPS framework doesn't support float64. Please use float32 instead.
+  warnings.warn(f"Float64 precision not supported on {t.device} device. Falling back to float32. This may reduce numerical accuracy of quaternion operations. Error: {e}")</code></pre>
 </div>
 </div>
 </section>
@@ -1036,7 +1047,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 <section id="resampling-model" class="level2">
 <h2 class="anchored" data-anchor-id="resampling-model">Resampling Model</h2>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L367" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L374" target="_blank" style="float:right; font-size:smaller">source</a></p>
 <section id="quaternion_resamplingmodel" class="level3">
 <h3 class="anchored" data-anchor-id="quaternion_resamplingmodel">Quaternion_ResamplingModel</h3>
 <blockquote class="blockquote">
@@ -1046,20 +1057,20 @@ pitch: tensor([-90.,   0.])</code></pre>
 <p>*Module that resamples the signal before and after the prediction of its model. Usefull for using models on datasets with different samplingrates.</p>
 <p>sampling_method: method used for resampling [‘resample’,‘interpolate’]*</p>
 <div id="cell-91" class="cell">
-<div class="sourceCode cell-code" id="cb105"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb105-1"><a href="#cb105-1" aria-hidden="true" tabindex="-1"></a><span class="co"># dls = DataBlock(blocks=(SequenceBlock.from_hdf(u + ['dt'],TensorSequencesInput),</span></span>
-<span id="cb105-2"><a href="#cb105-2" aria-hidden="true" tabindex="-1"></a><span class="co">#                         SequenceBlock.from_hdf(y,TensorQuaternionInclination)),</span></span>
-<span id="cb105-3"><a href="#cb105-3" aria-hidden="true" tabindex="-1"></a><span class="co">#                 get_items=tfm_src,</span></span>
-<span id="cb105-4"><a href="#cb105-4" aria-hidden="true" tabindex="-1"></a><span class="co">#                 splitter=ApplyToDict(FuncSplitter(lambda o: 'experiment2' in str(o)))</span></span>
-<span id="cb105-5"><a href="#cb105-5" aria-hidden="true" tabindex="-1"></a><span class="co">#                ).dataloaders(hdf_files,shufflish=True,bs=128)</span></span>
-<span id="cb105-6"><a href="#cb105-6" aria-hidden="true" tabindex="-1"></a><span class="co"># model = TCN(inp,out,hl_depth=8,hl_width=10)</span></span>
-<span id="cb105-7"><a href="#cb105-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Learner(dls,Quaternion_ResamplingModel(model,10,quaternion_sampling=False),loss_func=ms_inclination).fit(1)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb106"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb106-1"><a href="#cb106-1" aria-hidden="true" tabindex="-1"></a><span class="co"># dls = DataBlock(blocks=(SequenceBlock.from_hdf(u + ['dt'],TensorSequencesInput),</span></span>
+<span id="cb106-2"><a href="#cb106-2" aria-hidden="true" tabindex="-1"></a><span class="co">#                         SequenceBlock.from_hdf(y,TensorQuaternionInclination)),</span></span>
+<span id="cb106-3"><a href="#cb106-3" aria-hidden="true" tabindex="-1"></a><span class="co">#                 get_items=tfm_src,</span></span>
+<span id="cb106-4"><a href="#cb106-4" aria-hidden="true" tabindex="-1"></a><span class="co">#                 splitter=ApplyToDict(FuncSplitter(lambda o: 'experiment2' in str(o)))</span></span>
+<span id="cb106-5"><a href="#cb106-5" aria-hidden="true" tabindex="-1"></a><span class="co">#                ).dataloaders(hdf_files,shufflish=True,bs=128)</span></span>
+<span id="cb106-6"><a href="#cb106-6" aria-hidden="true" tabindex="-1"></a><span class="co"># model = TCN(inp,out,hl_depth=8,hl_width=10)</span></span>
+<span id="cb106-7"><a href="#cb106-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Learner(dls,Quaternion_ResamplingModel(model,10,quaternion_sampling=False),loss_func=ms_inclination).fit(1)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 </section>
 <section id="quaternion-datablock" class="level2">
 <h2 class="anchored" data-anchor-id="quaternion-datablock">Quaternion Datablock</h2>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L570" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L577" target="_blank" style="float:right; font-size:smaller">source</a></p>
 <section id="hdf2quaternion" class="level3">
 <h3 class="anchored" data-anchor-id="hdf2quaternion">HDF2Quaternion</h3>
 <blockquote class="blockquote">
@@ -1069,7 +1080,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 </blockquote>
 <p><em>Delegates (<code>__call__</code>,<code>decode</code>,<code>setup</code>) to (<code>encodes</code>,<code>decodes</code>,<code>setups</code>) if <code>split_idx</code> matches</em></p>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L608" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L615" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="quaternionblock" class="level3">
 <h3 class="anchored" data-anchor-id="quaternionblock">QuaternionBlock</h3>
@@ -1078,22 +1089,22 @@ pitch: tensor([-90.,   0.])</code></pre>
 </blockquote>
 <p><em>A basic wrapper that links defaults transforms for the data block API</em></p>
 <div id="cell-95" class="cell">
-<div class="sourceCode cell-code" id="cb108"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb108-1"><a href="#cb108-1" aria-hidden="true" tabindex="-1"></a>tfm_src <span class="op">=</span> CreateDict([DfResamplingFactor(<span class="dv">2000</span><span class="op">/</span><span class="dv">7</span>,np.linspace(<span class="dv">50</span>,<span class="dv">500</span>,<span class="dv">10</span>)),DfHDFCreateWindows(win_sz<span class="op">=</span><span class="dv">1000</span>,stp_sz<span class="op">=</span><span class="dv">100</span>,clm<span class="op">=</span><span class="st">'acc_x'</span>)])</span>
-<span id="cb108-2"><a href="#cb108-2" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> DataBlock(blocks<span class="op">=</span>(SequenceBlock.from_hdf(u,TensorSequencesInput),</span>
-<span id="cb108-3"><a href="#cb108-3" aria-hidden="true" tabindex="-1"></a>                        QuaternionBlock.from_hdf(y)),</span>
-<span id="cb108-4"><a href="#cb108-4" aria-hidden="true" tabindex="-1"></a>                get_items<span class="op">=</span>tfm_src,</span>
-<span id="cb108-5"><a href="#cb108-5" aria-hidden="true" tabindex="-1"></a>                splitter<span class="op">=</span>RandomSplitter(<span class="fl">0.5</span>)</span>
-<span id="cb108-6"><a href="#cb108-6" aria-hidden="true" tabindex="-1"></a>               ).dataloaders(hdf_files,bs<span class="op">=</span><span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb109"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb109-1"><a href="#cb109-1" aria-hidden="true" tabindex="-1"></a>tfm_src <span class="op">=</span> CreateDict([DfResamplingFactor(<span class="dv">2000</span><span class="op">/</span><span class="dv">7</span>,np.linspace(<span class="dv">50</span>,<span class="dv">500</span>,<span class="dv">10</span>)),DfHDFCreateWindows(win_sz<span class="op">=</span><span class="dv">1000</span>,stp_sz<span class="op">=</span><span class="dv">100</span>,clm<span class="op">=</span><span class="st">'acc_x'</span>)])</span>
+<span id="cb109-2"><a href="#cb109-2" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> DataBlock(blocks<span class="op">=</span>(SequenceBlock.from_hdf(u,TensorSequencesInput),</span>
+<span id="cb109-3"><a href="#cb109-3" aria-hidden="true" tabindex="-1"></a>                        QuaternionBlock.from_hdf(y)),</span>
+<span id="cb109-4"><a href="#cb109-4" aria-hidden="true" tabindex="-1"></a>                get_items<span class="op">=</span>tfm_src,</span>
+<span id="cb109-5"><a href="#cb109-5" aria-hidden="true" tabindex="-1"></a>                splitter<span class="op">=</span>RandomSplitter(<span class="fl">0.5</span>)</span>
+<span id="cb109-6"><a href="#cb109-6" aria-hidden="true" tabindex="-1"></a>               ).dataloaders(hdf_files,bs<span class="op">=</span><span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <div id="cell-96" class="cell">
-<div class="sourceCode cell-code" id="cb109"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb109-1"><a href="#cb109-1" aria-hidden="true" tabindex="-1"></a><span class="co">#test_eq(len(dls.items),83877)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb110"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb110-1"><a href="#cb110-1" aria-hidden="true" tabindex="-1"></a><span class="co">#test_eq(len(dls.items),83877)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 </section>
 <section id="inclination-datablock" class="level2">
 <h2 class="anchored" data-anchor-id="inclination-datablock">Inclination Datablock</h2>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L620" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L627" target="_blank" style="float:right; font-size:smaller">source</a></p>
 <section id="tensorinclination" class="level3">
 <h3 class="anchored" data-anchor-id="tensorinclination">TensorInclination</h3>
 <blockquote class="blockquote">
@@ -1101,7 +1112,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 </blockquote>
 <p><em>A <code>Tensor</code> which support subclass pickling, and maintains metadata when casting or after methods</em></p>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L624" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L631" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="hdf2inclination" class="level3">
 <h3 class="anchored" data-anchor-id="hdf2inclination">HDF2Inclination</h3>
@@ -1112,7 +1123,7 @@ pitch: tensor([-90.,   0.])</code></pre>
 </blockquote>
 <p><em>Delegates (<code>__call__</code>,<code>decode</code>,<code>setup</code>) to (<code>encodes</code>,<code>decodes</code>,<code>setups</code>) if <code>split_idx</code> matches</em></p>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L635" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L642" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="inclinationblock" class="level3">
 <h3 class="anchored" data-anchor-id="inclinationblock">InclinationBlock</h3>
@@ -1121,31 +1132,31 @@ pitch: tensor([-90.,   0.])</code></pre>
 </blockquote>
 <p><em>A basic wrapper that links defaults transforms for the data block API</em></p>
 <div id="cell-101" class="cell">
-<div class="sourceCode cell-code" id="cb113"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb113-1"><a href="#cb113-1" aria-hidden="true" tabindex="-1"></a><span class="co"># f_paths = '/mnt/Data/Systemidentification/Orientation_Estimation/'</span></span>
-<span id="cb113-2"><a href="#cb113-2" aria-hidden="true" tabindex="-1"></a><span class="co"># hdf_files = get_hdf_files(f_paths)</span></span>
-<span id="cb113-3"><a href="#cb113-3" aria-hidden="true" tabindex="-1"></a><span class="co"># tfm_src = CreateDict([DfHDFCreateWindows(win_sz=1000,stp_sz=100,clm='acc_x')])</span></span>
-<span id="cb113-4"><a href="#cb113-4" aria-hidden="true" tabindex="-1"></a><span class="co"># u = ['acc_x','acc_y','acc_z','gyr_x','gyr_y','gyr_z']</span></span>
-<span id="cb113-5"><a href="#cb113-5" aria-hidden="true" tabindex="-1"></a><span class="co"># # u = ['acc_x','acc_y','acc_z','gyr_x','gyr_y','gyr_z','mag_x','mag_y','mag_z']</span></span>
-<span id="cb113-6"><a href="#cb113-6" aria-hidden="true" tabindex="-1"></a><span class="co"># y =['opt_a','opt_b','opt_c','opt_d']</span></span>
-<span id="cb113-7"><a href="#cb113-7" aria-hidden="true" tabindex="-1"></a><span class="co"># dls = DataBlock(blocks=(SequenceBlock.from_hdf(u),</span></span>
-<span id="cb113-8"><a href="#cb113-8" aria-hidden="true" tabindex="-1"></a><span class="co">#                         InclinationBlock.from_hdf(y)),</span></span>
-<span id="cb113-9"><a href="#cb113-9" aria-hidden="true" tabindex="-1"></a><span class="co">#                 get_items=tfm_src,</span></span>
-<span id="cb113-10"><a href="#cb113-10" aria-hidden="true" tabindex="-1"></a><span class="co">#                 splitter=ApplyToDict(FuncSplitter(lambda o: 'experiment2' in str(o)))</span></span>
-<span id="cb113-11"><a href="#cb113-11" aria-hidden="true" tabindex="-1"></a><span class="co">#                ).dataloaders(hdf_files,shufflish=True,bs=128)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb114"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb114-1"><a href="#cb114-1" aria-hidden="true" tabindex="-1"></a><span class="co"># f_paths = '/mnt/Data/Systemidentification/Orientation_Estimation/'</span></span>
+<span id="cb114-2"><a href="#cb114-2" aria-hidden="true" tabindex="-1"></a><span class="co"># hdf_files = get_hdf_files(f_paths)</span></span>
+<span id="cb114-3"><a href="#cb114-3" aria-hidden="true" tabindex="-1"></a><span class="co"># tfm_src = CreateDict([DfHDFCreateWindows(win_sz=1000,stp_sz=100,clm='acc_x')])</span></span>
+<span id="cb114-4"><a href="#cb114-4" aria-hidden="true" tabindex="-1"></a><span class="co"># u = ['acc_x','acc_y','acc_z','gyr_x','gyr_y','gyr_z']</span></span>
+<span id="cb114-5"><a href="#cb114-5" aria-hidden="true" tabindex="-1"></a><span class="co"># # u = ['acc_x','acc_y','acc_z','gyr_x','gyr_y','gyr_z','mag_x','mag_y','mag_z']</span></span>
+<span id="cb114-6"><a href="#cb114-6" aria-hidden="true" tabindex="-1"></a><span class="co"># y =['opt_a','opt_b','opt_c','opt_d']</span></span>
+<span id="cb114-7"><a href="#cb114-7" aria-hidden="true" tabindex="-1"></a><span class="co"># dls = DataBlock(blocks=(SequenceBlock.from_hdf(u),</span></span>
+<span id="cb114-8"><a href="#cb114-8" aria-hidden="true" tabindex="-1"></a><span class="co">#                         InclinationBlock.from_hdf(y)),</span></span>
+<span id="cb114-9"><a href="#cb114-9" aria-hidden="true" tabindex="-1"></a><span class="co">#                 get_items=tfm_src,</span></span>
+<span id="cb114-10"><a href="#cb114-10" aria-hidden="true" tabindex="-1"></a><span class="co">#                 splitter=ApplyToDict(FuncSplitter(lambda o: 'experiment2' in str(o)))</span></span>
+<span id="cb114-11"><a href="#cb114-11" aria-hidden="true" tabindex="-1"></a><span class="co">#                ).dataloaders(hdf_files,shufflish=True,bs=128)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 </section>
 <section id="show-results" class="level2">
 <h2 class="anchored" data-anchor-id="show-results">Show Results</h2>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L647" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L654" target="_blank" style="float:right; font-size:smaller">source</a></p>
 <section id="plot_scalar_inclination" class="level3">
 <h3 class="anchored" data-anchor-id="plot_scalar_inclination">plot_scalar_inclination</h3>
 <blockquote class="blockquote">
 <pre><code> plot_scalar_inclination (axs, in_sig, targ_sig, out_sig=None, **kwargs)</code></pre>
 </blockquote>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L664" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L671" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="plot_quaternion_inclination" class="level3">
 <h3 class="anchored" data-anchor-id="plot_quaternion_inclination">plot_quaternion_inclination</h3>
@@ -1154,7 +1165,7 @@ pitch: tensor([-90.,   0.])</code></pre>
                               **kwargs)</code></pre>
 </blockquote>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L686" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/quaternions.py#L693" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="plot_quaternion_rel_angle" class="level3">
 <h3 class="anchored" data-anchor-id="plot_quaternion_rel_angle">plot_quaternion_rel_angle</h3>
@@ -1162,20 +1173,24 @@ pitch: tensor([-90.,   0.])</code></pre>
 <pre><code> plot_quaternion_rel_angle (axs, in_sig, targ_sig, out_sig=None, **kwargs)</code></pre>
 </blockquote>
 <div id="cell-106" class="cell">
-<div class="sourceCode cell-code" id="cb117"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb117-1"><a href="#cb117-1" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">3</span>,ds_idx<span class="op">=</span><span class="dv">0</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb118"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb118-1"><a href="#cb118-1" aria-hidden="true" tabindex="-1"></a>dls.show_batch(max_n<span class="op">=</span><span class="dv">3</span>,ds_idx<span class="op">=</span><span class="dv">0</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
-<script type="application/vnd.jupyter.widget-view+json">
-{"model_id":"6ee41a3ac6844260a1b3ca03a2d43f7d","version_major":2,"version_minor":0,"quarto_mimetype":"application/vnd.jupyter.widget-view+json"}
-</script>
+<div>
+<figure class="figure">
+<p><img src="01_quaternions_files/figure-html/cell-97-output-1.png" class="img-fluid figure-img"></p>
+</figure>
+</div>
 </div>
 <div class="cell-output cell-output-display">
-<script type="application/vnd.jupyter.widget-view+json">
-{"model_id":"4c6a61ef811b4ec79ff1baf3a7358d7d","version_major":2,"version_minor":0,"quarto_mimetype":"application/vnd.jupyter.widget-view+json"}
-</script>
+<div>
+<figure class="figure">
+<p><img src="01_quaternions_files/figure-html/cell-97-output-2.png" class="img-fluid figure-img"></p>
+</figure>
+</div>
 </div>
 </div>
 <div id="cell-113" class="cell">
-<div class="sourceCode cell-code" id="cb118"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb118-1"><a href="#cb118-1" aria-hidden="true" tabindex="-1"></a>lrn.show_results(max_n<span class="op">=</span><span class="dv">3</span>,ds_idx<span class="op">=</span><span class="dv">0</span>,shuffle<span class="op">=</span><span class="va">True</span>,quat<span class="op">=</span><span class="va">True</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb119"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb119-1"><a href="#cb119-1" aria-hidden="true" tabindex="-1"></a>lrn.show_results(max_n<span class="op">=</span><span class="dv">3</span>,ds_idx<span class="op">=</span><span class="dv">0</span>,shuffle<span class="op">=</span><span class="va">True</span>,quat<span class="op">=</span><span class="va">True</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
 <style>
@@ -1197,20 +1212,30 @@ pitch: tensor([-90.,   0.])</code></pre>
 <div class="cell-output cell-output-display">
 
 </div>
-<div class="cell-output cell-output-display">
-<script type="application/vnd.jupyter.widget-view+json">
-{"model_id":"9ad1bc5ee4aa46fc8129f49a8e295a57","version_major":2,"version_minor":0,"quarto_mimetype":"application/vnd.jupyter.widget-view+json"}
-</script>
+<div class="cell-output cell-output-stderr">
+<pre><code>/var/folders/pc/13zbh_m514n1tp522cx9npt00000gn/T/ipykernel_31206/3976315585.py:9: UserWarning: Float64 precision not supported on mps:0 device. Falling back to float32. This may reduce numerical accuracy of quaternion operations. Error: Cannot convert a MPS Tensor to float64 dtype as the MPS framework doesn't support float64. Please use float32 instead.
+  warnings.warn(f"Float64 precision not supported on {t.device} device. Falling back to float32. This may reduce numerical accuracy of quaternion operations. Error: {e}")</code></pre>
 </div>
 <div class="cell-output cell-output-display">
-<script type="application/vnd.jupyter.widget-view+json">
-{"model_id":"1deabd9bd3e542a6a4fae55775915aa3","version_major":2,"version_minor":0,"quarto_mimetype":"application/vnd.jupyter.widget-view+json"}
-</script>
+<div>
+<figure class="figure">
+<p><img src="01_quaternions_files/figure-html/cell-104-output-4.png" class="img-fluid figure-img"></p>
+</figure>
+</div>
 </div>
 <div class="cell-output cell-output-display">
-<script type="application/vnd.jupyter.widget-view+json">
-{"model_id":"40e7b92e8bb841c7981ef4ca6064ce55","version_major":2,"version_minor":0,"quarto_mimetype":"application/vnd.jupyter.widget-view+json"}
-</script>
+<div>
+<figure class="figure">
+<p><img src="01_quaternions_files/figure-html/cell-104-output-5.png" class="img-fluid figure-img"></p>
+</figure>
+</div>
+</div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="01_quaternions_files/figure-html/cell-104-output-6.png" class="img-fluid figure-img"></p>
+</figure>
+</div>
 </div>
 </div>
 
@@ -1219,9 +1244,6 @@ pitch: tensor([-90.,   0.])</code></pre>
 </section>
 
 </main> <!-- /main -->
-<script type="application/vnd.jupyter.widget-state+json">
-{"state":{},"version_major":2,"version_minor":0}
-</script>
 <script id="quarto-html-after-body" type="application/javascript">
 window.document.addEventListener("DOMContentLoaded", function (event) {
   const toggleBodyColorMode = (bsSheetEl) => {

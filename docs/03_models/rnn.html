@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.6.37">
+<meta name="generator" content="quarto-1.6.42">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -70,10 +70,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-29e2c20b02301cfff04dc8050bf30c7e.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-2f5df379a58b258e96c21c0638c20c03.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-d8ad1fb6f2d0baa37db2496516e2fbe4.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-6685f57f7611d95a701d58b4cc6878c0.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -384,12 +384,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </blockquote>
 <p>*Base class for all neural network modules.</p>
 <p>Your models should also subclass this class.</p>
-<p>Modules can also contain other Modules, allowing to nest them in a tree structure. You can assign the submodules as regular attributes::</p>
+<p>Modules can also contain other Modules, allowing them to be nested in a tree structure. You can assign the submodules as regular attributes::</p>
 <pre><code>import torch.nn as nn
 import torch.nn.functional as F
 
 class Model(nn.Module):
-    def __init__(self):
+    def __init__(self) -&gt; None:
         super().__init__()
         self.conv1 = nn.Conv2d(1, 20, 5)
         self.conv2 = nn.Conv2d(20, 20, 5)
@@ -397,7 +397,7 @@ class Model(nn.Module):
     def forward(self, x):
         x = F.relu(self.conv1(x))
         return F.relu(self.conv2(x))</code></pre>
-<p>Submodules assigned in this way will be registered, and will have their parameters converted too when you call :meth:<code>to</code>, etc.</p>
+<p>Submodules assigned in this way will be registered, and will also have their parameters converted when you call :meth:<code>to</code>, etc.</p>
 <p>.. note:: As per the example above, an <code>__init__()</code> call to the parent class must be made before assignment on the child.</p>
 <p>:ivar training: Boolean represents whether this module is in training or evaluation mode. :vartype training: bool*</p>
 <div id="cell-10" class="cell">
@@ -434,12 +434,12 @@ class Model(nn.Module):
 </blockquote>
 <p>*Base class for all neural network modules.</p>
 <p>Your models should also subclass this class.</p>
-<p>Modules can also contain other Modules, allowing to nest them in a tree structure. You can assign the submodules as regular attributes::</p>
+<p>Modules can also contain other Modules, allowing them to be nested in a tree structure. You can assign the submodules as regular attributes::</p>
 <pre><code>import torch.nn as nn
 import torch.nn.functional as F
 
 class Model(nn.Module):
-    def __init__(self):
+    def __init__(self) -&gt; None:
         super().__init__()
         self.conv1 = nn.Conv2d(1, 20, 5)
         self.conv2 = nn.Conv2d(20, 20, 5)
@@ -447,7 +447,7 @@ class Model(nn.Module):
     def forward(self, x):
         x = F.relu(self.conv1(x))
         return F.relu(self.conv2(x))</code></pre>
-<p>Submodules assigned in this way will be registered, and will have their parameters converted too when you call :meth:<code>to</code>, etc.</p>
+<p>Submodules assigned in this way will be registered, and will also have their parameters converted when you call :meth:<code>to</code>, etc.</p>
 <p>.. note:: As per the example above, an <code>__init__()</code> call to the parent class must be made before assignment on the child.</p>
 <p>:ivar training: Boolean represents whether this module is in training or evaluation mode. :vartype training: bool*</p>
 <hr>
@@ -546,12 +546,12 @@ model = nn.Sequential(OrderedDict([
 </blockquote>
 <p>*Base class for all neural network modules.</p>
 <p>Your models should also subclass this class.</p>
-<p>Modules can also contain other Modules, allowing to nest them in a tree structure. You can assign the submodules as regular attributes::</p>
+<p>Modules can also contain other Modules, allowing them to be nested in a tree structure. You can assign the submodules as regular attributes::</p>
 <pre><code>import torch.nn as nn
 import torch.nn.functional as F
 
 class Model(nn.Module):
-    def __init__(self):
+    def __init__(self) -&gt; None:
         super().__init__()
         self.conv1 = nn.Conv2d(1, 20, 5)
         self.conv2 = nn.Conv2d(20, 20, 5)
@@ -559,7 +559,7 @@ class Model(nn.Module):
     def forward(self, x):
         x = F.relu(self.conv1(x))
         return F.relu(self.conv2(x))</code></pre>
-<p>Submodules assigned in this way will be registered, and will have their parameters converted too when you call :meth:<code>to</code>, etc.</p>
+<p>Submodules assigned in this way will be registered, and will also have their parameters converted when you call :meth:<code>to</code>, etc.</p>
 <p>.. note:: As per the example above, an <code>__init__()</code> call to the parent class must be made before assignment on the child.</p>
 <p>:ivar training: Boolean represents whether this module is in training or evaluation mode. :vartype training: bool*</p>
 <hr>
@@ -622,12 +622,12 @@ model = nn.Sequential(OrderedDict([
 </blockquote>
 <p>*Base class for all neural network modules.</p>
 <p>Your models should also subclass this class.</p>
-<p>Modules can also contain other Modules, allowing to nest them in a tree structure. You can assign the submodules as regular attributes::</p>
+<p>Modules can also contain other Modules, allowing them to be nested in a tree structure. You can assign the submodules as regular attributes::</p>
 <pre><code>import torch.nn as nn
 import torch.nn.functional as F
 
 class Model(nn.Module):
-    def __init__(self):
+    def __init__(self) -&gt; None:
         super().__init__()
         self.conv1 = nn.Conv2d(1, 20, 5)
         self.conv2 = nn.Conv2d(20, 20, 5)
@@ -635,7 +635,7 @@ class Model(nn.Module):
     def forward(self, x):
         x = F.relu(self.conv1(x))
         return F.relu(self.conv2(x))</code></pre>
-<p>Submodules assigned in this way will be registered, and will have their parameters converted too when you call :meth:<code>to</code>, etc.</p>
+<p>Submodules assigned in this way will be registered, and will also have their parameters converted when you call :meth:<code>to</code>, etc.</p>
 <p>.. note:: As per the example above, an <code>__init__()</code> call to the parent class must be made before assignment on the child.</p>
 <p>:ivar training: Boolean represents whether this module is in training or evaluation mode. :vartype training: bool*</p>
 
