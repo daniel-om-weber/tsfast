@@ -381,9 +381,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="rnnlearner" class="level3">
 <h3 class="anchored" data-anchor-id="rnnlearner">RNNLearner</h3>
 <blockquote class="blockquote">
-<pre><code> RNNLearner (dls, loss_func=MSELoss(), metrics=[&lt;function fun_rmse at
-             0x13bd15b40&gt;], n_skip=0, stateful=False, opt_func=&lt;function
-             ranger&gt;, cbs=None, num_layers=1, hidden_size=100,
+<pre><code> RNNLearner (dls, loss_func=L1Loss(), metrics=[&lt;function fun_rmse at
+             0x145fb9630&gt;], n_skip=0, num_layers=1, hidden_size=100,
+             stateful=False, opt_func=&lt;function Adam&gt;, cbs=None,
              linear_layers=0, return_state=False, hidden_p=0.0,
              input_p=0.0, weight_p=0.0, rnn_type='gru',
              ret_full_hidden=False, normalization='', **kwargs)</code></pre>
@@ -409,13 +409,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </style>
 </div>
 <div class="cell-output cell-output-display">
-
-    <div>
-      <progress value="0" class="" max="1" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/1 00:00&lt;?]
-    </div>
-    
-
 <table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
 <thead>
 <tr class="header">
@@ -427,15 +420,15 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 </thead>
 <tbody>
+<tr class="odd">
+<td>0</td>
+<td>0.026982</td>
+<td>0.025624</td>
+<td>0.226313</td>
+<td>00:01</td>
+</tr>
 </tbody>
 </table>
-<p>
-
-    </p><div>
-      <progress value="0" class="" max="12" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/12 00:00&lt;?]
-    </div>
-    
 </div>
 </div>
 <div id="cell-10" class="cell">
@@ -472,9 +465,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.064431</td>
-<td>0.069782</td>
-<td>0.263999</td>
+<td>0.024248</td>
+<td>0.022891</td>
+<td>0.213916</td>
 <td>00:01</td>
 </tr>
 </tbody>
@@ -491,10 +484,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="tcnlearner" class="level3">
 <h3 class="anchored" data-anchor-id="tcnlearner">TCNLearner</h3>
 <blockquote class="blockquote">
-<pre><code> TCNLearner (dls, hl_depth=3, loss_func=MSELoss(), metrics=[&lt;function
-             fun_rmse at 0x13bd15b40&gt;], n_skip=None, cbs=None,
-             hl_width=10, act=&lt;class 'torch.nn.modules.activation.Mish'&gt;,
-             bn=False, stateful=False, **kwargs)</code></pre>
+<pre><code> TCNLearner (dls, num_layers=3, hidden_size=100, loss_func=L1Loss(),
+             metrics=[&lt;function fun_rmse at 0x145fb9630&gt;], n_skip=None,
+             opt_func=&lt;function Adam&gt;, cbs=None, hl_depth=1, hl_width=10,
+             act=&lt;class 'torch.nn.modules.activation.Mish'&gt;, bn=False,
+             stateful=False, **kwargs)</code></pre>
 </blockquote>
 <div id="cell-13" class="cell">
 <div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>TCNLearner(dls).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
@@ -530,9 +524,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.283792</td>
-<td>0.292823</td>
-<td>0.540813</td>
+<td>0.112962</td>
+<td>0.010284</td>
+<td>0.143394</td>
 <td>00:00</td>
 </tr>
 </tbody>
@@ -548,11 +542,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="crnnlearner" class="level3">
 <h3 class="anchored" data-anchor-id="crnnlearner">CRNNLearner</h3>
 <blockquote class="blockquote">
-<pre><code> CRNNLearner (dls, loss_func=MSELoss(), metrics=[&lt;function fun_rmse at
-              0x13bd15b40&gt;], n_skip=0, cbs=None, num_ft=10,
-              num_cnn_layers=4, num_rnn_layers=2, hs_cnn=10, hs_rnn=10,
-              hidden_p=0, input_p=0, weight_p=0, rnn_type='gru',
-              stateful=False, **kwargs)</code></pre>
+<pre><code> CRNNLearner (dls, loss_func=L1Loss(), metrics=[&lt;function fun_rmse at
+              0x145fb9630&gt;], n_skip=0, opt_func=&lt;function Adam&gt;, cbs=None,
+              num_ft=10, num_cnn_layers=4, num_rnn_layers=2, hs_cnn=10,
+              hs_rnn=10, hidden_p=0, input_p=0, weight_p=0,
+              rnn_type='gru', stateful=False, **kwargs)</code></pre>
 </blockquote>
 <div id="cell-16" class="cell">
 <div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>CRNNLearner(dls,rnn_type<span class="op">=</span><span class="st">'gru'</span>).fit(<span class="dv">1</span>,<span class="fl">3e-2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
@@ -575,13 +569,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </style>
 </div>
 <div class="cell-output cell-output-display">
-
-    <div>
-      <progress value="0" class="" max="1" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/1 00:00&lt;?]
-    </div>
-    
-
 <table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
 <thead>
 <tr class="header">
@@ -593,15 +580,15 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 </thead>
 <tbody>
+<tr class="odd">
+<td>0</td>
+<td>0.016305</td>
+<td>0.004414</td>
+<td>0.093948</td>
+<td>00:02</td>
+</tr>
 </tbody>
 </table>
-<p>
-
-    </p><div>
-      <progress value="0" class="" max="12" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/12 00:00&lt;?]
-    </div>
-    
 </div>
 </div>
 </section>
@@ -614,7 +601,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="ar_tcnlearner">AR_TCNLearner</h3>
 <blockquote class="blockquote">
 <pre><code> AR_TCNLearner (dls, hl_depth=3, alpha=1, beta=1, early_stop=0,
-                metrics=None, n_skip=None, hl_width=10, act=&lt;class
+                metrics=None, n_skip=None, opt_func=&lt;function Adam&gt;,
+                hl_width=10, act=&lt;class
                 'torch.nn.modules.activation.Mish'&gt;, bn=False,
                 stateful=False, **kwargs)</code></pre>
 </blockquote>
@@ -652,9 +640,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.086329</td>
-<td>0.092425</td>
-<td>0.304461</td>
+<td>0.024635</td>
+<td>0.021864</td>
+<td>0.210655</td>
 <td>00:00</td>
 </tr>
 </tbody>
@@ -668,9 +656,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="ar_rnnlearner">AR_RNNLearner</h3>
 <blockquote class="blockquote">
 <pre><code> AR_RNNLearner (dls, alpha=0, beta=0, early_stop=0, metrics=None,
-                n_skip=0, fname='model', num_layers=1, hidden_size=100,
-                linear_layers=0, return_state=False, hidden_p=0.0,
-                input_p=0.0, weight_p=0.0, rnn_type='gru',
+                n_skip=0, opt_func=&lt;function Adam&gt;, num_layers=1,
+                hidden_size=100, linear_layers=0, return_state=False,
+                hidden_p=0.0, input_p=0.0, weight_p=0.0, rnn_type='gru',
                 ret_full_hidden=False, stateful=False, normalization='',
                 **kwargs)</code></pre>
 </blockquote>
@@ -708,9 +696,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.054857</td>
-<td>0.059088</td>
-<td>0.242928</td>
+<td>0.011750</td>
+<td>0.004110</td>
+<td>0.090632</td>
 <td>00:01</td>
 </tr>
 </tbody>

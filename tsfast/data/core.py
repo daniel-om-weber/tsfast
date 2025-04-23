@@ -573,8 +573,8 @@ def plot_seqs_multi_figures(n_samples,n_targ,samples,plot_func,outs=None,**kwarg
         
         plt.tight_layout()
 
-# %% ../../nbs/00_data/00_core.ipynb 105
-@typedispatch
+# %% ../../nbs/00_data/00_core.ipynb 106
+@dispatch
 def show_batch(x:TensorSequences, y:TensorSequences, samples, ctxs=None, max_n=6, **kwargs):
     n_samples = min(len(samples), max_n)
     n_targ = samples[0][1].shape[1]
@@ -586,8 +586,8 @@ def show_batch(x:TensorSequences, y:TensorSequences, samples, ctxs=None, max_n=6
         plot_seqs_multi_figures(n_samples,n_targ,samples,plot_sequence, **kwargs)
     return ctxs
 
-# %% ../../nbs/00_data/00_core.ipynb 106
-@typedispatch
+# %% ../../nbs/00_data/00_core.ipynb 107
+@dispatch
 def show_results(x:TensorSequences, y:TensorSequences, samples, outs, ctxs=None, max_n=2, **kwargs):
     n_samples = min(len(samples), max_n)
     n_targ = samples[0][1].shape[1]

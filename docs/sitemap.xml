@@ -2,86 +2,86 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://daniel-om-weber.github.io/tsfast/quaternions.html</loc>
-    <lastmod>2025-04-04T08:04:42.114Z</lastmod>
+    <lastmod>2025-04-23T09:42:57.386Z</lastmod>
   </url>
   <url>
     <loc>https://daniel-om-weber.github.io/tsfast/tune.html</loc>
-    <lastmod>2025-04-04T08:04:42.302Z</lastmod>
+    <lastmod>2025-04-23T09:42:57.604Z</lastmod>
   </url>
   <url>
     <loc>https://daniel-om-weber.github.io/tsfast/04_prediction/fransys.html</loc>
-    <lastmod>2025-04-04T08:04:41.975Z</lastmod>
+    <lastmod>2025-04-23T09:42:57.344Z</lastmod>
   </url>
   <url>
     <loc>https://daniel-om-weber.github.io/tsfast/03_models/rnn.html</loc>
-    <lastmod>2025-04-04T08:04:42.166Z</lastmod>
+    <lastmod>2025-04-23T09:42:57.309Z</lastmod>
   </url>
   <url>
     <loc>https://daniel-om-weber.github.io/tsfast/03_models/layers.html</loc>
-    <lastmod>2025-04-04T08:04:42.143Z</lastmod>
+    <lastmod>2025-04-23T09:42:57.652Z</lastmod>
   </url>
   <url>
     <loc>https://daniel-om-weber.github.io/tsfast/02_learner/losses.html</loc>
-    <lastmod>2025-04-04T08:04:42.308Z</lastmod>
+    <lastmod>2025-04-23T09:42:57.664Z</lastmod>
   </url>
   <url>
     <loc>https://daniel-om-weber.github.io/tsfast/01_datasets/external.html</loc>
-    <lastmod>2025-04-04T08:04:42.294Z</lastmod>
+    <lastmod>2025-04-23T09:42:57.623Z</lastmod>
   </url>
   <url>
     <loc>https://daniel-om-weber.github.io/tsfast/05_inference/core.html</loc>
-    <lastmod>2025-04-04T09:42:04.832Z</lastmod>
+    <lastmod>2025-04-23T09:42:57.474Z</lastmod>
   </url>
   <url>
     <loc>https://daniel-om-weber.github.io/tsfast/00_data/loader.html</loc>
-    <lastmod>2025-04-04T08:04:42.156Z</lastmod>
+    <lastmod>2025-04-23T09:42:57.580Z</lastmod>
   </url>
   <url>
     <loc>https://daniel-om-weber.github.io/tsfast/00_data/transforms.html</loc>
-    <lastmod>2025-04-04T08:04:42.221Z</lastmod>
+    <lastmod>2025-04-23T09:42:57.487Z</lastmod>
   </url>
   <url>
     <loc>https://daniel-om-weber.github.io/tsfast/00_data/core.html</loc>
-    <lastmod>2025-04-04T08:04:41.633Z</lastmod>
+    <lastmod>2025-04-23T09:42:56.365Z</lastmod>
   </url>
   <url>
     <loc>https://daniel-om-weber.github.io/tsfast/00_data/block.html</loc>
-    <lastmod>2025-04-04T08:04:42.150Z</lastmod>
+    <lastmod>2025-04-23T09:42:57.374Z</lastmod>
   </url>
   <url>
     <loc>https://daniel-om-weber.github.io/tsfast/00_data/split.html</loc>
-    <lastmod>2025-04-04T08:04:42.051Z</lastmod>
+    <lastmod>2025-04-23T09:42:57.467Z</lastmod>
   </url>
   <url>
     <loc>https://daniel-om-weber.github.io/tsfast/spectogram.html</loc>
-    <lastmod>2025-04-04T08:04:41.889Z</lastmod>
+    <lastmod>2025-04-23T09:42:57.233Z</lastmod>
   </url>
   <url>
     <loc>https://daniel-om-weber.github.io/tsfast/01_datasets/core.html</loc>
-    <lastmod>2025-04-04T08:04:42.168Z</lastmod>
+    <lastmod>2025-04-23T09:42:57.642Z</lastmod>
   </url>
   <url>
     <loc>https://daniel-om-weber.github.io/tsfast/02_learner/learner.html</loc>
-    <lastmod>2025-04-04T08:04:42.278Z</lastmod>
+    <lastmod>2025-04-23T09:42:57.661Z</lastmod>
   </url>
   <url>
     <loc>https://daniel-om-weber.github.io/tsfast/02_learner/callbacks.html</loc>
-    <lastmod>2025-04-04T08:04:42.267Z</lastmod>
+    <lastmod>2025-04-23T09:42:57.653Z</lastmod>
   </url>
   <url>
     <loc>https://daniel-om-weber.github.io/tsfast/03_models/cnn.html</loc>
-    <lastmod>2025-04-04T08:04:42.331Z</lastmod>
+    <lastmod>2025-04-23T09:42:57.451Z</lastmod>
   </url>
   <url>
     <loc>https://daniel-om-weber.github.io/tsfast/04_prediction/core.html</loc>
-    <lastmod>2025-04-04T08:04:42.292Z</lastmod>
+    <lastmod>2025-04-23T09:42:57.278Z</lastmod>
   </url>
   <url>
     <loc>https://daniel-om-weber.github.io/tsfast/04_prediction/ar.html</loc>
-    <lastmod>2025-04-04T08:04:42.008Z</lastmod>
+    <lastmod>2025-04-23T09:42:57.349Z</lastmod>
   </url>
   <url>
     <loc>https://daniel-om-weber.github.io/tsfast/index.html</loc>
-    <lastmod>2025-04-04T08:04:40.596Z</lastmod>
+    <lastmod>2025-04-23T09:42:55.305Z</lastmod>
   </url>
 </urlset>

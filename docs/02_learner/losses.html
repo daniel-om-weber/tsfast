@@ -428,15 +428,15 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.061947</td>
-<td>0.062439</td>
+<td>0.055763</td>
+<td>0.059929</td>
 <td>00:01</td>
 </tr>
 </tbody>
 </table>
 </div>
 <div class="cell-output cell-output-stderr">
-<pre><code>/var/folders/pc/13zbh_m514n1tp522cx9npt00000gn/T/ipykernel_31084/3967170634.py:17: UserWarning: Float64 precision not supported on mps:0 device. Using original precision. This may reduce numerical accuracy. Error: Cannot convert a MPS Tensor to float64 dtype as the MPS framework doesn't support float64. Please use float32 instead.
+<pre><code>/var/folders/pc/13zbh_m514n1tp522cx9npt00000gn/T/ipykernel_76375/3967170634.py:17: UserWarning: Float64 precision not supported on mps:0 device. Using original precision. This may reduce numerical accuracy. Error: Cannot convert a MPS Tensor to float64 dtype as the MPS framework doesn't support float64. Please use float32 instead.
   warnings.warn(f"Float64 precision not supported on {args[0].device} device. Using original precision. This may reduce numerical accuracy. Error: {e}")</code></pre>
 </div>
 </div>
@@ -482,9 +482,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.053954</td>
-<td>0.057464</td>
-<td>00:00</td>
+<td>0.051679</td>
+<td>0.052046</td>
+<td>00:01</td>
 </tr>
 </tbody>
 </table>
@@ -532,8 +532,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.038947</td>
-<td>0.019629</td>
+<td>0.028736</td>
+<td>0.018902</td>
 <td>00:01</td>
 </tr>
 </tbody>
@@ -581,12 +581,16 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.097519</td>
-<td>0.085769</td>
+<td>0.084046</td>
+<td>0.065088</td>
 <td>00:01</td>
 </tr>
 </tbody>
 </table>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/var/folders/pc/13zbh_m514n1tp522cx9npt00000gn/T/ipykernel_76375/691337496.py:13: UserWarning: torch.logspace not supported on mps:0 device. Using cpu. This may reduce numerical performance
+  warnings.warn(f"torch.logspace not supported on {device} device. Using cpu. This may reduce numerical performance")</code></pre>
 </div>
 </div>
 <hr>
@@ -599,7 +603,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </blockquote>
 <p><em>Loss-Function modifier that truncates the sequence length of every sequence in the minibatch inidiviually randomly. At the moment slow for very big batchsizes.</em></p>
 <div id="cell-20" class="cell">
-<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>RandSeqLenLoss(nn.MSELoss())).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>RandSeqLenLoss(nn.MSELoss())).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
 <style>
@@ -631,8 +635,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.035565</td>
-<td>0.036282</td>
+<td>0.036072</td>
+<td>0.037482</td>
 <td>00:07</td>
 </tr>
 </tbody>
@@ -649,7 +653,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </blockquote>
 <p><em>rmse loss function defined as a function not as a AccumMetric</em></p>
 <div id="cell-22" class="cell">
-<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>nn.MSELoss(),metrics<span class="op">=</span>SkipNLoss(fun_rmse,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>nn.MSELoss(),metrics<span class="op">=</span>SkipNLoss(fun_rmse,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
 <style>
@@ -682,9 +686,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.011886</td>
-<td>0.011429</td>
-<td>0.059890</td>
+<td>0.010846</td>
+<td>0.010722</td>
+<td>0.051925</td>
 <td>00:01</td>
 </tr>
 </tbody>
@@ -701,7 +705,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </blockquote>
 <p><em>rmse loss function defined as a function not as a AccumMetric</em></p>
 <div id="cell-24" class="cell">
-<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>cos_sim_loss,metrics<span class="op">=</span>SkipNLoss(fun_rmse,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>cos_sim_loss,metrics<span class="op">=</span>SkipNLoss(fun_rmse,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
 <style>
@@ -734,9 +738,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.257034</td>
-<td>0.321500</td>
-<td>0.082296</td>
+<td>0.234125</td>
+<td>0.254100</td>
+<td>0.051972</td>
 <td>00:01</td>
 </tr>
 </tbody>
@@ -753,7 +757,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </blockquote>
 <p><em>rmse loss function defined as a function not as a AccumMetric</em></p>
 <div id="cell-26" class="cell">
-<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>cos_sim_loss_pow,metrics<span class="op">=</span>SkipNLoss(fun_rmse,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>cos_sim_loss_pow,metrics<span class="op">=</span>SkipNLoss(fun_rmse,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
 <style>
@@ -786,9 +790,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.611905</td>
-<td>0.641800</td>
-<td>0.082362</td>
+<td>0.468299</td>
+<td>0.509000</td>
+<td>0.051983</td>
 <td>00:01</td>
 </tr>
 </tbody>
@@ -805,13 +809,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </blockquote>
 <p><em>rmse loss function scaled by variance of each target variable</em></p>
 <div id="cell-28" class="cell">
-<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>dls.one_batch()[<span class="dv">0</span>].shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>dls.one_batch()[<span class="dv">0</span>].shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <pre><code>torch.Size([64, 100, 1])</code></pre>
 </div>
 </div>
 <div id="cell-29" class="cell">
-<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>nn.MSELoss(),metrics<span class="op">=</span>SkipNLoss(nrmse,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>nn.MSELoss(),metrics<span class="op">=</span>SkipNLoss(nrmse,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
 <style>
@@ -844,9 +848,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.011257</td>
-<td>0.010732</td>
-<td>0.209120</td>
+<td>0.010644</td>
+<td>0.010091</td>
+<td>0.181790</td>
 <td>00:01</td>
 </tr>
 </tbody>
@@ -863,7 +867,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </blockquote>
 <p><em>rmse loss function scaled by standard deviation of each target variable</em></p>
 <div id="cell-31" class="cell">
-<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>nn.MSELoss(),metrics<span class="op">=</span>SkipNLoss(nrmse_std,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>nn.MSELoss(),metrics<span class="op">=</span>SkipNLoss(nrmse_std,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
 <style>
@@ -896,9 +900,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.010345</td>
-<td>0.010427</td>
-<td>0.097359</td>
+<td>0.010193</td>
+<td>0.009726</td>
+<td>0.078454</td>
 <td>00:01</td>
 </tr>
 </tbody>
@@ -914,7 +918,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <pre><code> mean_vaf (inp, targ)</code></pre>
 </blockquote>
 <div id="cell-33" class="cell">
-<div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>nn.MSELoss(),metrics<span class="op">=</span>SkipNLoss(mean_vaf,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>nn.MSELoss(),metrics<span class="op">=</span>SkipNLoss(mean_vaf,n_skip<span class="op">=</span><span class="dv">30</span>)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
 <style>
@@ -947,9 +951,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.010098</td>
-<td>0.009810</td>
-<td>97.335266</td>
+<td>0.009576</td>
+<td>0.009391</td>
+<td>97.983543</td>
 <td>00:01</td>
 </tr>
 </tbody>

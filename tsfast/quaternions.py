@@ -708,7 +708,7 @@ def plot_quaternion_rel_angle(axs,in_sig,targ_sig,out_sig=None, **kwargs):
     axs[-1].plot(in_sig)
 
 # %% ../nbs/01_quaternions.ipynb 105
-@typedispatch
+@dispatch
 def show_results(x:TensorSequences, y:TensorInclination, samples, outs, ctxs=None, max_n=2, **kwargs):
     n_samples = min(len(samples), max_n)
     n_targ = 2
@@ -721,7 +721,7 @@ def show_results(x:TensorSequences, y:TensorInclination, samples, outs, ctxs=Non
     return ctxs
 
 # %% ../nbs/01_quaternions.ipynb 106
-@typedispatch
+@dispatch
 def show_batch(x:TensorSequences, y:TensorInclination, samples, ctxs=None, max_n=6, **kwargs):
     n_samples = min(len(samples), max_n)
     n_targ = 1
@@ -734,7 +734,7 @@ def show_batch(x:TensorSequences, y:TensorInclination, samples, ctxs=None, max_n
     return ctxs
 
 # %% ../nbs/01_quaternions.ipynb 107
-@typedispatch
+@dispatch
 def show_results(x:TensorSequences, y:TensorQuaternionInclination, samples, outs, ctxs=None, max_n=2, **kwargs):
     if 'quat' in kwargs: return show_results(x,TensorSequencesOutput(y), samples,outs, ctxs, max_n , **kwargs)
     n_samples = min(len(samples), max_n)
@@ -748,7 +748,7 @@ def show_results(x:TensorSequences, y:TensorQuaternionInclination, samples, outs
     return ctxs
 
 # %% ../nbs/01_quaternions.ipynb 108
-@typedispatch
+@dispatch
 def show_batch(x:TensorSequences, y:TensorQuaternionInclination, samples, ctxs=None, max_n=6, **kwargs):
     n_samples = min(len(samples), max_n)
     n_targ = 1
@@ -761,7 +761,7 @@ def show_batch(x:TensorSequences, y:TensorQuaternionInclination, samples, ctxs=N
     return ctxs
 
 # %% ../nbs/01_quaternions.ipynb 109
-@typedispatch
+@dispatch
 def show_results(x:TensorSequences, y:TensorQuaternionAngle, samples, outs, ctxs=None, max_n=2, **kwargs):
     n_samples = min(len(samples), max_n)
     n_targ = 2
@@ -774,7 +774,7 @@ def show_results(x:TensorSequences, y:TensorQuaternionAngle, samples, outs, ctxs
     return ctxs
 
 # %% ../nbs/01_quaternions.ipynb 110
-@typedispatch
+@dispatch
 def show_batch(x:TensorSequences, y:TensorQuaternionAngle, samples, ctxs=None, max_n=6, **kwargs):
     n_samples = min(len(samples), max_n)
     n_targ = 1
