@@ -109,13 +109,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link rel="stylesheet" href="styles.css">
 <meta property="og:title" content="Corefunctions – tsfast">
 <meta property="og:description" content="Corefunctionality for data preparation of sequential data for pytorch, fastai models">
-<meta property="og:image" content="https://daniel-om-weber.github.io/tsfast/00_data/00_core_files/figure-html/cell-92-output-1.png">
+<meta property="og:image" content="https://daniel-om-weber.github.io/tsfast/00_data/00_core_files/figure-html/cell-93-output-1.png">
 <meta property="og:site_name" content="tsfast">
 <meta property="og:image:height" content="290">
 <meta property="og:image:width" content="890">
 <meta name="twitter:title" content="Corefunctions – tsfast">
 <meta name="twitter:description" content="Corefunctionality for data preparation of sequential data for pytorch, fastai models">
-<meta name="twitter:image" content="https://daniel-om-weber.github.io/tsfast/00_data/00_core_files/figure-html/cell-92-output-1.png">
+<meta name="twitter:image" content="https://daniel-om-weber.github.io/tsfast/00_data/00_core_files/figure-html/cell-93-output-1.png">
 <meta name="twitter:image-height" content="290">
 <meta name="twitter:image-width" content="890">
 <meta name="twitter:card" content="summary_large_image">
@@ -533,8 +533,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>lst_valid <span class="op">=</span> [<span class="st">'valid'</span>]</span>
 <span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>CreateDict([ValidClmContains(lst_valid)])(hdf_files)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>CPU times: user 658 μs, sys: 235 μs, total: 893 μs
-Wall time: 920 μs</code></pre>
+<pre><code>CPU times: user 432 μs, sys: 4 μs, total: 436 μs
+Wall time: 449 μs</code></pre>
 </div>
 <div class="cell-output cell-output-display">
 <pre><code>[{'path': '/Users/daniel/Development/tsfast/test_data/WienerHammerstein/valid/WienerHammerstein_valid.hdf5',
@@ -559,8 +559,8 @@ Wall time: 920 μs</code></pre>
 <span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="st">'test_data/battery/valid/Sim_RealisticCycle3.hdf5'</span>]</span>
 <span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>CreateDict([ValidClmIs(lst_valid)])(hdf_files)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>CPU times: user 470 μs, sys: 79 μs, total: 549 μs
-Wall time: 552 μs</code></pre>
+<pre><code>CPU times: user 275 μs, sys: 7 μs, total: 282 μs
+Wall time: 284 μs</code></pre>
 </div>
 <div class="cell-output cell-output-display">
 <pre><code>[{'path': '/Users/daniel/Development/tsfast/test_data/WienerHammerstein/valid/WienerHammerstein_valid.hdf5',
@@ -713,8 +713,8 @@ Wall time: 552 μs</code></pre>
 <span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>win_df <span class="op">=</span> create_win(df)</span>
 <span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a>win_df</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>CPU times: user 917 μs, sys: 748 μs, total: 1.66 ms
-Wall time: 1.08 ms</code></pre>
+<pre><code>CPU times: user 710 μs, sys: 496 μs, total: 1.21 ms
+Wall time: 807 μs</code></pre>
 </div>
 <div class="cell-output cell-output-display">
 <div>
@@ -1238,8 +1238,8 @@ Wall time: 1.08 ms</code></pre>
 <span id="cb46-2"><a href="#cb46-2" aria-hidden="true" tabindex="-1"></a>src_dicts <span class="op">=</span> tfm_src(hdf_files)</span>
 <span id="cb46-3"><a href="#cb46-3" aria-hidden="true" tabindex="-1"></a>src_dicts[:<span class="dv">5</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>CPU times: user 7.99 ms, sys: 1.48 ms, total: 9.47 ms
-Wall time: 10.5 ms</code></pre>
+<pre><code>CPU times: user 7.65 ms, sys: 1.21 ms, total: 8.86 ms
+Wall time: 8.36 ms</code></pre>
 </div>
 <div class="cell-output cell-output-display">
 <pre><code>[{'path': '/Users/daniel/Development/tsfast/test_data/WienerHammerstein/valid/WienerHammerstein_valid.hdf5',
@@ -1350,7 +1350,7 @@ Wall time: 10.5 ms</code></pre>
 <div class="sourceCode cell-code" id="cb59"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb59-1"><a href="#cb59-1" aria-hidden="true" tabindex="-1"></a>x <span class="op">=</span> np.random.normal(size<span class="op">=</span>(<span class="dv">100000</span>,<span class="dv">9</span>))</span>
 <span id="cb59-2"><a href="#cb59-2" aria-hidden="true" tabindex="-1"></a>test_eq(resample_interp(x,<span class="fl">0.3</span>).shape[<span class="dv">0</span>],<span class="dv">30000</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
-<pre><code>/var/folders/pc/13zbh_m514n1tp522cx9npt00000gn/T/ipykernel_19198/551091804.py:35: DeprecationWarning: __array__ implementation doesn't accept a copy keyword, so passing copy=False failed. __array__ must implement 'dtype' and 'copy' keyword arguments. To learn more, see the migration guide https://numpy.org/devdocs/numpy_2_0_migration_guide.html#adapting-to-changes-in-the-copy-keyword
+<pre><code>/var/folders/pc/13zbh_m514n1tp522cx9npt00000gn/T/ipykernel_31734/551091804.py:35: DeprecationWarning: __array__ implementation doesn't accept a copy keyword, so passing copy=False failed. __array__ must implement 'dtype' and 'copy' keyword arguments. To learn more, see the migration guide https://numpy.org/devdocs/numpy_2_0_migration_guide.html#adapting-to-changes-in-the-copy-keyword
   x = array(nn.functional.interpolate(x_int, size=targ_size, mode='linear',align_corners=False)[0])</code></pre>
 </div>
 </div>
@@ -1599,7 +1599,7 @@ Wall time: 10.5 ms</code></pre>
 <section id="totensorsequencesoutput" class="level3">
 <h3 class="anchored" data-anchor-id="totensorsequencesoutput">toTensorSequencesOutput</h3>
 <blockquote class="blockquote">
-<pre><code> toTensorSequencesOutput (x, **kwargs)</code></pre>
+<pre><code> toTensorSequencesOutput (*args, split_idx=None, **kwargs)</code></pre>
 </blockquote>
 <p><em>Delegates (<code>__call__</code>,<code>decode</code>,<code>setup</code>) to (<code>encodes</code>,<code>decodes</code>,<code>setups</code>) if <code>split_idx</code> matches</em></p>
 <hr>
@@ -1607,7 +1607,7 @@ Wall time: 10.5 ms</code></pre>
 <section id="totensorsequencesinput" class="level3">
 <h3 class="anchored" data-anchor-id="totensorsequencesinput">toTensorSequencesInput</h3>
 <blockquote class="blockquote">
-<pre><code> toTensorSequencesInput (x, **kwargs)</code></pre>
+<pre><code> toTensorSequencesInput (*args, split_idx=None, **kwargs)</code></pre>
 </blockquote>
 <p><em>Delegates (<code>__call__</code>,<code>decode</code>,<code>setup</code>) to (<code>encodes</code>,<code>decodes</code>,<code>setups</code>) if <code>split_idx</code> matches</em></p>
 <hr>
@@ -1644,7 +1644,7 @@ Wall time: 10.5 ms</code></pre>
 <span id="cb104-2"><a href="#cb104-2" aria-hidden="true" tabindex="-1"></a>x2 <span class="op">=</span> TensorSequencesOutput(torch.rand((<span class="dv">10</span>,<span class="dv">10</span>)))</span>
 <span id="cb104-3"><a href="#cb104-3" aria-hidden="true" tabindex="-1"></a>torch.nn.functional.mse_loss(x1,x2)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
-<pre><code>TensorSequencesInput(0.1726)</code></pre>
+<pre><code>TensorSequencesInput(0.1615)</code></pre>
 </div>
 </div>
 </section>
@@ -1691,12 +1691,12 @@ Wall time: 10.5 ms</code></pre>
 <pre><code> plot_seqs_multi_figures (n_samples, n_targ, samples, plot_func,
                           outs=None, **kwargs)</code></pre>
 </blockquote>
-<div id="cell-110" class="cell">
+<div id="cell-111" class="cell">
 <div class="sourceCode cell-code" id="cb112"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb112-1"><a href="#cb112-1" aria-hidden="true" tabindex="-1"></a>dls.show_batch()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="00_core_files/figure-html/cell-92-output-1.png" class="img-fluid figure-img"></p>
+<p><img src="00_core_files/figure-html/cell-93-output-1.png" class="img-fluid figure-img"></p>
 </figure>
 </div>
 </div>

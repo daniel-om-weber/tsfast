@@ -109,13 +109,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link rel="stylesheet" href="styles.css">
 <meta property="og:title" content="Learner – tsfast">
 <meta property="og:description" content="Pytorch Modules for Training Models for sequential data">
-<meta property="og:image" content="https://daniel-om-weber.github.io/tsfast/02_learner/01_callbacks_files/figure-html/cell-21-output-1.png">
+<meta property="og:image" content="https://daniel-om-weber.github.io/tsfast/02_learner/01_callbacks_files/figure-html/cell-20-output-1.png">
 <meta property="og:site_name" content="tsfast">
 <meta property="og:image:height" content="413">
 <meta property="og:image:width" content="552">
 <meta name="twitter:title" content="Learner – tsfast">
 <meta name="twitter:description" content="Pytorch Modules for Training Models for sequential data">
-<meta name="twitter:image" content="https://daniel-om-weber.github.io/tsfast/02_learner/01_callbacks_files/figure-html/cell-21-output-1.png">
+<meta name="twitter:image" content="https://daniel-om-weber.github.io/tsfast/02_learner/01_callbacks_files/figure-html/cell-20-output-1.png">
 <meta name="twitter:image-height" content="413">
 <meta name="twitter:image-width" content="552">
 <meta name="twitter:card" content="summary_large_image">
@@ -315,9 +315,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#skipnancallback" id="toc-skipnancallback" class="nav-link" data-scroll-target="#skipnancallback">SkipNaNCallback</a></li>
   <li><a href="#cancelnancallback" id="toc-cancelnancallback" class="nav-link" data-scroll-target="#cancelnancallback">CancelNaNCallback</a></li>
   <li><a href="#varyseqlen" id="toc-varyseqlen" class="nav-link" data-scroll-target="#varyseqlen">VarySeqLen</a></li>
-  <li><a href="#cb_truncatesequence" id="toc-cb_truncatesequence" class="nav-link" data-scroll-target="#cb_truncatesequence">CB_TruncateSequence</a></li>
   <li><a href="#sched_lin_p" id="toc-sched_lin_p" class="nav-link" data-scroll-target="#sched_lin_p">sched_lin_p</a></li>
   <li><a href="#sched_ramp" id="toc-sched_ramp" class="nav-link" data-scroll-target="#sched_ramp">sched_ramp</a></li>
+  <li><a href="#cb_truncatesequence" id="toc-cb_truncatesequence" class="nav-link" data-scroll-target="#cb_truncatesequence">CB_TruncateSequence</a></li>
   <li><a href="#cb_addloss" id="toc-cb_addloss" class="nav-link" data-scroll-target="#cb_addloss">CB_AddLoss</a></li>
   <li><a href="#batchlossfilter" id="toc-batchlossfilter" class="nav-link" data-scroll-target="#batchlossfilter">BatchLossFilter</a></li>
   <li><a href="#timeseriesregularizer" id="toc-timeseriesregularizer" class="nav-link" data-scroll-target="#timeseriesregularizer">TimeSeriesRegularizer</a></li>
@@ -384,13 +384,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </style>
 </div>
 <div class="cell-output cell-output-display">
-
-    <div>
-      <progress value="0" class="" max="1" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/1 00:00&lt;?]
-    </div>
-    
-
 <table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
 <thead>
 <tr class="header">
@@ -401,15 +394,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 </thead>
 <tbody>
+<tr class="odd">
+<td>0</td>
+<td>0.055792</td>
+<td>0.059331</td>
+<td>00:01</td>
+</tr>
 </tbody>
 </table>
-<p>
-
-    </p><div>
-      <progress value="0" class="" max="12" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/12 00:00&lt;?]
-    </div>
-    
 </div>
 </div>
 <section id="callbacks" class="level2">
@@ -456,9 +448,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.056675</td>
-<td>0.059502</td>
-<td>00:00</td>
+<td>0.057712</td>
+<td>0.060895</td>
+<td>00:01</td>
 </tr>
 </tbody>
 </table>
@@ -517,26 +509,26 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.055721</td>
-<td>0.059599</td>
-<td>00:00</td>
+<td>0.058281</td>
+<td>0.060542</td>
+<td>00:01</td>
 </tr>
 </tbody>
 </table>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>Gradient norm: 0.16
-Gradient norm: 0.08
-Gradient norm: 0.03
-Gradient norm: 0.05
-Gradient norm: 0.12
+<pre><code>Gradient norm: 0.32
+Gradient norm: 0.27
+Gradient norm: 0.25
+Gradient norm: 0.15
+Gradient norm: 0.07
+Gradient norm: 0.02
 Gradient norm: 0.04
-Gradient norm: 0.08
-Gradient norm: 0.03
-Gradient norm: 0.05
-Gradient norm: 0.03
 Gradient norm: 0.04
-Gradient norm: 0.08</code></pre>
+Gradient norm: 0.13
+Gradient norm: 0.09
+Gradient norm: 0.06
+Gradient norm: 0.06</code></pre>
 </div>
 </div>
 <hr>
@@ -581,9 +573,9 @@ Gradient norm: 0.08</code></pre>
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.051944</td>
-<td>0.050182</td>
-<td>00:00</td>
+<td>0.052950</td>
+<td>0.052226</td>
+<td>00:01</td>
 </tr>
 </tbody>
 </table>
@@ -620,13 +612,6 @@ Gradient norm: 0.08</code></pre>
 </style>
 </div>
 <div class="cell-output cell-output-display">
-
-    <div>
-      <progress value="0" class="" max="1" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/1 00:00&lt;?]
-    </div>
-    
-
 <table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
 <thead>
 <tr class="header">
@@ -637,15 +622,14 @@ Gradient norm: 0.08</code></pre>
 </tr>
 </thead>
 <tbody>
+<tr class="odd">
+<td>0</td>
+<td>0.054952</td>
+<td>0.058467</td>
+<td>00:01</td>
+</tr>
 </tbody>
 </table>
-<p>
-
-    </p><div>
-      <progress value="0" class="" max="12" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/12 00:00&lt;?]
-    </div>
-    
 </div>
 </div>
 <hr>
@@ -738,25 +722,16 @@ Gradient norm: 0.08</code></pre>
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.056618</td>
-<td>0.059255</td>
-<td>00:00</td>
+<td>0.061609</td>
+<td>0.061791</td>
+<td>00:01</td>
 </tr>
 </tbody>
 </table>
 </div>
 </div>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/callbacks.py#L123" target="_blank" style="float:right; font-size:smaller">source</a></p>
-</section>
-<section id="cb_truncatesequence" class="level3">
-<h3 class="anchored" data-anchor-id="cb_truncatesequence">CB_TruncateSequence</h3>
-<blockquote class="blockquote">
-<pre><code> CB_TruncateSequence (truncate_length=50, scheduler=&lt;function sched_lin&gt;)</code></pre>
-</blockquote>
-<p><em><code>Callback</code> varies sequence length of every mini batch</em></p>
-<hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/callbacks.py#L143" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/callbacks.py#L122" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="sched_lin_p" class="level3">
 <h3 class="anchored" data-anchor-id="sched_lin_p">sched_lin_p</h3>
@@ -764,29 +739,38 @@ Gradient norm: 0.08</code></pre>
 <pre><code> sched_lin_p (start, end, pos, p=0.75)</code></pre>
 </blockquote>
 <hr>
-<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/callbacks.py#L147" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/callbacks.py#L126" target="_blank" style="float:right; font-size:smaller">source</a></p>
 </section>
 <section id="sched_ramp" class="level3">
 <h3 class="anchored" data-anchor-id="sched_ramp">sched_ramp</h3>
 <blockquote class="blockquote">
-<pre><code> sched_ramp (start, end, pos, p_left=0.1, p_right=0.5)</code></pre>
+<pre><code> sched_ramp (start, end, pos, p_left=0.2, p_right=0.6)</code></pre>
 </blockquote>
-<div id="cell-22" class="cell">
-<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>init_sz <span class="op">=</span> <span class="dv">200</span></span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>pred_sz <span class="op">=</span> <span class="dv">600</span></span>
-<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>win_sz <span class="op">=</span> init_sz<span class="op">+</span>pred_sz</span>
-<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>truncate_length <span class="op">=</span> init_sz<span class="op">+</span><span class="dv">10</span></span>
-<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>plt.figure()</span>
-<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>plt.plot([win_sz<span class="op">-</span>sched_lin_p(win_sz<span class="op">-</span>truncate_length,<span class="dv">0</span>,pct) <span class="cf">for</span> pct <span class="kw">in</span> np.linspace(<span class="dv">0</span>,<span class="dv">1</span>,<span class="dv">100</span>)])</span>
-<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>plt.plot([win_sz<span class="op">-</span>sched_ramp(win_sz<span class="op">-</span>truncate_length,<span class="dv">0</span>,pct,<span class="fl">0.2</span>,<span class="fl">0.6</span>) <span class="cf">for</span> pct <span class="kw">in</span> np.linspace(<span class="dv">0</span>,<span class="dv">1</span>,<span class="dv">100</span>)])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-21" class="cell">
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>init_sz <span class="op">=</span> <span class="dv">200</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>pred_sz <span class="op">=</span> <span class="dv">600</span></span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>win_sz <span class="op">=</span> init_sz<span class="op">+</span>pred_sz</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>truncate_length <span class="op">=</span> init_sz<span class="op">+</span><span class="dv">10</span></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>plt.figure()</span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>plt.plot([win_sz<span class="op">-</span>sched_lin_p(win_sz<span class="op">-</span>truncate_length,<span class="dv">0</span>,pct) <span class="cf">for</span> pct <span class="kw">in</span> np.linspace(<span class="dv">0</span>,<span class="dv">1</span>,<span class="dv">100</span>)])</span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>plt.plot([win_sz<span class="op">-</span>sched_ramp(win_sz<span class="op">-</span>truncate_length,<span class="dv">0</span>,pct,<span class="fl">0.2</span>,<span class="fl">0.6</span>) <span class="cf">for</span> pct <span class="kw">in</span> np.linspace(<span class="dv">0</span>,<span class="dv">1</span>,<span class="dv">100</span>)])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="01_callbacks_files/figure-html/cell-21-output-1.png" class="img-fluid figure-img"></p>
+<p><img src="01_callbacks_files/figure-html/cell-20-output-1.png" class="img-fluid figure-img"></p>
 </figure>
 </div>
 </div>
 </div>
+<hr>
+<p><a href="https://github.com/daniel-om-weber/tsfast/blob/master/tsfast/learner/callbacks.py#L136" target="_blank" style="float:right; font-size:smaller">source</a></p>
+</section>
+<section id="cb_truncatesequence" class="level3">
+<h3 class="anchored" data-anchor-id="cb_truncatesequence">CB_TruncateSequence</h3>
+<blockquote class="blockquote">
+<pre><code> CB_TruncateSequence (truncate_length=50, scheduler=&lt;function sched_ramp&gt;)</code></pre>
+</blockquote>
+<p><em><code>Callback</code> varies sequence length of every mini batch</em></p>
 <div id="cell-23" class="cell">
 <div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> SimpleRNN(<span class="dv">1</span>,<span class="dv">1</span>)</span>
 <span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>Learner(dls,model,loss_func<span class="op">=</span>nn.MSELoss(),cbs<span class="op">=</span>CB_TruncateSequence(<span class="dv">50</span>,sched_lin_p)).fit(<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
@@ -821,9 +805,9 @@ Gradient norm: 0.08</code></pre>
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.057421</td>
-<td>0.060011</td>
-<td>00:00</td>
+<td>0.055499</td>
+<td>0.057812</td>
+<td>00:01</td>
 </tr>
 </tbody>
 </table>
@@ -872,9 +856,9 @@ Gradient norm: 0.08</code></pre>
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.610170</td>
-<td>0.058814</td>
-<td>00:00</td>
+<td>0.629243</td>
+<td>0.059755</td>
+<td>00:01</td>
 </tr>
 </tbody>
 </table>
@@ -989,9 +973,9 @@ Gradient norm: 0.08</code></pre>
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.071312</td>
-<td>0.056997</td>
-<td>00:00</td>
+<td>0.074184</td>
+<td>0.059581</td>
+<td>00:03</td>
 </tr>
 </tbody>
 </table>
@@ -1042,9 +1026,9 @@ Gradient norm: 0.08</code></pre>
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.045017</td>
-<td>0.030651</td>
-<td>00:00</td>
+<td>0.053709</td>
+<td>0.054955</td>
+<td>00:01</td>
 </tr>
 </tbody>
 </table>
@@ -1089,13 +1073,6 @@ Gradient norm: 0.08</code></pre>
 </style>
 </div>
 <div class="cell-output cell-output-display">
-
-    <div>
-      <progress value="0" class="" max="1" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/1 00:00&lt;?]
-    </div>
-    
-
 <table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
 <thead>
 <tr class="header">
@@ -1106,15 +1083,14 @@ Gradient norm: 0.08</code></pre>
 </tr>
 </thead>
 <tbody>
+<tr class="odd">
+<td>0</td>
+<td>0.037985</td>
+<td>0.027872</td>
+<td>00:01</td>
+</tr>
 </tbody>
 </table>
-<p>
-
-    </p><div>
-      <progress value="0" class="" max="12" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      0.00% [0/12 00:00&lt;?]
-    </div>
-    
 </div>
 </div>
 <hr>
@@ -1169,8 +1145,8 @@ Gradient norm: 0.08</code></pre>
 <tbody>
 <tr class="odd">
 <td>0</td>
-<td>0.014296</td>
-<td>0.011415</td>
+<td>0.021996</td>
+<td>0.018407</td>
 <td>00:01</td>
 </tr>
 </tbody>

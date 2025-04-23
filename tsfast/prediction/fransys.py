@@ -188,6 +188,8 @@ class FranSys(nn.Module):
                 #execution with no initial state
                 out_diag,_ = self.rnn_diagnosis(x_diag)
                 h_init = self.rnn_diagnosis.output_to_hidden(out_diag,self.init_sz-1)
+                
+                #ToDo: only execute this if callback is used
                 new_hidden = self.rnn_diagnosis.output_to_hidden(out_diag,-1)
                 
                 out_prog,_ = self.rnn_prognosis(x_prog[:,self.init_sz:].contiguous(),h_init)  
