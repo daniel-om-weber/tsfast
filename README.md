@@ -65,7 +65,7 @@ lrn.fit_flat_cos(1)
     }
 </style>
 
-    <div>
+<div>
       <progress value='0' class='' max='1' style='width:300px; height:20px; vertical-align: middle;'></progress>
       0.00% [0/1 00:00&lt;?]
     </div>
@@ -79,7 +79,6 @@ lrn.fit_flat_cos(1)
       <progress value='0' class='' max='12' style='width:300px; height:20px; vertical-align: middle;'></progress>
       0.00% [0/12 00:00&lt;?]
     </div>
-    &#10;
 
 ``` python
 lrn.show_results(max_n=1)
@@ -116,7 +115,7 @@ Models - Learner API - Hyperparameter Optimization
 - Python ≥ 3.9
 - fastai
 - PyTorch
-- sysbench_loader
+- identibench
 - matplotlib
 - ray\[tune\] (for hyperparameter optimization)
 

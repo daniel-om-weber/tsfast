@@ -5,15 +5,13 @@ __all__ = ['TbpttDl', 'reset_model_state', 'TbpttResetCB', 'WeightedDL_Factory',
            'uniform_p_of_float_with_gaps', 'BatchLimit_Factory']
 
 # %% ../../nbs/00_data/04_loader.ipynb 2
-from .core import *
-from .transforms import *
-from .split import *
-from .block import *
-
 from fastai.basics import *
+from .core import *
+from .split import ParentSplitter, ApplyToDict
+from .block import SequenceBlock
 
 # %% ../../nbs/00_data/04_loader.ipynb 5
-from torch.utils.data.dataloader import _MultiProcessingDataLoaderIter,_SingleProcessDataLoaderIter,_DatasetKind
+from torch.utils.data.dataloader import _MultiProcessingDataLoaderIter,_SingleProcessDataLoaderIter
 _loaders = (_MultiProcessingDataLoaderIter,_SingleProcessDataLoaderIter)
 
 @delegates()
@@ -39,8 +37,10 @@ class TbpttDl(TfmdDL):
         
     @property
     def n_sub_seq(self):
-        if self.sub_seq_len is None: return 1
-        if self.seq_len is None: self.seq_len = self.do_item(0)[0].shape[0]
+        if self.sub_seq_len is None: 
+            return 1
+        if self.seq_len is None: 
+            self.seq_len = self.do_item(0)[0].shape[0]
         return math.ceil(self.seq_len / self.sub_seq_len)
         
     def __len__(self):
@@ -48,7 +48,8 @@ class TbpttDl(TfmdDL):
     
     def _next_worker(self,w_id):
         w_id += 1
-        if w_id > self.fake_l.num_workers-1: w_id = 0
+        if w_id > self.fake_l.num_workers-1: 
+            w_id = 0
         return w_id
 
     def sample(self):
@@ -62,7 +63,6 @@ class TbpttDl(TfmdDL):
         self.before_iter()
         self.__idxs=self.get_idxs() # called in context of main process (not workers/subprocesses)
         
-        n_buffer = self.fake_l.num_workers*self.n_sub_seq
         queue = {n:[] for n in range(self.fake_l.num_workers)} 
         current_worker = None
         idx = 0
@@ -101,7 +101,8 @@ class TbpttDl(TfmdDL):
                         current_worker = self._next_worker(current_worker)
                 
         self.after_iter()
-        if hasattr(self, 'it'): del(self.it)
+        if hasattr(self, 'it'): 
+            del(self.it)
     
     def create_batches(self, samps):
         yield from self._tbptt_generator(super().create_batches(samps))
@@ -110,7 +111,7 @@ class TbpttDl(TfmdDL):
         '''generator function that splits batches in smaller windows, yields mini_batch and worker id'''
         for b in batch_iter:
             for i in range(self.n_sub_seq):
-                #it is importan to retain the tuple type, or future transforms may now work
+                #it is importan to retain the tuple type, or future transforms may not work
                 if self.sub_seq_len is None:
                     trunc_b = b
                 else:
@@ -121,7 +122,8 @@ class TbpttDl(TfmdDL):
 # %% ../../nbs/00_data/04_loader.ipynb 14
 def reset_model_state(model):
     for m in model.modules():
-        if hasattr(m,'reset_state'): m.reset_state()
+        if hasattr(m,'reset_state'): 
+            m.reset_state()
 
 # %% ../../nbs/00_data/04_loader.ipynb 15
 class TbpttResetCB(Callback):
@@ -171,8 +173,10 @@ def WeightedDL_Factory(cls):
                 self.wgts = wgts/np.sum(wgts)
 
         def get_idxs(self):
-            if self.n==0: return []
-            if not self.shuffle or self.wgts is None: return super().get_idxs()
+            if self.n==0: 
+                return []
+            if not self.shuffle or self.wgts is None: 
+                return super().get_idxs()
             #calculate number of elements with length of the dataset, for batch truncation
             idxs = list(np.random.choice(self.n, size=len(self)*self.bs, p=self.wgts))
             return idxs
@@ -235,9 +239,9 @@ def uniform_p_of_float_with_gaps(var_name,bins = 100):
         else:
             df_targ = df
             
-        l = df_targ[var_name].max()-df_targ[var_name].min() #value range
+        length = df_targ[var_name].max()-df_targ[var_name].min() #value range
         df_targ['bins'] = pd.qcut(df_targ[var_name],bins,duplicates='drop') #bins with rougly the same size
-        df_targ['p_sample'] =  df_targ['bins'].apply(lambda x: x.length).astype('f8')/l #sample_prob by bin width
+        df_targ['p_sample'] =  df_targ['bins'].apply(lambda x: x.length).astype('f8')/length #sample_prob by bin width
         sample_prob =  1/df_targ['bins'].value_counts() #correct uneven bin distribution
         sample_prob.name = 'p_sample_correction'
         df_res = df_targ.merge(sample_prob,left_on='bins',right_index=True)
@@ -270,16 +274,18 @@ def BatchLimit_Factory(cls):
             super().__init__(dataset=dataset, **kwargs)
 
         def __len__(self):
-            l = super().__len__() 
-            if self.max_batches is not None: l = min(l,self.max_batches)
-            return l
+            batches = super().__len__() 
+            if self.max_batches is not None: 
+                batches = min(batches,self.max_batches)
+            return batches
 
         def __iter__(self):
             if self.max_batches is None: 
                 yield from super().__iter__()
             else:
                 for idx,b in enumerate(super().__iter__()):
-                    if idx >= self.max_batches: break
+                    if idx >= self.max_batches: 
+                        break
                     yield b
                     
         #shuffle function that is called in super().get_idxs, truncated for faster execution

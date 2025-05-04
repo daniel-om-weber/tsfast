@@ -104,12 +104,14 @@ def DfHDFGetSeqLen(clm):
 
 # %% ../../nbs/00_data/00_core.ipynb 30
 import numbers
+
+
 def DfResamplingFactor(src_fs,lst_targ_fs):
-    if not isinstance(src_fs, numbers.Number) and not type(src_fs) is str: 
+    if not isinstance(src_fs, numbers.Number) and type(src_fs) is not str: 
         raise ValueError('src_fs has to be a column name or a fixed number')
     
     def _inner(df):
-        np_targ_fs = array(lst_targ_fs)
+        np_targ_fs = np.array(lst_targ_fs)
         pd.options.mode.chained_assignment = None #every row is a reference so we need to suppress the warning messages while copying
 
         #repeat entries for every target fs
@@ -133,14 +135,16 @@ def DfResamplingFactor(src_fs,lst_targ_fs):
 def DfHDFCreateWindows(win_sz,stp_sz, clm, fixed_start = False, fixed_end = False):
     '''create windows of sequences, splits sequence into multiple items'''
     def _inner(df):
-        if fixed_start and fixed_end: raise Exception
+        if fixed_start and fixed_end: 
+            raise Exception
         
         if 'seq_len' in df:
             np_f_len = df.seq_len.values
         else:
             np_f_len = np.array([get_hdf_seq_len(row,clm) for (idx, row) in df.iterrows()])
             
-        if 'resampling_factor' in df: np_f_len =(np_f_len*df.resampling_factor.values).astype(int)
+        if 'resampling_factor' in df: 
+            np_f_len =(np_f_len*df.resampling_factor.values).astype(int)
             
         n_win = ((np_f_len-win_sz)//stp_sz)+1
         #cast array n_win to int and clip negative values to 0
@@ -165,7 +169,7 @@ def DfHDFCreateWindows(win_sz,stp_sz, clm, fixed_start = False, fixed_end = Fals
     
     return _inner
 
-# %% ../../nbs/00_data/00_core.ipynb 39
+# %% ../../nbs/00_data/00_core.ipynb 40
 def DfApplyFuncSplit(split_func,func1,func2):
     '''apply two different functions on the dataframe, func1 on the first indices of split_func, func2 on the second indices.
         Split_func is a Training, Validation split function'''
@@ -176,22 +180,22 @@ def DfApplyFuncSplit(split_func,func1,func2):
         return pd.concat((df1,df2))
     return _inner
 
-# %% ../../nbs/00_data/00_core.ipynb 41
+# %% ../../nbs/00_data/00_core.ipynb 42
 def DfFilterQuery(query):
     def _inner(df):
         return df.query(query)
     return _inner
 
-# %% ../../nbs/00_data/00_core.ipynb 44
+# %% ../../nbs/00_data/00_core.ipynb 45
 def DfDropClmExcept(clms = ['path','l_slc','r_slc','p_sample','resampling_factor']):
     '''drop unused dataframe columns as a last optional step to accelerate dictionary conversion'''
     def _inner(df):
         return df[[c for c in clms if c in df]]
     return _inner
 
-# %% ../../nbs/00_data/00_core.ipynb 48
+# %% ../../nbs/00_data/00_core.ipynb 49
 def calc_shift_offsets(clm_shift):
-    clm_shift = array(clm_shift)
+    clm_shift = np.array(clm_shift)
     l_offs = -min(clm_shift.min(),0)
     r_offs = -max(clm_shift.max(),0)
     l_shift = clm_shift+l_offs
@@ -199,21 +203,21 @@ def calc_shift_offsets(clm_shift):
     dim_red = l_offs-r_offs
     return l_shift,r_shift,dim_red
 
-# %% ../../nbs/00_data/00_core.ipynb 55
+# %% ../../nbs/00_data/00_core.ipynb 56
 def running_mean(x, N):
     cumsum = np.cumsum(np.insert(x, 0, 0,axis=0),axis=0) 
     return (cumsum[N:] - cumsum[:-N]) / float(N)
 
-# %% ../../nbs/00_data/00_core.ipynb 56
+# %% ../../nbs/00_data/00_core.ipynb 57
 def downsample_mean(x,N):
-    shp = x.shape
     trunc = -(x.shape[0] % N)
     trunc = trunc if trunc != 0 else None
     return x[:trunc,:].reshape((-1,N,x.shape[-1])).mean(axis=1)
 
-# %% ../../nbs/00_data/00_core.ipynb 57
+# %% ../../nbs/00_data/00_core.ipynb 58
 from scipy.signal import butter, lfilter, lfilter_zi
-from scipy import signal
+
+
 def resample_interp(x,resampling_factor,sequence_first=True, lowpass_cut=1.0, upsample_cubic_cut = None):
     '''signal resampling using linear or cubic interpolation
     
@@ -245,9 +249,9 @@ def resample_interp(x,resampling_factor,sequence_first=True, lowpass_cut=1.0, up
     
 #     if upsampling rate is too high, switch from linear to cubic interpolation
     if upsample_cubic_cut is None or fs_n <= upsample_cubic_cut:
-        x = array(nn.functional.interpolate(x_int, size=targ_size, mode='linear',align_corners=False)[0])
+        x = np.array(nn.functional.interpolate(x_int, size=targ_size, mode='linear',align_corners=False)[0])
     else:
-        x = array(nn.functional.interpolate(x_int[...,None], size=[targ_size,1], mode='bicubic',align_corners=False)[0,...,0])
+        x = np(nn.functional.interpolate(x_int[...,None], size=[targ_size,1], mode='bicubic',align_corners=False)[0,...,0])
 #     x = array(x_int)[0]
     
     if sequence_first:
@@ -255,8 +259,10 @@ def resample_interp(x,resampling_factor,sequence_first=True, lowpass_cut=1.0, up
     
     return x
 
-# %% ../../nbs/00_data/00_core.ipynb 59
+# %% ../../nbs/00_data/00_core.ipynb 60
 from scipy.signal import resample
+
+
 def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, fs_idx =None,dt_idx =False,fast_resample=True):
     '''
     extracts a sequence with the shape [seq_len x num_features]
@@ -274,8 +280,10 @@ def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None
 
     if resampling_factor is not None:
         seq_len = r_slc-l_slc if l_slc is not None and r_slc is not None else None #calculate seq_len for later slicing, necesary because of rounding errors in resampling
-        if l_slc is not None: l_slc= math.floor(l_slc/resampling_factor)
-        if r_slc is not None: r_slc= math.ceil(r_slc/resampling_factor)
+        if l_slc is not None: 
+            l_slc= math.floor(l_slc/resampling_factor)
+        if r_slc is not None: 
+            r_slc= math.ceil(r_slc/resampling_factor)
 
     with h5py.File(hdf_path,'r') as f:
         ds = f if dataset is None else f[dataset]
@@ -287,15 +295,20 @@ def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None
             res_seq = resample_interp(seq,resampling_factor)
         else:
             res_seq = resample(seq,int(seq.shape[0]*resampling_factor),window=('kaiser', 14.0))
-        if fs_idx is not None: res_seq[:,fs_idx] = seq[0,fs_idx] * resampling_factor
-        if dt_idx is not None: res_seq[:,dt_idx] = seq[0,dt_idx] / resampling_factor
+
+        if fs_idx is not None: 
+            res_seq[:,fs_idx] = seq[0,fs_idx] * resampling_factor
+        if dt_idx is not None: 
+            res_seq[:,dt_idx] = seq[0,dt_idx] / resampling_factor
+
         seq = res_seq
         
-        if seq_len is not None: seq = seq[:seq_len] #cut the part of the sequence that is too long because of resampling rounding errors
+        if seq_len is not None: 
+            seq = seq[:seq_len] #cut the part of the sequence that is too long because of resampling rounding errors
         
     return seq
 
-# %% ../../nbs/00_data/00_core.ipynb 60
+# %% ../../nbs/00_data/00_core.ipynb 61
 class Memoize:
     def __init__(self, fn):
         self.fn = fn
@@ -308,8 +321,10 @@ class Memoize:
 
 
 
-# %% ../../nbs/00_data/00_core.ipynb 61
-from multiprocessing import shared_memory, Manager, Lock
+# %% ../../nbs/00_data/00_core.ipynb 62
+from multiprocessing import Lock, Manager, shared_memory
+
+
 class MemoizeMP:
     
     def __init__(self, fn):
@@ -359,11 +374,11 @@ class MemoizeMP:
     def __del__(self):
         self.cleanup_shared_memory()
 
-# %% ../../nbs/00_data/00_core.ipynb 62
+# %% ../../nbs/00_data/00_core.ipynb 63
 class HDF2Sequence(Transform):
     
     def __init__(self, clm_names,clm_shift=None,truncate_sz=None,to_cls=noop,cached=True, fs_idx =None,dt_idx =None,fast_resample=True):
-        if not clm_shift is None:
+        if clm_shift is not None:
             assert len(clm_shift)==len(clm_names) and all(isinstance(n, int) for n in clm_shift)
             self.l_shift,self.r_shift,_ = calc_shift_offsets(clm_shift)
         
@@ -395,8 +410,10 @@ class HDF2Sequence(Transform):
 
         if resampling_factor is not None:
             seq_len = r_slc-l_slc if l_slc is not None and r_slc is not None else None #calculate seq_len for later slicing, necesary because of rounding errors in resampling
-            if l_slc is not None: l_slc= math.floor(l_slc/resampling_factor)
-            if r_slc is not None: r_slc= math.ceil(r_slc/resampling_factor)
+            if l_slc is not None: 
+                l_slc= math.floor(l_slc/resampling_factor)
+            if r_slc is not None: 
+                r_slc= math.ceil(r_slc/resampling_factor)
 
         with h5py.File(hdf_path,'r') as f:
             ds = f if dataset is None else f[dataset]
@@ -409,11 +426,14 @@ class HDF2Sequence(Transform):
             else:
                 res_seq = resample(seq,int(seq.shape[0]*resampling_factor),window=('kaiser', 14.0))
             
-            if fs_idx is not None: res_seq[:,fs_idx] = seq[0,fs_idx] * resampling_factor
-            if dt_idx is not None: res_seq[:,dt_idx] = seq[0,dt_idx] / resampling_factor
+            if fs_idx is not None: 
+                res_seq[:,fs_idx] = seq[0,fs_idx] * resampling_factor
+            if dt_idx is not None: 
+                res_seq[:,dt_idx] = seq[0,dt_idx] / resampling_factor
             seq = res_seq
 
-            if seq_len is not None: seq = seq[:seq_len] #cut the part of the sequence that is too long because of resampling rounding errors
+            if seq_len is not None: 
+                seq = seq[:seq_len] #cut the part of the sequence that is too long because of resampling rounding errors
 
         return seq
     
@@ -433,12 +453,12 @@ class HDF2Sequence(Transform):
             seq = self._exseq(str(item),None,None,None,None,None)
 
         #shift clms of result by given value 
-        if not self.clm_shift is None:
+        if self.clm_shift is not None:
             l_seq = seq.shape[0]
             seq = np.stack([seq[self.l_shift[i]:l_seq+self.r_shift[i],i] for i in range(seq.shape[1])],axis=-1)
             
-        if not self.truncate_sz is None:
-            seq = seq[truncate_sz:]
+        if self.truncate_sz is not None:
+            seq = seq[self.truncate_sz:]
         
         #it is important to slice first and then do the class conversion
 #         return self.to_cls(seq.astype('f8'))#workaround for random bug, that mitigates convergence if the numpy array is an f4 array. Seems to make no sense because the result does not change. 
@@ -495,7 +515,8 @@ class TensorSequences(TensorBase):#TensorBase
     def show(self, ctx=None, **kwargs):
 #         import pdb; pdb.set_trace()
         ax = ctx
-        if ax is None: _,ax = plt.subplots()
+        if ax is None: 
+            _,ax = plt.subplots()
         ax.plot(self)
 #         if title is not None: ax.set_title(title)
         return ax
@@ -505,8 +526,11 @@ class TensorSequences(TensorBase):#TensorBase
     def from_hdf(cls,clm_names,**kwargs):
         return HDF2Sequence(clm_names,**kwargs)
     
-class TensorSequencesInput(TensorSequences): pass
-class TensorSequencesOutput(TensorSequences): pass
+class TensorSequencesInput(TensorSequences): 
+    pass
+
+class TensorSequencesOutput(TensorSequences): 
+    pass
 
 # %% ../../nbs/00_data/00_core.ipynb 93
 @Transform
@@ -522,8 +546,11 @@ class TensorScalars(TensorBase):
         return HDF2Scalars(clm_names,**kwargs)
     
     
-class TensorScalarsInput(TensorScalars): pass
-class TensorScalarsOutput(TensorScalars): pass
+class TensorScalarsInput(TensorScalars): 
+    pass
+
+class TensorScalarsOutput(TensorScalars): 
+    pass
 
 
 # %% ../../nbs/00_data/00_core.ipynb 96
@@ -533,7 +560,6 @@ for f in torch.nn.functional.mse_loss,torch.nn.functional.huber_loss, Tensor.__g
 
 # %% ../../nbs/00_data/00_core.ipynb 102
 def plot_sequence(axs,in_sig,targ_sig,out_sig=None,**kwargs):
-    n_targ = targ_sig.shape[1]
     for j,ax in  enumerate(axs[:-1]):
         ax.plot(targ_sig[:,j])
         if out_sig is not None: 
@@ -554,7 +580,8 @@ def plot_seqs_single_figure(n_samples,n_targ,samples,plot_func,outs=None,**kwarg
     for i in range(n_samples):
         in_sig = samples[i][0]
         targ_sig = samples[i][1]
-        if outs is not None: out_sig = outs[i][0]
+        if outs is not None: 
+            out_sig = outs[i][0]
         inner_grid = outer_grid[i].subgridspec(n_targ+1, 1)
         axs = [fig.add_subplot(inner_grid[j]) for j in range(n_targ+1)]
         plot_func(axs,in_sig,targ_sig,out_sig=out_sig if outs is not None else None,**kwargs)
@@ -567,13 +594,17 @@ def plot_seqs_multi_figures(n_samples,n_targ,samples,plot_func,outs=None,**kwarg
         axs = fig.subplots(nrows=n_targ+1,sharex=True)
         in_sig = samples[i][0]
         targ_sig = samples[i][1]
-        if outs is not None:  out_sig = outs[i][0]
+        if outs is not None:  
+            out_sig = outs[i][0]
             
         plot_func(axs,in_sig,targ_sig,out_sig=out_sig if outs is not None else None,**kwargs)
         
         plt.tight_layout()
 
-# %% ../../nbs/00_data/00_core.ipynb 106
+# %% ../../nbs/00_data/00_core.ipynb 105
+from plum import dispatch
+
+
 @dispatch
 def show_batch(x:TensorSequences, y:TensorSequences, samples, ctxs=None, max_n=6, **kwargs):
     n_samples = min(len(samples), max_n)
@@ -586,7 +617,7 @@ def show_batch(x:TensorSequences, y:TensorSequences, samples, ctxs=None, max_n=6
         plot_seqs_multi_figures(n_samples,n_targ,samples,plot_sequence, **kwargs)
     return ctxs
 
-# %% ../../nbs/00_data/00_core.ipynb 107
+# %% ../../nbs/00_data/00_core.ipynb 106
 @dispatch
 def show_results(x:TensorSequences, y:TensorSequences, samples, outs, ctxs=None, max_n=2, **kwargs):
     n_samples = min(len(samples), max_n)

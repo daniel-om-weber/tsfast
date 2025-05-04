@@ -20,7 +20,7 @@ from fastai.data.all import *
 from ..data import *
 from .core import *
 
-from sysbench_loader import *
+import identibench as idb
 from shutil import rmtree
 
 # %% ../../nbs/01_datasets/01_external.ipynb 3
@@ -70,7 +70,7 @@ def create_dls_downl(
 # %% ../../nbs/01_datasets/01_external.ipynb 12
 create_dls_wh = partial(
     create_dls_downl, 
-    download_function=wiener_hammerstein,
+    download_function=idb.datasets.workshop.dl_wiener_hammerstein,
     u=['u0'],y=['y0'],
     win_sz=200,
     max_batches_training=1000,
@@ -80,7 +80,7 @@ create_dls_wh = partial(
 
 create_dls_wh_prediction = partial(
     create_dls_downl, 
-    download_function=wiener_hammerstein,
+    download_function=idb.datasets.workshop.dl_wiener_hammerstein,
     u=['u0'],y=['y0'],
     win_sz=200,
     prediction=True
@@ -89,7 +89,7 @@ create_dls_wh_prediction = partial(
 # %% ../../nbs/01_datasets/01_external.ipynb 16
 create_dls_silverbox = partial(
     create_dls_downl, 
-    download_function=silverbox,
+    download_function=idb.datasets.workshop.dl_silverbox,
     u=['u0'],y=['y0'],
     win_sz=200,
     max_batches_training=1000,
@@ -99,7 +99,7 @@ create_dls_silverbox = partial(
 
 create_dls_silverbox_prediction = partial(
     create_dls_downl, 
-    download_function=silverbox,
+    download_function=idb.datasets.workshop.dl_silverbox,
     u=['u0'],y=['y0'],
     win_sz=200,
     prediction=True
@@ -108,7 +108,7 @@ create_dls_silverbox_prediction = partial(
 # %% ../../nbs/01_datasets/01_external.ipynb 19
 create_dls_cascaded_tanks = partial(
     create_dls_downl, 
-    download_function=cascaded_tanks,
+    download_function=idb.datasets.workshop.dl_cascaded_tanks,
     u=['u0'],y=['y0'],
     win_sz=150,
     bs=16,
@@ -117,7 +117,7 @@ create_dls_cascaded_tanks = partial(
 
 create_dls_cascaded_tanks_prediction = partial(
     create_dls_downl, 
-    download_function=cascaded_tanks,
+    download_function=idb.datasets.workshop.dl_cascaded_tanks,
     u=['u0'],y=['y0'],
     win_sz=50,
     prediction=True
@@ -126,14 +126,14 @@ create_dls_cascaded_tanks_prediction = partial(
 # %% ../../nbs/01_datasets/01_external.ipynb 23
 create_dls_emps = partial(
     create_dls_downl, 
-    download_function=emps,
+    download_function=idb.datasets.workshop.dl_emps,
     u=['u0'],y=['y0'],
     win_sz=1000,
 )
 
 create_dls_emps_prediction = partial(
     create_dls_downl, 
-    download_function=emps,
+    download_function=idb.datasets.workshop.dl_emps,
     u=['u0'],y=['y0'],
     win_sz=500,
     prediction=True
@@ -142,7 +142,7 @@ create_dls_emps_prediction = partial(
 # %% ../../nbs/01_datasets/01_external.ipynb 26
 create_dls_ced = partial(
     create_dls_downl, 
-    download_function=ced,
+    download_function=idb.datasets.workshop.dl_ced,
     u=['u0'],y=['y0'],
     win_sz=100,
     bs=16,
@@ -151,7 +151,7 @@ create_dls_ced = partial(
 
 create_dls_ced_prediction = partial(
     create_dls_downl, 
-    download_function=ced,
+    download_function=idb.datasets.workshop.dl_ced,
     u=['u0'],y=['y0'],
     win_sz=100,
     bs=16,
@@ -162,7 +162,7 @@ create_dls_ced_prediction = partial(
 # %% ../../nbs/01_datasets/01_external.ipynb 29
 create_dls_noisy_wh = partial(
     create_dls_downl, 
-    download_function=noisy_wh,
+    download_function=idb.datasets.workshop.dl_noisy_wh,
     u=['u0'],y=['y0'],
     win_sz=100,
     stp_sz=50
@@ -170,7 +170,7 @@ create_dls_noisy_wh = partial(
 
 create_dls_noisy_wh_prediction = partial(
     create_dls_downl, 
-    download_function=noisy_wh,
+    download_function=idb.datasets.workshop.dl_noisy_wh,
     u=['u0'],y=['y0'],
     win_sz=100,
     stp_sz=50,
@@ -188,7 +188,7 @@ y = [f'y{i}' for i in range(6)]
 
 create_dls_robot_forward = partial(
     create_dls_downl, 
-    download_function=robot_forward,
+    download_function=idb.datasets.industrial_robot.dl_robot_forward,
     u=robot_u_forward,y=robot_y,
     win_sz=300,
     valid_stp_sz=4,
@@ -196,7 +196,7 @@ create_dls_robot_forward = partial(
 
 create_dls_robot_forward_prediction = partial(
     create_dls_downl, 
-    download_function=robot_forward,
+    download_function=idb.datasets.industrial_robot.dl_robot_forward,
     u=robot_u_forward,y=robot_y,
     win_sz=250,
     valid_stp_sz=4,
@@ -206,7 +206,7 @@ create_dls_robot_forward_prediction = partial(
 # %% ../../nbs/01_datasets/01_external.ipynb 35
 create_dls_robot_inverse = partial(
     create_dls_downl, 
-    download_function=robot_inverse,
+    download_function=idb.datasets.industrial_robot.dl_robot_inverse,
     u=robot_u_inverse,y=robot_y,
     win_sz=300,
     valid_stp_sz=4,
@@ -214,7 +214,7 @@ create_dls_robot_inverse = partial(
 
 create_dls_robot_inverse_prediction = partial(
     create_dls_downl, 
-    download_function=robot_inverse,
+    download_function=idb.datasets.industrial_robot.dl_robot_inverse,
     u=robot_u_inverse,y=robot_y,
     win_sz=250,
     valid_stp_sz=4,
@@ -227,14 +227,14 @@ ship_y = ['alpha_x','alpha_y','u','v','p','r','phi']
 
 create_dls_ship = partial(
     create_dls_downl, 
-    download_function=ship,
+    download_function=idb.datasets.ship.dl_ship,
     u=ship_u,y=ship_y,
     win_sz=100,
 )
 
 create_dls_ship_prediction = partial(
     create_dls_downl, 
-    download_function=ship,
+    download_function=idb.datasets.ship.dl_ship,
     u=ship_u,y=ship_y,
     win_sz=100,
     prediction=True
@@ -252,7 +252,7 @@ pelican_y_rate = [f'pqr{i}' for i in range(1,3+1)]
 # %% ../../nbs/01_datasets/01_external.ipynb 42
 create_dls_quad_pelican = partial(
     create_dls_downl, 
-    download_function=quad_pelican,
+    download_function=idb.datasets.quad_pelican.dl_quad_pelican,
     u=pelican_u_motors,y=pelican_y_euler_rates+pelican_y_vel,
     win_sz=300,
     valid_stp_sz=40
@@ -260,7 +260,7 @@ create_dls_quad_pelican = partial(
 
 create_dls_quad_pelican_prediction = partial(
     create_dls_downl, 
-    download_function=quad_pelican,
+    download_function=idb.datasets.quad_pelican.dl_quad_pelican,
     u=pelican_u_motors,y=pelican_y_euler_rates+pelican_y_vel,
     win_sz=300,
     valid_stp_sz=40,
@@ -282,7 +282,7 @@ quad_pi_y = quad_pi_y_vdot + quad_pi_y_wdot
 # %% ../../nbs/01_datasets/01_external.ipynb 46
 create_dls_quad_pi = partial(
     create_dls_downl, 
-    download_function=quad_pi,
+    download_function=idb.datasets.quad_pi.dl_quad_pi,
     u=quad_pi_u,y=quad_pi_y,
     win_sz=200,
     valid_stp_sz=20,
@@ -290,7 +290,7 @@ create_dls_quad_pi = partial(
 
 create_dls_quad_pi_prediction = partial(
     create_dls_downl, 
-    download_function=quad_pi,
+    download_function=idb.datasets.quad_pi.dl_quad_pi,
     u=quad_pi_u,y=quad_pi_y,
     win_sz=120,
     valid_stp_sz=20,
@@ -309,14 +309,14 @@ broad_u = broad_u_imu_acc+broad_u_imu_gyr
 # %% ../../nbs/01_datasets/01_external.ipynb 50
 create_dls_broad = partial(
     create_dls_downl, 
-    download_function=broad,
+    download_function=idb.datasets.broad.dl_broad,
     u=broad_u,y=broad_y_opt_quat,
     win_sz=100,
 )
 
 create_dls_broad_prediction = partial(
     create_dls_downl, 
-    download_function=broad,
+    download_function=idb.datasets.broad.dl_broad,
     u=broad_u,y=broad_y_opt_quat,
     win_sz=100,
     prediction=True

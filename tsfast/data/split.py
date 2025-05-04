@@ -5,7 +5,7 @@ __all__ = ['valid_clm_splitter', 'ParentSplitter', 'PercentageSplitter', 'ApplyT
 
 # %% ../../nbs/00_data/02_split.ipynb 2
 from fastai.data.all import *
-from .core import *
+from .core import CreateDict
 
 # %% ../../nbs/00_data/02_split.ipynb 13
 def _parent_idxs(items, name): return mask2idxs(Path(o).parent.name == name for o in items)

@@ -5,8 +5,8 @@ __all__ = ['SeqSlice', 'SeqNoiseInjection', 'SeqNoiseInjection_Varying', 'SeqNoi
            'encodes', 'decodes']
 
 # %% ../../nbs/00_data/01_transforms.ipynb 2
-from fastai.data.all import *
-from .core import *
+from fastai.basics import *
+from .core import TensorSequencesInput
 from fastai.vision.augment import RandTransform
 
 # %% ../../nbs/00_data/01_transforms.ipynb 5
