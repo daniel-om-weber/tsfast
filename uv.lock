@@ -1057,7 +1057,7 @@ wheels = [
 
 [[package]]
 name = "identibench"
-version = "0.1.1"
+version = "0.1.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bagpy" },
@@ -1067,9 +1067,9 @@ dependencies = [
     { name = "nonlinear-benchmarks" },
     { name = "pandas" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ef/3c/5dbc9db961a549acb64ec07bbee81e1781da7cb500ed09caaf140d982883/identibench-0.1.1.tar.gz", hash = "sha256:a8d20a0eeb12a831f32dd1fadb791c5dcbd2c30900cd48be41281d7c4dfd09e6", size = 2813222, upload-time = "2025-05-04T10:24:26.362Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/21/b9/c9899562121e30241a4bf34d64931af11bfcdd0a1054fbe82dc145912b94/identibench-0.1.4.tar.gz", hash = "sha256:748e32ab224fd17d0a717bf1e6b0ce83cb17dfe90f9d106db7ff744a9fa8b69e", size = 2813428, upload-time = "2025-05-04T20:54:10.7Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/29/75/68e7ec05c9e7082daeea633c54b62f77218507d34f1a3f98ad8fab1c0eeb/identibench-0.1.1-py3-none-any.whl", hash = "sha256:f1e7c0d69258d413f2dd93471523fc8808bbb516ffc3e32791c95f9be00a3ba1", size = 32405, upload-time = "2025-05-04T10:24:24.101Z" },
+    { url = "https://files.pythonhosted.org/packages/f2/e0/8a1b6328167f1578869f96bd4fcdf4edfbac75ea385b840f757a5af78cb8/identibench-0.1.4-py3-none-any.whl", hash = "sha256:86957efe1ad8e3954f7f48f7863d7d8b663c5bfe05def22eb9c407c2dfc622d8", size = 32470, upload-time = "2025-05-04T20:54:06.698Z" },
 ]
 
 [[package]]
@@ -3132,11 +3132,11 @@ wheels = [
 
 [[package]]
 name = "setuptools"
-version = "80.3.0"
+version = "80.3.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/51/6c/a3f892949418b5b9aced7396919c75ffb57e38f08b712b565f5eb10677ee/setuptools-80.3.0.tar.gz", hash = "sha256:ec8308eb180b2312062b1c5523204acf872cd8b0a9e6c2ae76431b22bc4065d7", size = 1314475, upload-time = "2025-05-03T09:17:32.334Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/70/dc/3976b322de9d2e87ed0007cf04cc7553969b6c7b3f48a565d0333748fbcd/setuptools-80.3.1.tar.gz", hash = "sha256:31e2c58dbb67c99c289f51c16d899afedae292b978f8051efaf6262d8212f927", size = 1315082, upload-time = "2025-05-04T18:47:04.397Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e6/61/a6239ff35d64e55def020335626894895847cc6659c0f8e1b676c58aad3b/setuptools-80.3.0-py3-none-any.whl", hash = "sha256:a65cffc4fb86167e3020b3ef58e08226baad8b29a3b34ce2c9d07e901bac481d", size = 1200273, upload-time = "2025-05-03T09:17:29.995Z" },
+    { url = "https://files.pythonhosted.org/packages/53/7e/5d8af3317ddbf9519b687bd1c39d8737fde07d97f54df65553faca5cffb1/setuptools-80.3.1-py3-none-any.whl", hash = "sha256:ea8e00d7992054c4c592aeb892f6ad51fe1b4d90cc6947cc45c45717c40ec537", size = 1201172, upload-time = "2025-05-04T18:47:02.575Z" },
 ]
 
 [[package]]

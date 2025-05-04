@@ -349,7 +349,10 @@ class FranSysCallback_variable_init(Callback):
 from .core import PredictionCallback
 
 @delegates(FranSys, keep=True)
-def FranSysLearner(dls,init_sz,attach_output=False,loss_func=nn.L1Loss(),metrics=[fun_rmse],opt_func=Adam,lr=3e-3,cbs=[],**kwargs):
+def FranSysLearner(dls,init_sz,attach_output=False,loss_func=nn.L1Loss(),metrics=fun_rmse,opt_func=Adam,lr=3e-3,cbs=None,**kwargs):
+    cbs = [] if cbs is None else list(cbs)
+    metrics = list(metrics) if is_iter(metrics) else [metrics]
+    
     inp,out = get_inp_out_size(dls)
 
     if attach_output:

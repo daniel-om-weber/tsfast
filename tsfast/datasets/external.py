@@ -4,300 +4,158 @@
 __all__ = ['create_dls_wh', 'create_dls_wh_prediction', 'create_dls_silverbox', 'create_dls_silverbox_prediction',
            'create_dls_cascaded_tanks', 'create_dls_cascaded_tanks_prediction', 'create_dls_emps',
            'create_dls_emps_prediction', 'create_dls_ced', 'create_dls_ced_prediction', 'create_dls_noisy_wh',
-           'create_dls_noisy_wh_prediction', 'u', 'y', 'create_dls_robot_forward',
-           'create_dls_robot_forward_prediction', 'create_dls_robot_inverse', 'create_dls_robot_inverse_prediction',
-           'ship_u', 'ship_y', 'create_dls_ship', 'create_dls_ship_prediction', 'create_dls_quad_pelican',
-           'create_dls_quad_pelican_prediction', 'quad_pi_u', 'quad_pi_x_v', 'quad_pi_x_q', 'quad_pi_x_w', 'quad_pi_x',
-           'quad_pi_y_vdot', 'quad_pi_y_wdot', 'quad_pi_y', 'create_dls_quad_pi', 'create_dls_quad_pi_prediction',
-           'broad_u_imu_acc', 'broad_u_imu_gyr', 'broad_u_imu_mag', 'broad_y_opt_pos', 'broad_y_opt_quat', 'broad_u',
-           'create_dls_broad', 'create_dls_broad_prediction', 'external_datasets_simulation',
-           'external_datasets_prediction', 'get_default_dataset_path', 'get_dataset_path', 'clean_default_dataset_path',
-           'create_dls_downl']
+           'create_dls_noisy_wh_prediction', 'create_dls_robot_forward', 'create_dls_robot_forward_prediction',
+           'create_dls_robot_inverse', 'create_dls_robot_inverse_prediction', 'create_dls_ship',
+           'create_dls_ship_prediction', 'create_dls_quad_pelican', 'create_dls_quad_pelican_prediction',
+           'create_dls_quad_pi', 'create_dls_quad_pi_prediction', 'broad_u_imu_acc', 'broad_u_imu_gyr',
+           'broad_u_imu_mag', 'broad_y_opt_pos', 'broad_y_opt_quat', 'broad_u', 'create_dls_broad',
+           'create_dls_broad_prediction', 'external_datasets_simulation', 'external_datasets_prediction']
 
 # %% ../../nbs/01_datasets/01_external.ipynb 2
 from fastai.data.all import *
 
 from ..data import *
 from .core import *
-
+from ..benchmark import create_dls_from_spec
 import identibench as idb
-from shutil import rmtree
 
-# %% ../../nbs/01_datasets/01_external.ipynb 3
-def get_default_dataset_path():
-    "Create a directory in the user's home directory for storing datasets"
-    data_dir = Path.home() / '.tsfast' / 'datasets'
-    data_dir.mkdir(parents=True, exist_ok=True)
-    return data_dir
-
-# %% ../../nbs/01_datasets/01_external.ipynb 5
-def get_dataset_path():
-    "Retrieves the tsfast dataset directory. Tries to read the path in the environment variable 'TSFAST_PATH', returns the default otherwise."
-    env_var_name = 'TSFAST_PATH'
-    env_path = os.getenv(env_var_name)
-
-    if env_path:
-        return Path(env_path)
-    else:
-        return get_default_dataset_path()
+# %% ../../nbs/01_datasets/01_external.ipynb 4
+create_dls_wh =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkWH_Simulation,
+    win_sz=200
+)
+create_dls_wh_prediction =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkWH_Prediction
+)
 
 # %% ../../nbs/01_datasets/01_external.ipynb 8
-def clean_default_dataset_path():
-    "Removes the default directory where the datasets are stored"
-    rmtree(get_default_dataset_path())
-
-# %% ../../nbs/01_datasets/01_external.ipynb 9
-@delegates(create_dls, keep=True)
-def create_dls_downl(
-    dataset=None,#path to the dataset directory, if not provided uses default
-    download_function=None,# function 
-    **kwargs
-):
-    if dataset is None and download_function is not None:
-        dataset = get_dataset_path() / download_function.__name__
-    else:
-        dataset = Path(dataset)
-
-    if not is_dataset_directory(dataset):
-        if download_function is not None:
-            print(f'Dataset not found. Downloading it to "{dataset}"')
-            download_function(dataset)
-        else:
-            raise ValueError(f'{dataset} does not contain a dataset. Check the path or activate the download flag.')
-
-    return create_dls(dataset=dataset,**kwargs)
-
-# %% ../../nbs/01_datasets/01_external.ipynb 12
-create_dls_wh = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.workshop.dl_wiener_hammerstein,
-    u=['u0'],y=['y0'],
-    win_sz=200,
-    max_batches_training=1000,
-    max_batches_valid=100,
-    valid_stp_sz=30
+create_dls_silverbox =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkSilverbox_Simulation,
+    win_sz=200
+)
+create_dls_silverbox_prediction =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkSilverbox_Prediction
 )
 
-create_dls_wh_prediction = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.workshop.dl_wiener_hammerstein,
-    u=['u0'],y=['y0'],
-    win_sz=200,
-    prediction=True
-)
-
-# %% ../../nbs/01_datasets/01_external.ipynb 16
-create_dls_silverbox = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.workshop.dl_silverbox,
-    u=['u0'],y=['y0'],
-    win_sz=200,
-    max_batches_training=1000,
-    max_batches_valid=100,
-    valid_stp_sz=30
-)
-
-create_dls_silverbox_prediction = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.workshop.dl_silverbox,
-    u=['u0'],y=['y0'],
-    win_sz=200,
-    prediction=True
-)
-
-# %% ../../nbs/01_datasets/01_external.ipynb 19
-create_dls_cascaded_tanks = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.workshop.dl_cascaded_tanks,
-    u=['u0'],y=['y0'],
+# %% ../../nbs/01_datasets/01_external.ipynb 11
+create_dls_cascaded_tanks =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkCascadedTanks_Simulation,
     win_sz=150,
     bs=16,
-    stp_sz=1
+)
+create_dls_cascaded_tanks_prediction =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkCascadedTanks_Prediction,
+    bs=16
 )
 
-create_dls_cascaded_tanks_prediction = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.workshop.dl_cascaded_tanks,
-    u=['u0'],y=['y0'],
-    win_sz=50,
-    prediction=True
+# %% ../../nbs/01_datasets/01_external.ipynb 15
+create_dls_emps =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkEMPS_Simulation,
+    win_sz=1000
+)
+create_dls_emps_prediction =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkEMPS_Prediction
 )
 
-# %% ../../nbs/01_datasets/01_external.ipynb 23
-create_dls_emps = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.workshop.dl_emps,
-    u=['u0'],y=['y0'],
-    win_sz=1000,
-)
-
-create_dls_emps_prediction = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.workshop.dl_emps,
-    u=['u0'],y=['y0'],
-    win_sz=500,
-    prediction=True
-)
-
-# %% ../../nbs/01_datasets/01_external.ipynb 26
-create_dls_ced = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.workshop.dl_ced,
-    u=['u0'],y=['y0'],
+# %% ../../nbs/01_datasets/01_external.ipynb 18
+create_dls_ced =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkCED_Simulation,
     win_sz=100,
-    bs=16,
-    stp_sz=1
+    bs=16
+)
+create_dls_ced_prediction =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkCED_Prediction,
+    bs=16
 )
 
-create_dls_ced_prediction = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.workshop.dl_ced,
-    u=['u0'],y=['y0'],
-    win_sz=100,
-    bs=16,
-    stp_sz=1,
-    prediction=True
-)
-
-# %% ../../nbs/01_datasets/01_external.ipynb 29
-create_dls_noisy_wh = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.workshop.dl_noisy_wh,
-    u=['u0'],y=['y0'],
+# %% ../../nbs/01_datasets/01_external.ipynb 21
+create_dls_noisy_wh =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkNoisyWH_Simulation,
     win_sz=100,
     stp_sz=50
 )
+create_dls_noisy_wh_prediction =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkNoisyWH_Prediction,
+    stp_sz=50
+)
 
-create_dls_noisy_wh_prediction = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.workshop.dl_noisy_wh,
-    u=['u0'],y=['y0'],
+
+# %% ../../nbs/01_datasets/01_external.ipynb 24
+create_dls_robot_forward =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkRobotForward_Simulation,
+    win_sz=300,
+    valid_stp_sz=4
+)
+create_dls_robot_forward_prediction =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkRobotForward_Prediction,
+    valid_stp_sz=4
+)
+
+# %% ../../nbs/01_datasets/01_external.ipynb 26
+create_dls_robot_inverse =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkRobotInverse_Simulation,
+    win_sz=300,
+    valid_stp_sz=4
+)
+create_dls_robot_inverse_prediction =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkRobotInverse_Prediction,
+    valid_stp_sz=4
+)
+
+# %% ../../nbs/01_datasets/01_external.ipynb 29
+create_dls_ship =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkShip_Simulation,
     win_sz=100,
-    stp_sz=50,
-    prediction=True
+)
+create_dls_ship_prediction =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkShip_Prediction,
 )
 
 # %% ../../nbs/01_datasets/01_external.ipynb 32
-robot_u_forward = [f'u{i}' for i in range(6)]
-robot_u_inverse = [f'u{i}' for i in range(18)]
-robot_y = [f'y{i}' for i in range(6)]
-
-# %% ../../nbs/01_datasets/01_external.ipynb 33
-u = [f'u{i}' for i in range(6)]
-y = [f'y{i}' for i in range(6)]
-
-create_dls_robot_forward = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.industrial_robot.dl_robot_forward,
-    u=robot_u_forward,y=robot_y,
-    win_sz=300,
-    valid_stp_sz=4,
-)
-
-create_dls_robot_forward_prediction = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.industrial_robot.dl_robot_forward,
-    u=robot_u_forward,y=robot_y,
-    win_sz=250,
-    valid_stp_sz=4,
-    prediction=True
-)
-
-# %% ../../nbs/01_datasets/01_external.ipynb 35
-create_dls_robot_inverse = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.industrial_robot.dl_robot_inverse,
-    u=robot_u_inverse,y=robot_y,
-    win_sz=300,
-    valid_stp_sz=4,
-)
-
-create_dls_robot_inverse_prediction = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.industrial_robot.dl_robot_inverse,
-    u=robot_u_inverse,y=robot_y,
-    win_sz=250,
-    valid_stp_sz=4,
-    prediction=True
-)
-
-# %% ../../nbs/01_datasets/01_external.ipynb 38
-ship_u = ['n','deltal','deltar','Vw']
-ship_y = ['alpha_x','alpha_y','u','v','p','r','phi']
-
-create_dls_ship = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.ship.dl_ship,
-    u=ship_u,y=ship_y,
-    win_sz=100,
-)
-
-create_dls_ship_prediction = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.ship.dl_ship,
-    u=ship_u,y=ship_y,
-    win_sz=100,
-    prediction=True
-)
-
-# %% ../../nbs/01_datasets/01_external.ipynb 41
-pelican_u_motors = [f'motors{i}' for i in range(1,4+1)]
-pelican_u_motors_cmd = [f'motors_cmd{i}' for i in range(1,4+1)]
-pelican_y_euler = [f'euler{i}' for i in range(1,3+1)]
-pelican_y_euler_rates = [f'euler_rates{i}' for i in range(1,3+1)]
-pelican_y_pos = [f'pos{i}' for i in range(1,3+1)]
-pelican_y_vel = [f'vel{i}' for i in range(1,3+1)]
-pelican_y_rate = [f'pqr{i}' for i in range(1,3+1)]
-
-# %% ../../nbs/01_datasets/01_external.ipynb 42
-create_dls_quad_pelican = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.quad_pelican.dl_quad_pelican,
-    u=pelican_u_motors,y=pelican_y_euler_rates+pelican_y_vel,
+create_dls_quad_pelican =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkQuadPelican_Simulation,
     win_sz=300,
     valid_stp_sz=40
 )
-
-create_dls_quad_pelican_prediction = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.quad_pelican.dl_quad_pelican,
-    u=pelican_u_motors,y=pelican_y_euler_rates+pelican_y_vel,
-    win_sz=300,
-    valid_stp_sz=40,
-    prediction=True
+create_dls_quad_pelican_prediction =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkQuadPelican_Prediction,
+    valid_stp_sz=40
 )
 
-# %% ../../nbs/01_datasets/01_external.ipynb 45
-quad_pi_u = ['u_0','u_1','u_2','u_3']
-
-quad_pi_x_v = ['v_x','v_y','v_z']
-quad_pi_x_q = ['q_w','q_x','q_y','q_z']
-quad_pi_x_w = ['w_x','w_y','w_z']
-quad_pi_x = quad_pi_x_v + quad_pi_x_q + quad_pi_x_w
-
-quad_pi_y_vdot = ['vdot_x','vdot_y','vdot_z']
-quad_pi_y_wdot = ['wdot_x','wdot_y','wdot_z']
-quad_pi_y = quad_pi_y_vdot + quad_pi_y_wdot
-
-# %% ../../nbs/01_datasets/01_external.ipynb 46
-create_dls_quad_pi = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.quad_pi.dl_quad_pi,
-    u=quad_pi_u,y=quad_pi_y,
+# %% ../../nbs/01_datasets/01_external.ipynb 35
+create_dls_quad_pi =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkQuadPi_Simulation,
     win_sz=200,
     valid_stp_sz=20,
 )
-
-create_dls_quad_pi_prediction = partial(
-    create_dls_downl, 
-    download_function=idb.datasets.quad_pi.dl_quad_pi,
-    u=quad_pi_u,y=quad_pi_y,
-    win_sz=120,
-    valid_stp_sz=20,
-    prediction=True
+create_dls_quad_pi_prediction =partial(
+    create_dls_from_spec,
+    spec=idb.BenchmarkQuadPi_Prediction,
+    valid_stp_sz=20
 )
 
-# %% ../../nbs/01_datasets/01_external.ipynb 49
+# %% ../../nbs/01_datasets/01_external.ipynb 38
 broad_u_imu_acc = [f'imu_acc{i}' for i in range(3)]
 broad_u_imu_gyr = [f'imu_gyr{i}' for i in range(3)]
 broad_u_imu_mag = [f'imu_mag{i}' for i in range(3)]
@@ -306,12 +164,14 @@ broad_y_opt_quat = [f'opt_quat{i}' for i in range(4)]
 
 broad_u = broad_u_imu_acc+broad_u_imu_gyr
 
-# %% ../../nbs/01_datasets/01_external.ipynb 50
+# %% ../../nbs/01_datasets/01_external.ipynb 39
+#Todo: add spec, when available
 create_dls_broad = partial(
     create_dls_downl, 
     download_function=idb.datasets.broad.dl_broad,
     u=broad_u,y=broad_y_opt_quat,
     win_sz=100,
+    stp_sz=30,
 )
 
 create_dls_broad_prediction = partial(
@@ -319,10 +179,11 @@ create_dls_broad_prediction = partial(
     download_function=idb.datasets.broad.dl_broad,
     u=broad_u,y=broad_y_opt_quat,
     win_sz=100,
+    stp_sz=30,
     prediction=True
 )
 
-# %% ../../nbs/01_datasets/01_external.ipynb 53
+# %% ../../nbs/01_datasets/01_external.ipynb 42
 external_datasets_simulation = [
     create_dls_wh,
     create_dls_silverbox,
@@ -333,7 +194,7 @@ external_datasets_simulation = [
     create_dls_emps
 ]
 
-# %% ../../nbs/01_datasets/01_external.ipynb 54
+# %% ../../nbs/01_datasets/01_external.ipynb 43
 external_datasets_prediction = [
     # create_dls_broad_prediction,
     create_dls_cascaded_tanks_prediction,
