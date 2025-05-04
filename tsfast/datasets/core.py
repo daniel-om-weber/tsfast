@@ -2,7 +2,8 @@
 
 # %% auto 0
 __all__ = ['create_dls_test', 'extract_mean_std_from_dls', 'dict_file_save', 'dict_file_load', 'extract_mean_std_from_hdffiles',
-           'extract_mean_std_from_dataset', 'is_dataset_directory', 'create_dls']
+           'extract_mean_std_from_dataset', 'is_dataset_directory', 'create_dls', 'get_default_dataset_path',
+           'get_dataset_path', 'clean_default_dataset_path', 'create_dls_downl']
 
 # %% ../../nbs/01_datasets/00_core.ipynb 2
 from fastai.data.all import *
@@ -11,6 +12,7 @@ from ..data import *
 from ..data.loader import *
 import h5py
 from nbdev.config import get_config
+from shutil import rmtree
 
 # %% ../../nbs/01_datasets/00_core.ipynb 5
 def extract_mean_std_from_dls(dls):
@@ -195,7 +197,7 @@ def create_dls(
     test_hdf_files =  hdf_files.filter(lambda o:Path(o).parent.name == 'test')
     if prediction:
         items = CreateDict([DfHDFCreateWindows(win_sz=win_sz,stp_sz=win_sz,clm=u[0])])(test_hdf_files)
-        test_dl = dls.test_dl(items,bs=bs, with_labels=True)
+        test_dl = dls.test_dl(items,bs=min(bs,len(items)), with_labels=True)
     else:
         items = CreateDict()(test_hdf_files)
         test_dl = dls.test_dl(items,bs=1, with_labels=True)
@@ -213,3 +215,47 @@ create_dls_test = partial(
         stp_sz=100
     )
 create_dls_test.__doc__ = 'create a dataloader from a small dataset provided with tsfast'
+
+# %% ../../nbs/01_datasets/00_core.ipynb 26
+def get_default_dataset_path():
+    "Create a directory in the user's home directory for storing datasets"
+    data_dir = Path.home() / '.tsfast' / 'datasets'
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir
+
+# %% ../../nbs/01_datasets/00_core.ipynb 28
+def get_dataset_path():
+    "Retrieves the tsfast dataset directory. Tries to read the path in the environment variable 'TSFAST_PATH', returns the default otherwise."
+    env_var_name = 'TSFAST_PATH'
+    env_path = os.getenv(env_var_name)
+
+    if env_path:
+        return Path(env_path)
+    else:
+        return get_default_dataset_path()
+
+# %% ../../nbs/01_datasets/00_core.ipynb 31
+def clean_default_dataset_path():
+    "Removes the default directory where the datasets are stored"
+    rmtree(get_default_dataset_path())
+
+# %% ../../nbs/01_datasets/00_core.ipynb 32
+@delegates(create_dls, keep=True)
+def create_dls_downl(
+    dataset=None,#path to the dataset directory, if not provided uses default
+    download_function=None,# function 
+    **kwargs
+):
+    if dataset is None and download_function is not None:
+        dataset = get_dataset_path() / download_function.__name__
+    else:
+        dataset = Path(dataset)
+
+    if not is_dataset_directory(dataset):
+        if download_function is not None:
+            print(f'Dataset not found. Downloading it to "{dataset}"')
+            download_function(dataset)
+        else:
+            raise ValueError(f'{dataset} does not contain a dataset. Check the path or activate the download flag.')
+
+    return create_dls(dataset=dataset,**kwargs)

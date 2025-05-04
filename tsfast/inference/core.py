@@ -7,121 +7,122 @@ __all__ = ['InferenceWrapper']
 from ..datasets.core import extract_mean_std_from_dls
 from ..data.loader import reset_model_state
 from ..models.layers import NormalizedModel
+import warnings
+from ..prediction.core import PredictionCallback
 import numpy as np
 import torch
 
 # %% ../../nbs/05_inference/00_core.ipynb 3
 class InferenceWrapper:
     """
-    A wrapper class to simplify inference with a trained tsfast/fastai Learner
-    on NumPy data. Handles normalization and state reset automatically.
+    (Docstring remains the same)
     """
-    def __init__(self, learner,device='cpu'):
-        """
-        Initializes the inferencer.
-
-        Args:
-            learner: The trained tsfast/fastai Learner object.
-            device = 'cpu': The device to run the inference on.
-        """
+    def __init__(self, learner, device='cpu'):
+        # (Initialization remains the same: detect callback, store its state, get main norm)
         if not hasattr(learner, 'model') or not hasattr(learner, 'dls'):
-            raise TypeError("Input 'learner' object does not appear to be a valid fastai/tsfast Learner.")
-
+            raise TypeError("Learner object seems invalid.")
         self.device = device
         self.core_model = learner.model.to(self.device)
-
-        # Extract normalization stats
+        self._uses_prediction_callback = False
+        self._y_init_norm = None
+        self._pred_cb_t_offset = 0
+        for cb in learner.cbs:
+            if isinstance(cb, PredictionCallback):
+                if cb.norm is not None:
+                    self._uses_prediction_callback = True
+                    self._y_init_norm = cb.norm.to(device)
+                    self._pred_cb_t_offset = cb.t_offset
+                    print(f"InferenceWrapper: Detected PredictionCallback(t_offset={self._pred_cb_t_offset}).")
+                    break
+                else: warnings.warn("Found PredictionCallback, but norm uninitialized.")
         mean, std = extract_mean_std_from_dls(learner.dls)
-        if mean is None or std is None:
-             raise ValueError("Could not extract mean/std from learner's DataLoaders. Ensure normalization was used during training.")
-
-        # Create and store the NormalizedModel
-        # Assuming the normalization stats are for the combined input if fransys is used
+        if mean is None or std is None: raise ValueError("Could not extract main mean/std.")
         self.norm_model = NormalizedModel(self.core_model, mean, std).to(self.device)
-        self.norm_model.eval() # Set to evaluation mode
+        self.norm_model.eval()
+        self.expected_feature_dim = self.norm_model.mean.shape[-1]
+
+    # --- Helper Functions (Keep these separate for clarity) ---
+    def _normalize_y_init(self, np_output_init: np.ndarray) -> torch.Tensor:
+        # ... (same as before)
+        if self._y_init_norm is None: raise RuntimeError("y_init normalizer not found.")
+        y_init_tensor = torch.from_numpy(np_output_init).float().to(self.device)
+        return self._y_init_norm.normalize(y_init_tensor)
+
+    def _prepare_input_3d(self, np_ar: np.ndarray, name: str) -> np.ndarray:
+        # ... (same as before)
+        if np_ar.ndim == 1: np_ar = np.expand_dims(np_ar, axis=(0, -1))
+        elif np_ar.ndim == 2: np_ar = np.expand_dims(np_ar, axis=0)
+        elif np_ar.ndim != 3 or np_ar.shape[0] != 1:
+             raise ValueError(f"{name} must be 1D/2D/3D(batch=1). Got {np_ar.shape}")
+        return np_ar
+
+    def _adjust_seq_len(self, np_arr: np.ndarray, target_len: int, name: str) -> np.ndarray:
+        # ... (same as before)
+        current_len = np_arr.shape[1]
+        if current_len == target_len: return np_arr
+        if current_len < target_len:
+            pad_width = target_len - current_len
+            return np.pad(np_arr, ((0, 0), (0, pad_width), (0, 0)), mode='constant', constant_values=0)
+        # current_len > target_len
+        warnings.warn(f"Truncating {name} len from {current_len} to {target_len}.", UserWarning)
+        return np_arr[:, :target_len, :]
+    # -----------------------------------------------------------
 
     def inference(self, np_input: np.ndarray, np_output_init: np.ndarray = None) -> np.ndarray:
-        """
-        Performs inference on the input NumPy data.
+        # 1. Prepare u (np_input)
+        np_input = self._prepare_input_3d(np_input, "np_input")
+        u_features = np_input.shape[-1]
+        input_seq_len = np_input.shape[1]
 
-        Args:
-            np_input: The primary input data as a NumPy array.
-                      Expected shapes: [seq_len] or [seq_len, features] or [1, seq_len, features].
-            np_output_init: Optional secondary input data (e.g., for FranSys) as a NumPy array.
-                            Expected shapes should be compatible with np_input after dimension expansion.
+        # 2. Prepare final numpy input based on detected mode
+        final_np_input = None
+        if self._uses_prediction_callback:
+            if np_output_init is None: raise ValueError("PredictionCallback model requires np_output_init.")
+            np_output_init = self._prepare_input_3d(np_output_init, "np_output_init")
 
-        Returns:
-            The model's output as a NumPy array.
-        """
-        # Store original ndim for potential concatenation axis determination later
-        original_ndim = np_input.ndim
+            effective_len = input_seq_len - self._pred_cb_t_offset
+            if effective_len <= 0: raise ValueError(f"Input len too short for offset {self._pred_cb_t_offset}.")
 
-        # Add batch and feature dimensions if needed
-        if np_input.ndim == 1: # [seq_len] -> [1, seq_len, 1]
-            np_input = np.expand_dims(np_input, axis=(0, -1))
-            if np_output_init is not None:
-                 if np_output_init.ndim == 1:
-                     np_output_init = np.expand_dims(np_output_init, axis=(0, -1))
-                 elif np_output_init.ndim == 2: # Handle [seq_len, features] case for init
-                      np_output_init = np.expand_dims(np_output_init, axis=0)
-                 elif np_output_init.ndim != 3:
-                     raise ValueError(f"np_output_init shape {np_output_init.shape} incompatible with 1D np_input")
+            np_input_adj = np_input[:, self._pred_cb_t_offset:, :]
+            np_y_init_adj = self._adjust_seq_len(np_output_init, effective_len, "y_init (for offset)")
+            norm_y_init_np = self._normalize_y_init(np_y_init_adj).cpu().numpy()
+            final_np_input = np.concatenate((np_input_adj, norm_y_init_np), axis=-1)
 
-        elif np_input.ndim == 2: # [seq_len, features] -> [1, seq_len, features]
-            np_input = np.expand_dims(np_input, axis=0)
-            if np_output_init is not None:
-                if np_output_init.ndim == 1: # Expand [seq_len] -> [1, seq_len, 1]
-                    np_output_init = np.expand_dims(np_output_init, axis=(0, -1))
-                elif np_output_init.ndim == 2: # Expand [seq_len, features] -> [1, seq_len, features]
-                     np_output_init = np.expand_dims(np_output_init, axis=0)
-                elif np_output_init.ndim != 3:
-                     raise ValueError(f"np_output_init shape {np_output_init.shape} incompatible with 2D np_input")
+        elif np_output_init is None: # No callback, no y_init -> Check simulation
+            if u_features != self.expected_feature_dim:
+                 raise ValueError(f"No y_init. Expected {self.expected_feature_dim} features, got {u_features}.")
+            final_np_input = np_input # Simulation case
 
-        elif np_input.ndim == 3: # [1, seq_len, features] -> No change needed
-            if np_input.shape[0] != 1:
-                 raise ValueError(f"Input data with 3 dimensions should have batch size 1. Provided shape: {np_input.shape}")
-            if np_output_init is not None:
-                 if np_output_init.ndim == 1: # Expand [seq_len] -> [1, seq_len, 1]
-                     np_output_init = np.expand_dims(np_output_init, axis=(0, -1))
-                 elif np_output_init.ndim == 2: # Expand [seq_len, features] -> [1, seq_len, features]
-                      np_output_init = np.expand_dims(np_output_init, axis=0)
-                 elif np_output_init.ndim != 3:
-                      raise ValueError(f"np_output_init shape {np_output_init.shape} incompatible with 3D np_input")
-        else:
-            raise ValueError(f"Input data should have 1, 2 or 3 dimensions. Provided shape: {np_input.shape}")
+        else: # No callback, but y_init provided -> Check dimensions
+             np_output_init = self._prepare_input_3d(np_output_init, "np_output_init")
+             y_init_features = np_output_init.shape[-1]
 
-        # Concatenate inputs if np_output_init is provided
-        if np_output_init is not None:
-            # Ensure sequence lengths match
-            if np_input.shape[1] != np_output_init.shape[1]:
-                raise ValueError(f"Sequence lengths of np_input ({np_input.shape[1]}) and np_output_init ({np_output_init.shape[1]}) must match.")
-            # Concatenate along the feature dimension (last axis)
-            try:
-                np_combined_input = np.concatenate((np_input, np_output_init), axis=-1)
-            except ValueError as e:
-                 raise ValueError(f"Could not concatenate inputs. Check shapes: np_input={np_input.shape}, np_output_init={np_output_init.shape}. Error: {e}")
-            input_tensor = torch.from_numpy(np_combined_input).float().to(self.device)
-        else:
-            input_tensor = torch.from_numpy(np_input).float().to(self.device)
+             if u_features == self.expected_feature_dim: # Matches u alone
+                 warnings.warn("Input `u` matches expected features. Ignoring provided y_init.", UserWarning)
+                 final_np_input = np_input # Simulation case
+             elif u_features + y_init_features == self.expected_feature_dim: # Matches u + y_init
+                 np_y_init_adj = self._adjust_seq_len(np_output_init, input_seq_len, "y_init") # Adjust raw y_init length
+                 final_np_input = np.concatenate((np_input, np_y_init_adj), axis=-1) # Dataloader Prediction case
+             else: # Dimension mismatch
+                 raise ValueError(f"Dim mismatch. Expected {self.expected_feature_dim}. "
+                                  f"u:{u_features}, u+y_init:{u_features + y_init_features}.")
 
+        # 3. Convert final prepared array to tensor
+        if final_np_input is None: raise RuntimeError("Internal error preparing input.")
+        input_tensor = torch.from_numpy(final_np_input).float().to(self.device)
 
+        # 4. Run Inference
         output_tensor = None
         with torch.no_grad():
-            reset_model_state(self.core_model) # Reset state before each inference call
-            model_output = self.norm_model(input_tensor)
+            reset_model_state(self.core_model)
+            model_output = self.norm_model(input_tensor) # Main norm applied here
+            # Handle tuple outputs if necessary
+            if isinstance(model_output, tuple): output_tensor = model_output[0]
+            else: output_tensor = model_output
 
-            # Handle tuple outputs (common in some RNNs)
-            if isinstance(model_output, tuple):
-                output_tensor = model_output[0]
-            else:
-                output_tensor = model_output
-
-        if output_tensor is None:
-            raise RuntimeError("Model did not return a valid output tensor.")
-
-        # Remove batch dimension and return as NumPy array
+        # 5. Return result
+        if output_tensor is None: raise RuntimeError("Model output is None.")
         return output_tensor.squeeze(0).cpu().numpy()
 
     def __call__(self, np_input: np.ndarray, np_output_init: np.ndarray = None) -> np.ndarray:
-        """Allows calling the predictor instance like a function."""
         return self.inference(np_input, np_output_init)
