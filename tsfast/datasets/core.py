@@ -175,7 +175,7 @@ def create_dls(
                             DfHDFCreateWindows(win_sz=win_sz,stp_sz=stp_sz,clm=u[0]),
                             DfHDFCreateWindows(win_sz=win_sz,stp_sz=valid_stp_sz,clm=u[0])
                         )]),
-                     batch_tfms=Normalize(mean=torch.from_numpy(norm_mean),std=torch.from_numpy(norm_std),axes=(0, 1)),
+                     batch_tfms=Normalize(mean=torch.from_numpy(norm_mean[None,None,:]),std=torch.from_numpy(norm_std[None,None,:]),axes=(0, 1)),
                      splitter=ParentSplitter())
     
     if sub_seq_len is None:
