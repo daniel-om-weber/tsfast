@@ -28,15 +28,14 @@ class PredictionCallback(Callback):
         if not(std is None or mean is None):
             self.init_normalize_values(mean,std)
 
-    def init_normalize(self, batch,axes = [0,1]):
-        x = batch[1]
-        mean = x.mean(axes, keepdim=True)
-        std = x.std(axes, keepdim=True)
+    def init_normalize(self, batch,axes = (0,1)):
+        y = batch[1]
+        mean = y.mean(axes, keepdim=True)
+        std = y.std(axes, keepdim=True)
         self.init_normalize_values(mean,std)
         
     def init_normalize_values(self, mean, std):
         self.norm = Normalizer1D(mean,std)
-
 
     def before_batch(self):
         #output has to be casted to the input tensor type
