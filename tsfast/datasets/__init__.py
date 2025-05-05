@@ -1,2 +1,2 @@
 from .core import *
-from .external import *
+from .benchmark import *
