@@ -57,21 +57,22 @@ class InferenceWrapper:
         u_tensor = self._prepare_tensor(np_input, "np_input")
         input_seq_len = u_tensor.shape[1]
         y_init_tensor = self._prepare_tensor(np_output_init, "np_output_init") if np_output_init is not None else None
+        
         final_input = None
         if self._pred_cb: # Mode: PredictionCallback Was Used During Training
             if y_init_tensor is None: raise ValueError("Model trained with PredictionCallback requires 'np_output_init'.")
-            effective_len = input_seq_len - self._pred_cb.t_offset
-            if effective_len <= 0: raise ValueError(f"Input seq len ({input_seq_len}) too short for offset ({self._pred_cb.t_offset}).")
+            if input_seq_len - self._pred_cb.t_offset <= 0: raise ValueError(f"Input seq len ({input_seq_len}) too short for offset ({self._pred_cb.t_offset}).")
             if self._pred_cb.t_offset > 0:
                 u_tensor = u_tensor[:, self._pred_cb.t_offset:, :] # Apply offset to u
                 y_init_tensor = y_init_tensor[:, :-self._pred_cb.t_offset, :] # Adjust y length to match offset u
-            final_input = torch.cat((u_tensor, y_init_tensor), dim=-1) # Concatenate u and *normalized* y
+            y_init_tensor = self._adjust_seq_len(y_init_tensor, input_seq_len, "y_init") # Adjust y length to match u
+            final_input = torch.cat((u_tensor, y_init_tensor), dim=-1)
         elif y_init_tensor is not None and u_tensor.shape[-1] > self.expected_total_features: # Mode: No PredCB, but y_init provided (Dataloader Prediction)
             y_init_tensor = self._adjust_seq_len(y_init_tensor, input_seq_len, "y_init") # Adjust y length to match u
-            y_adj = self._adjust_seq_len(y_init_tensor, input_seq_len, "y_init") # Adjust y length to match u
-            final_input = torch.cat((u_tensor, y_adj), dim=-1) # Concatenate u and *raw* y
+            final_input = torch.cat((u_tensor, y_init_tensor), dim=-1)
         else: # Mode: No PredCB, no y_init provided (Simulation)
             final_input = u_tensor
+
         if final_input.shape[-1] != self.expected_total_features: raise ValueError(f"Prepared input features ({final_input.shape[-1]}) != expected ({self.expected_total_features}).")
         reset_model_state(self.core_model) # Reset stateful layers (RNNs, etc.) before running the model
         model_output = self.norm_model(final_input) # Apply main normalization and get model output
