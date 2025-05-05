@@ -15,7 +15,7 @@ __all__ = ['create_dls_wh', 'create_dls_wh_prediction', 'create_dls_silverbox', 
 from fastai.data.all import *
 
 from ..data import *
-from .core import *
+from .core import create_dls_downl
 from ..benchmark import create_dls_from_spec
 import identibench as idb
 

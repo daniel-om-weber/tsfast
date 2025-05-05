@@ -52,6 +52,7 @@ def create_dls_from_spec(
         'u': spec.u_cols,
         'y': spec.y_cols,
         'download_function': spec.download_func,
+        'dataset':spec.dataset_path
     }
 
     #add prediction specific kwargs
