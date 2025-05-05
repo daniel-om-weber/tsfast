@@ -127,7 +127,7 @@ def create_dls(
         valid_stp_sz:int = None, #step size between consecutive validation windows, defaults to win_sz
         cached:bool = True, #if true, the data is cached in RAM
         num_workers:int = 5, #number of processes for the dataloader, 0 for no multiprocessing
-        max_batches_training:int = 300, #limits the number of  training batches in a single epoch
+        max_batches_training:int = 1000, #limits the number of  training batches in a single epoch
         max_batches_valid:int = None, #limits the number of validation batches in a single epoch
         dls_id:str = None #identifier for the dataloader to cache the normalization values, does not cache when not provided
     ):
