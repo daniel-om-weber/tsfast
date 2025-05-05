@@ -28,8 +28,8 @@ class InferenceWrapper:
             if mean is None or std is None: raise ValueError("Could not extract mean/std from learner.dls.")
 
             if self._pred_cb:
-                mean = torch.cat((mean,self._pred_cb.norm.mean),dim=-1)
-                std = torch.cat((std,self._pred_cb.norm.std),dim=-1)
+                mean = torch.cat((mean,self._pred_cb.norm.mean.to(mean.device)),dim=-1)
+                std = torch.cat((std,self._pred_cb.norm.std.to(std.device)),dim=-1)
 
             self.norm_model = NormalizedModel(self.core_model, mean, std).to(self.device).eval() # Wrap core model with the main normalization
             self.expected_total_features = mean.shape[-1] # Store the feature dimension expected by the final normalization layer
