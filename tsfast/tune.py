@@ -144,7 +144,7 @@ def learner_optimize(config):
             ray.get(config['fit_method'])(lrn,**lrn_kwargs)
     finally:
         #cleanup shared memory even when earlystopping occurs
-        if lrn is not None:
+        if 'lrn' in locals():
             stop_shared_memory_managers(lrn)
             del lrn
             gc.collect()
