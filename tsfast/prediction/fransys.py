@@ -353,15 +353,28 @@ def FranSysLearner(dls,init_sz,attach_output=False,loss_func=nn.L1Loss(),metrics
     cbs = [] if cbs is None else list(cbs)
     metrics = list(metrics) if is_iter(metrics) else [metrics]
     
-    inp,out = get_inp_out_size(dls)
+    _batch = dls.one_batch()
+    inp = _batch[0].shape[-1]
+    out = _batch[1].shape[-1]
 
     if attach_output:
         model = FranSys(inp,out,init_sz,**kwargs)
-        pred_callback = PredictionCallback(0)
-        pred_callback.init_normalize(dls.one_batch())
-        cbs.append(pred_callback)
+
+        #if PredictionCallback is not in cbs, add it
+        if not any(isinstance(cb, PredictionCallback) for cb in cbs):
+            pred_callback = PredictionCallback(0)
+            pred_callback.init_normalize(_batch)
+            cbs.append(pred_callback)
     else:
         model = FranSys(inp-out,out,init_sz,**kwargs)
+
+    #for long sequences, add a TruncateSequenceCallback
+    seq_len = _batch[0].shape[1]
+    LENGTH_THRESHOLD = 300
+    if seq_len > init_sz+LENGTH_THRESHOLD:
+        if not any(isinstance(cb, CB_TruncateSequence) for cb in cbs):
+            INITIAL_SEQ_LEN = 100 #initial sequence length for truncation, increases during training
+            cbs.append(CB_TruncateSequence(init_sz+INITIAL_SEQ_LEN))
   
     skip = partial(SkipNLoss,n_skip=init_sz)
         
