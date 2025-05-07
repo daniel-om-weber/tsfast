@@ -23,6 +23,8 @@ def get_inp_out_size(dls):
 # %% ../../nbs/02_learner/03_learner.ipynb 9
 @delegates(SimpleRNN, keep=True)
 def RNNLearner(dls,loss_func=nn.L1Loss(),metrics=[fun_rmse],n_skip=0,num_layers=1,hidden_size=100,stateful=False,opt_func=Adam,cbs=None,**kwargs):
+    if cbs is None: cbs = []
+
     inp,out = get_inp_out_size(dls)
     model = SimpleRNN(inp,out,num_layers,hidden_size,stateful=stateful,**kwargs)
   
@@ -30,15 +32,17 @@ def RNNLearner(dls,loss_func=nn.L1Loss(),metrics=[fun_rmse],n_skip=0,num_layers=
         
     metrics= [skip(f) for f in metrics]
 
-    if not stateful: loss_func = skip(loss_func)
+    if stateful: 
+        cbs.append(TbpttResetCB())
+        # if stateful apply n_skip with a callback for the first minibatch of a tbptt sequence
+        cbs.append(SkipFirstNCallback(n_skip))
+    else:
+        loss_func = skip(loss_func)
         
     lrn = Learner(dls,model,loss_func=loss_func,opt_func=opt_func,metrics=metrics,cbs=cbs,lr=3e-3)
-
-    if stateful: lrn.add_cb(TbpttResetCB())
-
     return lrn
 
-# %% ../../nbs/02_learner/03_learner.ipynb 13
+# %% ../../nbs/02_learner/03_learner.ipynb 14
 @delegates(TCN, keep=True)
 def TCNLearner(dls,num_layers=3,hidden_size=100,loss_func=nn.L1Loss(),metrics=[fun_rmse],n_skip=None,opt_func=Adam,cbs=None,**kwargs):
     inp,out = get_inp_out_size(dls)
@@ -53,7 +57,7 @@ def TCNLearner(dls,num_layers=3,hidden_size=100,loss_func=nn.L1Loss(),metrics=[f
     lrn = Learner(dls,model,loss_func=loss_func,opt_func=opt_func,metrics=metrics,cbs=cbs,lr=3e-3)
     return lrn
 
-# %% ../../nbs/02_learner/03_learner.ipynb 16
+# %% ../../nbs/02_learner/03_learner.ipynb 17
 @delegates(CRNN, keep=True)
 def CRNNLearner(dls,loss_func=nn.L1Loss(),metrics=[fun_rmse],n_skip=0,opt_func=Adam,cbs=None,**kwargs):
     inp,out = get_inp_out_size(dls)
@@ -67,7 +71,7 @@ def CRNNLearner(dls,loss_func=nn.L1Loss(),metrics=[fun_rmse],n_skip=0,opt_func=A
     lrn = Learner(dls,model,loss_func=loss_func,opt_func=opt_func,metrics=metrics,cbs=cbs,lr=3e-3)
     return lrn
 
-# %% ../../nbs/02_learner/03_learner.ipynb 19
+# %% ../../nbs/02_learner/03_learner.ipynb 20
 @delegates(TCN, keep=True)
 def AR_TCNLearner(dls,hl_depth=3,alpha=1,beta=1,early_stop=0,metrics=None,n_skip=None,opt_func=Adam,**kwargs):
     n_skip = 2**hl_depth if n_skip is None else n_skip
@@ -86,7 +90,7 @@ def AR_TCNLearner(dls,hl_depth=3,alpha=1,beta=1,early_stop=0,metrics=None,n_skip
     lrn = Learner(dls,model,loss_func=nn.L1Loss(),opt_func=opt_func,metrics=metrics,cbs=cbs,lr=3e-3)
     return lrn
 
-# %% ../../nbs/02_learner/03_learner.ipynb 22
+# %% ../../nbs/02_learner/03_learner.ipynb 23
 @delegates(SimpleRNN, keep=True)
 def AR_RNNLearner(dls,alpha=0,beta=0,early_stop=0,metrics=None,n_skip=0,opt_func=Adam,**kwargs):
     skip = partial(SkipNLoss,n_skip=n_skip)
