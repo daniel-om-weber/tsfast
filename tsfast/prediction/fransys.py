@@ -160,15 +160,15 @@ class FranSys(nn.Module):
     
     @delegates(RNN, keep=True)
     def __init__(self,n_u,n_y,init_sz,n_x=0,hidden_size=100,
-                 hidden_layer=1,diag_model=None,linear_layer = 1,init_diag_only=False,final_layer=0,**kwargs):
+                 rnn_layer=1,diag_model=None,linear_layer = 1,init_diag_only=False,final_layer=0,**kwargs):
         super().__init__()
         store_attr('n_u,n_y,n_x,init_sz,init_diag_only')
         
-        rnn_kwargs = dict(hidden_size=hidden_size,num_layers=hidden_layer,ret_full_hidden=True)
+        rnn_kwargs = dict(hidden_size=hidden_size,num_layers=rnn_layer,ret_full_hidden=True)
         rnn_kwargs = dict(rnn_kwargs, **kwargs)
         
         if diag_model is None:
-            self.rnn_diagnosis = Diag_RNN(n_u+n_x+n_y,hidden_size,hidden_size=hidden_size,output_layer=hidden_layer,rnn_layer=hidden_layer,linear_layer=linear_layer,**kwargs) 
+            self.rnn_diagnosis = Diag_RNN(n_u+n_x+n_y,hidden_size,hidden_size=hidden_size,output_layer=rnn_layer,rnn_layer=rnn_layer,linear_layer=linear_layer,**kwargs) 
         else:
             self.rnn_diagnosis = diag_model
         self.rnn_prognosis = RNN(n_u,**rnn_kwargs) 
