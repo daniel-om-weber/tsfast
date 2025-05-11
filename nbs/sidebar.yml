@@ -15,7 +15,7 @@ website:
       - section: datasets
         contents:
           - datasets/00_core.ipynb
-          - datasets/01_external.ipynb
+          - datasets/01_benchmark.ipynb
       - section: learner
         contents:
           - learner/01_callbacks.ipynb
