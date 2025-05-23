@@ -72,6 +72,11 @@ class ScalarBlock(TransformBlock):
                                 batch_tfms=[ScalarNormalize()])
 
     @classmethod
-    @delegates(HDF2Scalars, keep=True)
-    def from_hdf(cls, clm_names, scl_cls=TensorScalarsInput, **kwargs):
-        return cls(HDF2Scalars(clm_names,to_cls=scl_cls,**kwargs))
+    @delegates(HDF_Attrs2Scalars, keep=True)
+    def from_hdf_attrs(cls, clm_names, scl_cls=TensorScalarsInput, **kwargs):
+        return cls(HDF_Attrs2Scalars(clm_names,to_cls=scl_cls,**kwargs))
+
+    @classmethod
+    @delegates(HDF_DS2Scalars, keep=True)
+    def from_hdf_ds(cls, clm_names, scl_cls=TensorScalarsInput, **kwargs):
+        return cls(HDF_DS2Scalars(clm_names,to_cls=scl_cls,**kwargs))
