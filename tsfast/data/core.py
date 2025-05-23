@@ -475,7 +475,7 @@ def hdf_attrs2scalars(hdf_path:str,
                 dtype:np.dtype = np.float32):
     with h5py.File(hdf_path,'r') as f:
         ds = f if dataset is None else f[dataset]
-        l_array = [dtype(ds.attrs[n]) for n in c_names]
+        l_array = [dtype(ds.attrs[n]).item() for n in c_names]
         scalars = np.stack(l_array,axis=-1)
         return scalars
 
