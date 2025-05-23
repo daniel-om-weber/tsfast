@@ -5,9 +5,10 @@ __all__ = ['hdf_extensions', 'obj_in_lst', 'count_parameters', 'get_hdf_files', 
            'ValidClmIs', 'FilterClm', 'get_hdf_seq_len', 'df_get_hdf_seq_len', 'DfHDFGetSeqLen', 'DfResamplingFactor',
            'DfHDFCreateWindows', 'DfApplyFuncSplit', 'DfFilterQuery', 'DfDropClmExcept', 'calc_shift_offsets',
            'running_mean', 'downsample_mean', 'resample_interp', 'hdf_extract_sequence', 'Memoize', 'MemoizeMP',
-           'HDF2Sequence', 'hdf2scalars', 'HDF2Scalars', 'ScalarSequenceElement', 'TensorSequences',
-           'TensorSequencesInput', 'TensorSequencesOutput', 'toTensorSequencesInput', 'toTensorSequencesOutput',
-           'TensorScalars', 'TensorScalarsInput', 'TensorScalarsOutput', 'plot_sequence', 'plot_seqs_single_figure',
+           'HDF2Sequence', 'hdf_attrs2scalars', 'HDF_Attrs2Scalars', 'hdf_ds2scalars', 'HDF_DS2Scalars',
+           'TensorSequences', 'TensorSequencesInput', 'TensorSequencesOutput', 'toTensorSequencesInput',
+           'toTensorSequencesOutput', 'TensorScalars', 'TensorScalarsInput', 'TensorScalarsOutput',
+           'toTensorScalarsInput', 'toTensorScalarsOutput', 'plot_sequence', 'plot_seqs_single_figure',
            'plot_seqs_multi_figures', 'show_batch', 'show_results']
 
 # %% ../../nbs/00_data/00_core.ipynb 3
@@ -468,57 +469,126 @@ class HDF2Sequence(Transform):
         return self._extract_dict_sequence(item)
 
 # %% ../../nbs/00_data/00_core.ipynb 82
-def hdf2scalars(hdf_path,c_names,dataset = None):
+def hdf_attrs2scalars(hdf_path:str,
+                c_names:list[str],
+                dataset:str|None = None,
+                dtype:np.dtype = np.float32):
     with h5py.File(hdf_path,'r') as f:
         ds = f if dataset is None else f[dataset]
-        l_array = [ds.attrs[n] for n in c_names]
+        l_array = [dtype(ds.attrs[n]) for n in c_names]
         scalars = np.stack(l_array,axis=-1)
-#         import pdb; pdb.set_trace()
-#         l_array = [f[n][:][:,None] for n in c_names]
-#         seq = np.concatenate(l_array,axis=1)
         return scalars
 
 # %% ../../nbs/00_data/00_core.ipynb 84
-class HDF2Scalars(Transform):
+class HDF_Attrs2Scalars(Transform):
     
-    def __init__(self, clm_names,to_cls=noop):
+    def __init__(self, clm_names:list[str],to_cls:Callable=noop):
         store_attr('clm_names,to_cls')
     
-    def _extract_dict_scalars(self,item):
-        if isinstance(item,dict):
-            path = item['path']
-            dataset = item['dataset'] if 'dataset' in item else None
+    def _extract_dict_scalars(self,
+                              item:dict|str|Path):
+        match item:
+            case dict():
+                path = item['path']
+                dataset = item['dataset'] if 'dataset' in item else None
 
-            seq = hdf2scalars(path,self.clm_names,dataset)
-        else:
-            seq = hdf2scalars(str(item),self.clm_names)
+                seq = hdf_attrs2scalars(path,self.clm_names,dataset)
+            case str() | Path():
+                seq = hdf_attrs2scalars(str(item),self.clm_names)
+            case _:
+                raise ValueError(f"Invalid item type: {type(item)}")
         return self.to_cls(seq)
 
-    def encodes(self, item)->None: 
+    def encodes(self, item:dict|str|Path)->ndarray: 
         return self._extract_dict_scalars(item)
 
 # %% ../../nbs/00_data/00_core.ipynb 87
-class ScalarSequenceElement(Transform):
+def hdf_ds2scalars(hdf_path:str, # path to hdf5 file
+                   clm_names:list[str], # list of dataset column names to extract
+                   dataset:str|None = None, # dataset root for columns
+                   l_slc:int|None = None, # left boundary for sequence window
+                   r_slc:int|None = None, # right boundary for sequence window
+                   resampling_factor:float|None = None, # scaling factor for sequence length
+                   fs_idx:int|None = None, # index of frequency column for resampling
+                   dt_idx:int|None = None, # index of time column for resampling
+                   fast_resample:bool = True, # use linear interpolation vs fft resampling
+                   index:int|Callable|None = None, # specific index to extract or aggregation function
+                   agg_func:Callable|None = None, # aggregation function to apply
+                   dtype:np.dtype = np.float32 # output data type for result array
+                   )-> np.ndarray: # array of scalar values, one per column
+    '''extract scalar values from hdf datasets using indexing or aggregation'''
+    seq = hdf_extract_sequence(hdf_path, clm_names, dataset, l_slc, r_slc,
+                              resampling_factor, fs_idx, dt_idx, fast_resample)
+    if agg_func is not None and index is not None:
+        raise ValueError("Cannot specify both agg_func and index. Choose one.")
+    elif agg_func is not None:
+        result = agg_func(seq, axis=0)
+    elif index is not None:
+        if callable(index):
+            result = index(seq, axis=0)
+        else:
+            result = seq[index]
+    else:
+        result = seq[-1]
+    return result.astype(dtype)
+
+# %% ../../nbs/00_data/00_core.ipynb 89
+class HDF_DS2Scalars(Transform):
+    '''extract scalar values from hdf datasets using indexing or aggregation'''
     
-    def __init__(self, idx,to_cls=noop):
-        store_attr('idx,to_cls')
+    def __init__(self, 
+                 clm_names:list[str], # list of dataset column names to extract
+                 index:int|Callable|None = None, # specific index to extract or aggregation function
+                 agg_func:Callable|None = None, # aggregation function to apply
+                 to_cls:Callable = noop, # transform to apply to final result
+                 **extract_kwargs): # additional arguments passed to hdf_ds2scalars
+        store_attr('clm_names,index,agg_func,to_cls')
+        self.extract_kwargs = extract_kwargs
+    
+    def _extract_dict_scalars(self, item:dict|str|Path):
+        match item:
+            case dict():
+                path = item['path']
+                dataset = item.get('dataset', self.extract_kwargs.get('dataset'))
+                l_slc = item.get('l_slc')
+                r_slc = item.get('r_slc')
+                resampling_factor = item.get('resampling_factor')
+                kwargs = {**self.extract_kwargs}
+                if dataset is not None: kwargs['dataset'] = dataset
+                if l_slc is not None: kwargs['l_slc'] = l_slc
+                if r_slc is not None: kwargs['r_slc'] = r_slc
+                if resampling_factor is not None: kwargs['resampling_factor'] = resampling_factor
+                result = hdf_ds2scalars(path, self.clm_names, index=self.index, 
+                                       agg_func=self.agg_func, **kwargs)
+            case str() | Path():
+                result = hdf_ds2scalars(str(item), self.clm_names, index=self.index,
+                                       agg_func=self.agg_func, **self.extract_kwargs)
+            case _:
+                raise ValueError(f"Invalid item type: {type(item)}")
+        return self.to_cls(result)
 
-    def encodes(self, item)->None: 
-        return self.to_cls(item[self.idx])
+    def encodes(self, item:dict|str|Path)->np.ndarray: 
+        return self._extract_dict_scalars(item)
 
-# %% ../../nbs/00_data/00_core.ipynb 90
+# %% ../../nbs/00_data/00_core.ipynb 92
 class TensorSequences(TensorBase):#TensorBase
 #     def __init__(self,x,c_names=None, **kwargs):
 #         super().__init__()
 #         self.c_names = c_names
     
     def show(self, ctx=None, **kwargs):
-#         import pdb; pdb.set_trace()
-        ax = ctx
-        if ax is None: 
-            _,ax = plt.subplots()
-        ax.plot(self)
-#         if title is not None: ax.set_title(title)
+        # Get the figure and axis
+        if ctx is None:
+            fig, ax = plt.subplots(figsize=kwargs.get('figsize', (8, 4)))
+        else:
+            ax = ctx
+            
+        # Plot the sequence as a line
+        ax.plot(self.cpu().numpy(), **kwargs)
+        ax.grid(True, alpha=0.3)
+        
+        if ctx is None:
+            plt.tight_layout()
         return ax
 
     @classmethod
@@ -532,18 +602,27 @@ class TensorSequencesInput(TensorSequences):
 class TensorSequencesOutput(TensorSequences): 
     pass
 
-# %% ../../nbs/00_data/00_core.ipynb 93
+# %% ../../nbs/00_data/00_core.ipynb 95
 @Transform
 def toTensorSequencesInput(o): return TensorSequencesInput(o)
 @Transform
 def toTensorSequencesOutput(o): return TensorSequencesOutput(o)
 
-# %% ../../nbs/00_data/00_core.ipynb 94
+# %% ../../nbs/00_data/00_core.ipynb 96
 class TensorScalars(TensorBase):
     @classmethod
-    @delegates(HDF2Scalars, keep=True)
-    def from_hdf(cls,clm_names,**kwargs):
-        return HDF2Scalars(clm_names,**kwargs)
+    @delegates(HDF_Attrs2Scalars, keep=True)
+    def from_hdf_attrs(cls,clm_names, # column names to extract from attributes
+                      **kwargs, # additional arguments for transform
+                      )-> HDF_Attrs2Scalars: # transform for hdf attributes
+        return HDF_Attrs2Scalars(clm_names,**kwargs)
+    
+    @classmethod
+    @delegates(HDF_DS2Scalars, keep=True)
+    def from_hdf_ds(cls,clm_names, # column names to extract from datasets
+                   **kwargs, # additional arguments for transform
+                   )-> HDF_DS2Scalars: # transform for hdf datasets
+        return HDF_DS2Scalars(clm_names,**kwargs)
     
     
 class TensorScalarsInput(TensorScalars): 
@@ -553,12 +632,18 @@ class TensorScalarsOutput(TensorScalars):
     pass
 
 
-# %% ../../nbs/00_data/00_core.ipynb 96
+# %% ../../nbs/00_data/00_core.ipynb 97
+@Transform
+def toTensorScalarsInput(o): return TensorScalarsInput(o)
+@Transform
+def toTensorScalarsOutput(o): return TensorScalarsOutput(o)
+
+# %% ../../nbs/00_data/00_core.ipynb 101
 for f in torch.nn.functional.mse_loss,torch.nn.functional.huber_loss, Tensor.__getitem__, Tensor.__ne__,Tensor.__eq__,Tensor.add,Tensor.sub,Tensor.mul,Tensor.div,Tensor.__rsub__,Tensor.__radd__,Tensor.matmul,Tensor.bmm:
     TensorBase.register_func(f,TensorSequences)
     TensorBase.register_func(f,TensorScalars)
 
-# %% ../../nbs/00_data/00_core.ipynb 102
+# %% ../../nbs/00_data/00_core.ipynb 111
 def plot_sequence(axs,in_sig,targ_sig,out_sig=None,**kwargs):
     for j,ax in  enumerate(axs[:-1]):
         ax.plot(targ_sig[:,j])
@@ -570,7 +655,7 @@ def plot_sequence(axs,in_sig,targ_sig,out_sig=None,**kwargs):
         ax.label_outer()
     axs[-1].plot(in_sig)
 
-# %% ../../nbs/00_data/00_core.ipynb 103
+# %% ../../nbs/00_data/00_core.ipynb 112
 def plot_seqs_single_figure(n_samples,n_targ,samples,plot_func,outs=None,**kwargs):
     rows=max(1,((n_samples-1) // 3)+1)
     cols=min(3,n_samples)
@@ -587,7 +672,7 @@ def plot_seqs_single_figure(n_samples,n_targ,samples,plot_func,outs=None,**kwarg
         plot_func(axs,in_sig,targ_sig,out_sig=out_sig if outs is not None else None,**kwargs)
     plt.tight_layout()
 
-# %% ../../nbs/00_data/00_core.ipynb 104
+# %% ../../nbs/00_data/00_core.ipynb 113
 def plot_seqs_multi_figures(n_samples,n_targ,samples,plot_func,outs=None,**kwargs):
     for i in range(n_samples):
         fig = plt.figure(figsize=(9,3))
@@ -601,7 +686,7 @@ def plot_seqs_multi_figures(n_samples,n_targ,samples,plot_func,outs=None,**kwarg
         
         plt.tight_layout()
 
-# %% ../../nbs/00_data/00_core.ipynb 105
+# %% ../../nbs/00_data/00_core.ipynb 114
 from plum import dispatch
 
 
@@ -617,7 +702,7 @@ def show_batch(x:TensorSequences, y:TensorSequences, samples, ctxs=None, max_n=6
         plot_seqs_multi_figures(n_samples,n_targ,samples,plot_sequence, **kwargs)
     return ctxs
 
-# %% ../../nbs/00_data/00_core.ipynb 106
+# %% ../../nbs/00_data/00_core.ipynb 115
 @dispatch
 def show_results(x:TensorSequences, y:TensorSequences, samples, outs, ctxs=None, max_n=2, **kwargs):
     n_samples = min(len(samples), max_n)
