@@ -502,7 +502,7 @@ class HDF_Attrs2Scalars(Transform):
     def encodes(self, item:dict|str|Path)->ndarray: 
         return self._extract_dict_scalars(item)
 
-# %% ../../nbs/00_data/00_core.ipynb 87
+# %% ../../nbs/00_data/00_core.ipynb 86
 def hdf_ds2scalars(hdf_path:str, # path to hdf5 file
                    clm_names:list[str], # list of dataset column names to extract
                    dataset:str|None = None, # dataset root for columns
@@ -532,7 +532,7 @@ def hdf_ds2scalars(hdf_path:str, # path to hdf5 file
         result = seq[-1]
     return result.astype(dtype)
 
-# %% ../../nbs/00_data/00_core.ipynb 89
+# %% ../../nbs/00_data/00_core.ipynb 88
 class HDF_DS2Scalars(Transform):
     '''extract scalar values from hdf datasets using indexing or aggregation'''
     
@@ -570,7 +570,7 @@ class HDF_DS2Scalars(Transform):
     def encodes(self, item:dict|str|Path)->np.ndarray: 
         return self._extract_dict_scalars(item)
 
-# %% ../../nbs/00_data/00_core.ipynb 92
+# %% ../../nbs/00_data/00_core.ipynb 91
 class TensorSequences(TensorBase):#TensorBase
 #     def __init__(self,x,c_names=None, **kwargs):
 #         super().__init__()
@@ -602,14 +602,58 @@ class TensorSequencesInput(TensorSequences):
 class TensorSequencesOutput(TensorSequences): 
     pass
 
-# %% ../../nbs/00_data/00_core.ipynb 95
+# %% ../../nbs/00_data/00_core.ipynb 94
 @Transform
 def toTensorSequencesInput(o): return TensorSequencesInput(o)
 @Transform
 def toTensorSequencesOutput(o): return TensorSequencesOutput(o)
 
-# %% ../../nbs/00_data/00_core.ipynb 96
+# %% ../../nbs/00_data/00_core.ipynb 95
 class TensorScalars(TensorBase):
+    def __format__(self, 
+                   format_spec:str # format specification string for numeric formatting
+                   ) -> str: # formatted string representation of scalars
+        '''format tensor scalars using standard format specifications'''
+        if self.ndim == 0:
+            # 0-dimensional tensor (single scalar)
+            return format(self.item(), format_spec)
+        else:
+            # 1-dimensional tensor (multiple scalars)
+            if format_spec:
+                formatted_values = [format(val.item(), format_spec) for val in self]
+                return f"[{', '.join(formatted_values)}]"
+            else:
+                return str(self.cpu().numpy())
+            
+
+    def show(self, 
+             ctx:plt.Axes|None = None, # matplotlib axes to draw on
+             labels:list[str]|None = None, # labels for each scalar value
+             title_prefix:str = '', # prefix for plot title
+             format_spec:str = '.3g', # format specification for values
+             **kwargs # additional arguments for subplots or set_title
+             ) -> plt.Axes: # axes object with scalars as title
+        '''show scalar values as plot title with optional labels'''
+        if ctx is None:
+            figsize = kwargs.pop('figsize', None)
+            ctx = plt.subplots(figsize=figsize)[1]
+            ctx.axis('off')
+        
+        values = [self] if self.ndim == 0 else list(self)
+        formatted_parts = []
+        
+        for i, val in enumerate(values):
+            val_str = format(val.item(), format_spec)
+            label = labels[i] if labels and i < len(labels) else None
+            formatted_parts.append(f"{label}: {val_str}" if label else val_str)
+        
+        title = ", ".join(formatted_parts)
+        if title_prefix:
+            title = f"{title_prefix}: {title}"
+            
+        ctx.set_title(title, **kwargs)
+        return ctx
+
     @classmethod
     @delegates(HDF_Attrs2Scalars, keep=True)
     def from_hdf_attrs(cls,clm_names, # column names to extract from attributes
@@ -632,18 +676,18 @@ class TensorScalarsOutput(TensorScalars):
     pass
 
 
-# %% ../../nbs/00_data/00_core.ipynb 97
+# %% ../../nbs/00_data/00_core.ipynb 96
 @Transform
 def toTensorScalarsInput(o): return TensorScalarsInput(o)
 @Transform
 def toTensorScalarsOutput(o): return TensorScalarsOutput(o)
 
-# %% ../../nbs/00_data/00_core.ipynb 101
+# %% ../../nbs/00_data/00_core.ipynb 100
 for f in torch.nn.functional.mse_loss,torch.nn.functional.huber_loss, Tensor.__getitem__, Tensor.__ne__,Tensor.__eq__,Tensor.add,Tensor.sub,Tensor.mul,Tensor.div,Tensor.__rsub__,Tensor.__radd__,Tensor.matmul,Tensor.bmm:
     TensorBase.register_func(f,TensorSequences)
     TensorBase.register_func(f,TensorScalars)
 
-# %% ../../nbs/00_data/00_core.ipynb 111
+# %% ../../nbs/00_data/00_core.ipynb 110
 def plot_sequence(axs,in_sig,targ_sig,out_sig=None,**kwargs):
     for j,ax in  enumerate(axs[:-1]):
         ax.plot(targ_sig[:,j])
@@ -655,7 +699,7 @@ def plot_sequence(axs,in_sig,targ_sig,out_sig=None,**kwargs):
         ax.label_outer()
     axs[-1].plot(in_sig)
 
-# %% ../../nbs/00_data/00_core.ipynb 112
+# %% ../../nbs/00_data/00_core.ipynb 111
 def plot_seqs_single_figure(n_samples,n_targ,samples,plot_func,outs=None,**kwargs):
     rows=max(1,((n_samples-1) // 3)+1)
     cols=min(3,n_samples)
@@ -672,7 +716,7 @@ def plot_seqs_single_figure(n_samples,n_targ,samples,plot_func,outs=None,**kwarg
         plot_func(axs,in_sig,targ_sig,out_sig=out_sig if outs is not None else None,**kwargs)
     plt.tight_layout()
 
-# %% ../../nbs/00_data/00_core.ipynb 113
+# %% ../../nbs/00_data/00_core.ipynb 112
 def plot_seqs_multi_figures(n_samples,n_targ,samples,plot_func,outs=None,**kwargs):
     for i in range(n_samples):
         fig = plt.figure(figsize=(9,3))
@@ -686,7 +730,7 @@ def plot_seqs_multi_figures(n_samples,n_targ,samples,plot_func,outs=None,**kwarg
         
         plt.tight_layout()
 
-# %% ../../nbs/00_data/00_core.ipynb 114
+# %% ../../nbs/00_data/00_core.ipynb 113
 from plum import dispatch
 
 
@@ -702,7 +746,7 @@ def show_batch(x:TensorSequences, y:TensorSequences, samples, ctxs=None, max_n=6
         plot_seqs_multi_figures(n_samples,n_targ,samples,plot_sequence, **kwargs)
     return ctxs
 
-# %% ../../nbs/00_data/00_core.ipynb 115
+# %% ../../nbs/00_data/00_core.ipynb 114
 @dispatch
 def show_results(x:TensorSequences, y:TensorSequences, samples, outs, ctxs=None, max_n=2, **kwargs):
     n_samples = min(len(samples), max_n)
