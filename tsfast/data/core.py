@@ -499,7 +499,7 @@ class HDF_Attrs2Scalars(Transform):
                 raise ValueError(f"Invalid item type: {type(item)}")
         return self.to_cls(seq)
 
-    def encodes(self, item:dict|str|Path)->ndarray: 
+    def encodes(self, item:dict|str|Path): 
         return self._extract_dict_scalars(item)
 
 # %% ../../nbs/00_data/00_core.ipynb 86
@@ -515,7 +515,7 @@ def hdf_ds2scalars(hdf_path:str, # path to hdf5 file
                    index:int|Callable|None = None, # specific index to extract or aggregation function
                    agg_func:Callable|None = None, # aggregation function to apply
                    dtype:np.dtype = np.float32 # output data type for result array
-                   )-> np.ndarray: # array of scalar values, one per column
+                   ): # array of scalar values, one per column
     '''extract scalar values from hdf datasets using indexing or aggregation'''
     seq = hdf_extract_sequence(hdf_path, clm_names, dataset, l_slc, r_slc,
                               resampling_factor, fs_idx, dt_idx, fast_resample)
@@ -567,7 +567,7 @@ class HDF_DS2Scalars(Transform):
                 raise ValueError(f"Invalid item type: {type(item)}")
         return self.to_cls(result)
 
-    def encodes(self, item:dict|str|Path)->np.ndarray: 
+    def encodes(self, item:dict|str|Path): 
         return self._extract_dict_scalars(item)
 
 # %% ../../nbs/00_data/00_core.ipynb 91
