@@ -25,7 +25,7 @@ def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 # %% ../../nbs/00_data/00_core.ipynb 11
-hdf_extensions = ['.hdf5']
+hdf_extensions = ['.hdf5', '.h5']
 def get_hdf_files(path,recurse=True, folders=None):
     "Get hdf5 files in `path` recursively, only in `folders`, if specified."
     return get_files(path, extensions=hdf_extensions, recurse=recurse, folders=folders)
