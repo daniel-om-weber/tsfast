@@ -160,7 +160,7 @@ def create_dls(
         else:
             blocks = (SequenceBlock.from_hdf(u+x+y,TensorSequencesInput,clm_shift=([0]*len(u)+[-1]*len(x+y)),cached=cached),
                         SequenceBlock.from_hdf(y,TensorSequencesOutput,clm_shift=[1]*len(y),cached=cached))
-            tup_norm = (norm_u,norm_y) if len(x) == 0 else (norm_u,norm_x,norm_y)
+        tup_norm = (norm_u,norm_y) if len(x) == 0 else (norm_u,norm_x,norm_y)
         norm_mean = np.hstack([n[0] for n in tup_norm])
         norm_std = np.hstack([n[1] for n in tup_norm])
     else:
@@ -206,7 +206,7 @@ def create_dls(
     
     return dls
 
-# %% ../../nbs/01_datasets/00_core.ipynb 22
+# %% ../../nbs/01_datasets/00_core.ipynb 23
 create_dls_test = partial(
         create_dls, 
         u=['u'],y=['y'],
@@ -216,14 +216,14 @@ create_dls_test = partial(
     )
 create_dls_test.__doc__ = 'create a dataloader from a small dataset provided with tsfast'
 
-# %% ../../nbs/01_datasets/00_core.ipynb 26
+# %% ../../nbs/01_datasets/00_core.ipynb 27
 def get_default_dataset_path():
     "Create a directory in the user's home directory for storing datasets"
     data_dir = Path.home() / '.tsfast' / 'datasets'
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir
 
-# %% ../../nbs/01_datasets/00_core.ipynb 28
+# %% ../../nbs/01_datasets/00_core.ipynb 29
 def get_dataset_path():
     "Retrieves the tsfast dataset directory. Tries to read the path in the environment variable 'TSFAST_PATH', returns the default otherwise."
     env_var_name = 'TSFAST_PATH'
@@ -234,12 +234,12 @@ def get_dataset_path():
     else:
         return get_default_dataset_path()
 
-# %% ../../nbs/01_datasets/00_core.ipynb 31
+# %% ../../nbs/01_datasets/00_core.ipynb 32
 def clean_default_dataset_path():
     "Removes the default directory where the datasets are stored"
     rmtree(get_default_dataset_path())
 
-# %% ../../nbs/01_datasets/00_core.ipynb 32
+# %% ../../nbs/01_datasets/00_core.ipynb 33
 @delegates(create_dls, keep=True)
 def create_dls_downl(
     dataset=None,#path to the dataset directory, if not provided uses default
