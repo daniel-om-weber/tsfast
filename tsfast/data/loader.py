@@ -2,7 +2,7 @@
 
 # %% auto 0
 __all__ = ['TbpttDl', 'reset_model_state', 'TbpttResetCB', 'WeightedDL_Factory', 'uniform_p_of_category', 'uniform_p_of_float',
-           'uniform_p_of_float_with_gaps', 'BatchLimit_Factory']
+           'uniform_p_of_float_with_gaps', 'BatchLimit_Factory', 'get_inp_out_size']
 
 # %% ../../nbs/00_data/04_loader.ipynb 2
 from fastai.basics import *
@@ -296,3 +296,12 @@ def BatchLimit_Factory(cls):
             return super().get_idxs()[:len(self)*self.bs]
 
     return BatchLimitDL
+
+# %% ../../nbs/00_data/04_loader.ipynb 53
+def get_inp_out_size(dls):
+    '''returns input and output size of a timeseries databunch'''
+    tup = dls.one_batch()
+    inp = tup[0].shape[-1]
+    out = tup[1].shape[-1]
+    return inp,out
+
