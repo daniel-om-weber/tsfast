@@ -6,7 +6,6 @@ __all__ = ['mse_nan', 'ignore_nan', 'float64_func', 'SkipNLoss', 'CutLoss', 'wei
 
 # %% ../../nbs/02_learner/02_losses.ipynb 2
 from ..data import *
-from ..models import *
 from fastai.basics import *
 import warnings
 
