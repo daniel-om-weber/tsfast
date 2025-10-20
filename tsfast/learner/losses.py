@@ -2,7 +2,7 @@
 
 # %% auto 0
 __all__ = ['mse_nan', 'ignore_nan', 'float64_func', 'SkipNLoss', 'CutLoss', 'weighted_mae', 'RandSeqLenLoss', 'fun_rmse',
-           'cos_sim_loss', 'cos_sim_loss_pow', 'nrmse', 'nrmse_std', 'mean_vaf']
+           'cos_sim_loss', 'cos_sim_loss_pow', 'nrmse', 'nrmse_std', 'mean_vaf', 'zero_loss']
 
 # %% ../../nbs/02_learner/02_losses.ipynb 2
 from ..data import *
@@ -137,3 +137,7 @@ def nrmse_std(inp, targ):
 # %% ../../nbs/02_learner/02_losses.ipynb 34
 def mean_vaf(inp,targ):
     return (1-((targ-inp).var()/targ.var()))*100
+
+# %% ../../nbs/02_learner/02_losses.ipynb 36
+def zero_loss(pred, targ):
+    return (pred * 0).sum()
