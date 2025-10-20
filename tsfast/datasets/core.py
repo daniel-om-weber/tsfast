@@ -13,6 +13,7 @@ from ..data.loader import *
 import h5py
 from nbdev.config import get_config
 from shutil import rmtree
+import warnings
 
 # %% ../../nbs/01_datasets/00_core.ipynb 5
 def extract_mean_std_from_dls(dls):
@@ -127,8 +128,10 @@ def create_dls(
         valid_stp_sz:int = None, #step size between consecutive validation windows, defaults to win_sz
         cached:bool = True, #if true, the data is cached in RAM
         num_workers:int = 5, #number of processes for the dataloader, 0 for no multiprocessing
-        max_batches_training:int = 1000, #limits the number of  training batches in a single epoch
-        max_batches_valid:int = None, #limits the number of validation batches in a single epoch
+        n_batches_train:int|None = 300, #exact number of training batches per epoch
+        n_batches_valid:int|None = None, #exact number of validation batches per epoch
+        max_batches_training:int|None = None, #DEPRECATED: limits the number of training batches in a single epoch
+        max_batches_valid:int|None = None, #DEPRECATED: limits the number of validation batches in a single epoch
         dls_id:str = None #identifier for the dataloader to cache the normalization values, does not cache when not provided
     ):
     if valid_stp_sz is None: valid_stp_sz = win_sz
@@ -178,15 +181,48 @@ def create_dls(
                      batch_tfms=Normalize(mean=torch.from_numpy(norm_mean[None,None,:]),std=torch.from_numpy(norm_std[None,None,:]),axes=(0, 1)),
                      splitter=ParentSplitter())
     
-    if sub_seq_len is None:
-        dl_kwargs=[{'max_batches':max_batches_training},
-                   {'max_batches':max_batches_valid}]
-        dl_type = BatchLimit_Factory(TfmdDL)
+    # Determine which factory to use based on parameters
+    use_old_factory = False
+    if max_batches_training is not None or max_batches_valid is not None:
+        # Old parameters provided
+        if n_batches_train is not None or n_batches_valid is not None:
+            # Both old and new provided - new takes precedence
+            warnings.warn(
+                "Both old ('max_batches_training', 'max_batches_valid') and new ('n_batches_train', 'n_batches_valid') "
+                "parameters provided. Using new parameters. Old parameters are deprecated.",
+                DeprecationWarning,
+                stacklevel=2
+            )
+        else:
+            # Only old parameters - use old factory with warning
+            warnings.warn(
+                "Parameters 'max_batches_training' and 'max_batches_valid' are deprecated. "
+                "Use 'n_batches_train' and 'n_batches_valid' instead.",
+                DeprecationWarning,
+                stacklevel=2
+            )
+            use_old_factory = True
+    
+    if use_old_factory:
+        # Use deprecated BatchLimit_Factory for backwards compatibility
+        if sub_seq_len is None:
+            dl_kwargs=[{'max_batches':max_batches_training},
+                       {'max_batches':max_batches_valid}]
+            dl_type = BatchLimit_Factory(TfmdDL)
+        else:
+            dl_kwargs=[{'sub_seq_len':sub_seq_len,'max_batches':max_batches_training},
+                       {'sub_seq_len':sub_seq_len,'max_batches':max_batches_valid}]
+            dl_type = BatchLimit_Factory(TbpttDl)
     else:
-        
-        dl_kwargs=[{'sub_seq_len':sub_seq_len,'max_batches':max_batches_training},
-                   {'sub_seq_len':sub_seq_len,'max_batches':max_batches_valid}]
-        dl_type = BatchLimit_Factory(TbpttDl)
+        # Use new NBatches_Factory
+        if sub_seq_len is None:
+            dl_kwargs=[{'n_batches':n_batches_train},
+                       {'n_batches':n_batches_valid}]
+            dl_type = NBatches_Factory(TfmdDL)
+        else:
+            dl_kwargs=[{'sub_seq_len':sub_seq_len,'n_batches':n_batches_train},
+                       {'sub_seq_len':sub_seq_len,'n_batches':n_batches_valid}]
+            dl_type = NBatches_Factory(TbpttDl)
         
     dls = seq.dataloaders(hdf_files,bs=bs,num_workers=num_workers,
                           dl_type=dl_type,dl_kwargs=dl_kwargs)
