@@ -2,7 +2,7 @@
 
 # %% auto 0
 __all__ = ['TbpttDl', 'reset_model_state', 'TbpttResetCB', 'WeightedDL_Factory', 'uniform_p_of_category', 'uniform_p_of_float',
-           'uniform_p_of_float_with_gaps', 'BatchLimit_Factory', 'get_inp_out_size']
+           'uniform_p_of_float_with_gaps', 'BatchLimit_Factory', 'NBatches_Factory', 'get_inp_out_size']
 
 # %% ../../nbs/00_data/04_loader.ipynb 2
 from fastai.basics import *
@@ -66,7 +66,11 @@ class TbpttDl(TfmdDL):
         queue = {n:[] for n in range(self.fake_l.num_workers)} 
         current_worker = None
         idx = 0
-        for loaded_b,w_id in _loaders[self.fake_l.num_workers==0](self.fake_l):
+        max_batches = len(self)
+
+        for loaded_b,w_id in _loaders[self.fake_l.num_workers==0](self.fake_l):            
+            if idx >= max_batches:
+                break
 
             if w_id is None:
                 self.rnn_reset=True
@@ -119,13 +123,13 @@ class TbpttDl(TfmdDL):
                 yield trunc_b, (None if torch.utils.data.get_worker_info() is None else torch.utils.data.get_worker_info().id)
         
 
-# %% ../../nbs/00_data/04_loader.ipynb 14
+# %% ../../nbs/00_data/04_loader.ipynb 15
 def reset_model_state(model):
     for m in model.modules():
         if hasattr(m,'reset_state'): 
             m.reset_state()
 
-# %% ../../nbs/00_data/04_loader.ipynb 15
+# %% ../../nbs/00_data/04_loader.ipynb 16
 class TbpttResetCB(Callback):
     "`Callback` resets the rnn model with every new sequence for tbptt, calls `reset_state` in every module of the model"
         
@@ -138,7 +142,7 @@ class TbpttResetCB(Callback):
     def after_fit(self): 
         reset_model_state(self.learn.model)
 
-# %% ../../nbs/00_data/04_loader.ipynb 24
+# %% ../../nbs/00_data/04_loader.ipynb 25
 def WeightedDL_Factory(cls):
     '''
     Weighted Dataloader that provides control over sampling probabilities.
@@ -182,7 +186,7 @@ def WeightedDL_Factory(cls):
             return idxs
     return WeightedDL
 
-# %% ../../nbs/00_data/04_loader.ipynb 30
+# %% ../../nbs/00_data/04_loader.ipynb 31
 def uniform_p_of_category(cat_name):  
     '''Scales sampling weights for an even distribution between every category'''
     def _inner(df):
@@ -205,7 +209,7 @@ def uniform_p_of_category(cat_name):
     
     return _inner
 
-# %% ../../nbs/00_data/04_loader.ipynb 31
+# %% ../../nbs/00_data/04_loader.ipynb 32
 def uniform_p_of_float(var_name,bins = 10):
     '''Scales sampling weights for an even distribution of the continous variable by creating equi sized bins'''
     def _inner(df):
@@ -230,7 +234,7 @@ def uniform_p_of_float(var_name,bins = 10):
 
     return _inner
 
-# %% ../../nbs/00_data/04_loader.ipynb 32
+# %% ../../nbs/00_data/04_loader.ipynb 33
 def uniform_p_of_float_with_gaps(var_name,bins = 100):
     '''Scales sampling weights for an even distribution of the continous variable by creating equi sized bins'''
     def _inner(df):
@@ -258,7 +262,7 @@ def uniform_p_of_float_with_gaps(var_name,bins = 100):
 
     return _inner
 
-# %% ../../nbs/00_data/04_loader.ipynb 45
+# %% ../../nbs/00_data/04_loader.ipynb 46
 def BatchLimit_Factory(cls):
     '''
     Batch limited Dataloader that provides an upper limit for the number of mini batches per epoch
@@ -297,7 +301,61 @@ def BatchLimit_Factory(cls):
 
     return BatchLimitDL
 
-# %% ../../nbs/00_data/04_loader.ipynb 53
+# %% ../../nbs/00_data/04_loader.ipynb 54
+def NBatches_Factory(cls):
+    '''
+    Fixed batch count dataloader that samples exactly `n_batches` per epoch.
+    Oversamples (with replacement) if fewer samples exist, undersamples if more exist.
+    Fully composable with other factories like `WeightedDL_Factory`.
+    
+    n_batches: exact number of minibatches per epoch (None disables fixed batching)
+    '''
+    assert issubclass(cls, TfmdDL)
+    
+    class NBatchesDL(cls):
+        def __init__(self, 
+                     dataset, # dataset to sample from
+                     n_batches=None, # target number of batches per epoch (None for original behavior)
+                     **kwargs):
+            self.n_batches_target = n_batches
+            super().__init__(dataset=dataset, **kwargs)
+
+        def __len__(self):
+            "Returns `n_batches_target` if set, otherwise delegates to parent"
+            if self.n_batches_target is None:
+                return super().__len__()
+            return self.n_batches_target
+
+        def get_idxs(self):
+            "Adjusts parent's indices to match `n_batches_target * bs` total samples"
+            parent_idxs = super().get_idxs()
+            
+            if self.n_batches_target is None:
+                return parent_idxs
+            
+            if self.n == 0 or self.n_batches_target <= 0:
+                return []
+            
+            bs = self.bs if self.bs is not None else 1
+            target_samples = self.n_batches_target * bs
+            n_parent = len(parent_idxs)
+            
+            if n_parent == target_samples:
+                return parent_idxs
+            elif n_parent > target_samples:
+                return parent_idxs[:target_samples]
+            else:
+                # Oversample preserving parent's sampling logic
+                if self.shuffle:
+                    return self.rng.choices(parent_idxs, k=target_samples)
+                else:
+                    full_cycles = target_samples // n_parent
+                    remainder = target_samples % n_parent
+                    return parent_idxs * full_cycles + parent_idxs[:remainder]
+
+    return NBatchesDL
+
+# %% ../../nbs/00_data/04_loader.ipynb 62
 def get_inp_out_size(dls):
     '''returns input and output size of a timeseries databunch'''
     tup = dls.one_batch()
