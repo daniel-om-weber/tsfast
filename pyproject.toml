@@ -1,14 +1,35 @@
 [build-system]
-requires = ["setuptools>=64.0"]
+requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name="tsfast"
-requires-python=">=3.10"
-dynamic = [ "keywords", "description", "version", "dependencies", "optional-dependencies", "readme", "license", "authors", "classifiers", "entry-points", "scripts", "urls"]
+name = "tsfast"
+dynamic = ["version"]
+description = "A description of your project"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [{name = "Daniel Oliver Martin Weber", email = "daniel.om.weber@gmail.com"}]
+keywords = ['fastai', 'time-series', 'system-identification', 'deep-learning', 'pytorch', 'fransys']
+classifiers = ["Natural Language :: English", "Intended Audience :: Developers", "Development Status :: 2 - Pre-Alpha", "Programming Language :: Python :: 3", "Programming Language :: Python :: 3 :: Only"]
+dependencies = ['fastai>=2.7.0', 'fastprogress<1.1', 'torch>=2.1', 'identibench', 'matplotlib', 'nbdev>2', 'ray[tune]']
 
-[tool.uv]
-cache-keys = [{ file = "pyproject.toml" }, { file = "settings.ini" }, { file = "setup.py" }]
+[project.urls]
+Repository = "https://github.com/daniel-om-weber/tsfast"
+Documentation = "https://daniel-om-weber.github.io/tsfast"
 
-[tool.ruff]
-ignore = ["F403","F405","E702"]
+[project.entry-points.nbdev]
+tsfast = "tsfast._modidx:d"
+
+[project.optional-dependencies]
+dev = ['matplotlib', 'ipykernel', 'twine']
+
+[tool.setuptools.dynamic]
+version = {attr = "tsfast.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["tsfast"]
+
+[tool.nbdev]
+branch = 'master'
+jupyter_hooks = true
