@@ -326,7 +326,10 @@ class QuaternionAugmentation(Transform):
                 x[...,g[0]:g[1]+1] = multiplyQuat(tmp,self.r_quat)
         return x
     
-    def encodes(self, x:(TensorQuaternionInclination,TensorQuaternionAngle)):
+    def encodes(self, x:TensorQuaternionInclination):
+        return multiplyQuat(x,self.r_quat)
+
+    def encodes(self, x:TensorQuaternionAngle):
         return multiplyQuat(x,self.r_quat)
 
 from scipy.signal import resample

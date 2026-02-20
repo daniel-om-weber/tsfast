@@ -1,6 +1,7 @@
 """Tests for tsfast.datasets module."""
 import pytest
 import numpy as np
+import torch
 
 
 class TestCreateDls:
@@ -36,3 +37,46 @@ class TestNormalization:
         from tsfast.datasets.core import is_dataset_directory
         assert is_dataset_directory(wh_path) is True
         assert is_dataset_directory(wh_path.parent) is False
+
+
+class TestTbpttDataLoader:
+    def test_tbptt_dl_sub_sequence_shape(self, wh_path):
+        from tsfast.datasets.core import create_dls
+        dls = create_dls(
+            u=["u"], y=["y"], dataset=wh_path,
+            win_sz=100, stp_sz=100, num_workers=0,
+            n_batches_train=5, sub_seq_len=50,
+        )
+        batch = dls.one_batch()
+        assert batch[0].shape[1] == 50  # sub_seq_len truncation
+
+    def test_tbptt_dl_n_sub_seq(self, wh_path):
+        from tsfast.datasets.core import create_dls
+        dls = create_dls(
+            u=["u"], y=["y"], dataset=wh_path,
+            win_sz=100, stp_sz=100, num_workers=0,
+            n_batches_train=5, sub_seq_len=50,
+        )
+        # win_sz=100 / sub_seq_len=50 = 2 sub-sequences per base batch
+        assert dls.train.n_sub_seq == 2
+
+    @pytest.mark.slow
+    def test_tbptt_rnn_training(self, wh_path):
+        from tsfast.datasets.core import create_dls
+        from tsfast.models.rnn import RNNLearner
+        dls = create_dls(
+            u=["u"], y=["y"], dataset=wh_path,
+            win_sz=100, stp_sz=100, num_workers=0,
+            n_batches_train=5, sub_seq_len=25,
+        )
+        lrn = RNNLearner(dls, rnn_type="gru", num_layers=1, hidden_size=10, stateful=True)
+        lrn.fit(1, 1e-4)
+
+    def test_batch_limit_factory(self, wh_path):
+        from tsfast.datasets.core import create_dls
+        dls = create_dls(
+            u=["u"], y=["y"], dataset=wh_path,
+            win_sz=100, stp_sz=100, num_workers=0,
+            n_batches_train=None, max_batches_training=3,
+        )
+        assert len(dls.train) <= 3
