@@ -25,7 +25,7 @@ Each HDF5 file contains:
 
 ## Usage
 
-See `../../nbs/06_pinn/00_core.ipynb` for example usage with PhysicsLossCallback and CollocationPointsCB.
+See `tsfast/pinn/core.py` for PhysicsLossCallback and CollocationPointsCB.
 
 ## Generation
 

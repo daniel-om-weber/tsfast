@@ -1,7 +1,17 @@
 name: CI
-on:  [workflow_dispatch, pull_request, push]
+on: [workflow_dispatch, pull_request, push]
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    steps: [uses: fastai/workflows/nbdev3-ci@master]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Install dependencies
+        run: uv sync --extra dev
+      - name: Lint
+        run: uv run ruff check tsfast/
+      - name: Run tests
+        run: uv run pytest tests/ -v --tb=short -m "not slow"
