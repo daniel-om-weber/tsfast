@@ -227,9 +227,9 @@ def resample_interp(x,resampling_factor,sequence_first=True, lowpass_cut=1.0, up
     
 #     if upsampling rate is too high, switch from linear to cubic interpolation
     if upsample_cubic_cut is None or fs_n <= upsample_cubic_cut:
-        x = np.array(nn.functional.interpolate(x_int, size=targ_size, mode='linear',align_corners=False)[0])
+        x = nn.functional.interpolate(x_int, size=targ_size, mode='linear',align_corners=False)[0].numpy()
     else:
-        x = np(nn.functional.interpolate(x_int[...,None], size=[targ_size,1], mode='bicubic',align_corners=False)[0,...,0])
+        x = nn.functional.interpolate(x_int[...,None], size=[targ_size,1], mode='bicubic',align_corners=False)[0,...,0].numpy()
 #     x = array(x_int)[0]
     
     if sequence_first:

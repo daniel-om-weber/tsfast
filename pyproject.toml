@@ -51,6 +51,10 @@ markers = [
     "slow: tests that train models (call .fit())",
     "pinn: tests requiring PINN test data",
 ]
+filterwarnings = [
+    "ignore:datetime.datetime.utcnow:DeprecationWarning:gnupg",
+    "ignore:unclosed file:ResourceWarning:bagpy",
+]
 
 [tool.ruff]
 line-length = 120

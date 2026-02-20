@@ -324,10 +324,10 @@ def generate_random_states(
     return torch.from_numpy(states).to(device).float()
 
 
-@torch.jit.script
+@torch.compile
 def diff1_forward(signal: torch.Tensor, dt: float) -> torch.Tensor:
     """
-    First-order forward difference (JIT-compiled).
+    First-order forward difference.
     f'(x) ≈ (f(x+h) - f(x)) / h
     Accuracy: O(dt)
     """
@@ -335,10 +335,10 @@ def diff1_forward(signal: torch.Tensor, dt: float) -> torch.Tensor:
     last = interior[:, -1:]
     return torch.cat([interior, last], dim=1,)
 
-@torch.jit.script
+@torch.compile
 def diff1_forward_double(signal: torch.Tensor, dt: float) -> torch.Tensor:
     """
-    First-order forward difference (JIT-compiled).
+    First-order forward difference (float64).
     f'(x) ≈ (f(x+h) - f(x)) / h
     Accuracy: O(dt)
     """
@@ -347,10 +347,10 @@ def diff1_forward_double(signal: torch.Tensor, dt: float) -> torch.Tensor:
     last = interior[:, -1:]
     return torch.cat([interior, last], dim=1,).type(signal.dtype)
 
-@torch.jit.script
+@torch.compile
 def diff1_central(signal: torch.Tensor, dt: float) -> torch.Tensor:
     """
-    First-order central difference (JIT-compiled).
+    First-order central difference.
     f'(x) ≈ (f(x+h) - f(x-h)) / (2h)
     Accuracy: O(dt²)
     """
@@ -360,7 +360,7 @@ def diff1_central(signal: torch.Tensor, dt: float) -> torch.Tensor:
     last = (signal[:, -1:] - signal[:, -2:-1]) / dt
     return torch.cat([first, interior, last], dim=1)
 
-@torch.jit.script
+@torch.compile
 def diff1_central4_double(signal: torch.Tensor, dt: float) -> torch.Tensor:
     """
     4th-order central difference: 
@@ -388,10 +388,10 @@ def diff1_central4_double(signal: torch.Tensor, dt: float) -> torch.Tensor:
     
     return torch.cat([first, point1, interior, point_m2, last], dim=1).type(signal.dtype)
     
-@torch.jit.script
+@torch.compile
 def diff2_forward(signal: torch.Tensor, dt: float) -> torch.Tensor:
     """
-    Second-order forward difference (JIT-compiled).
+    Second-order forward difference.
     f''(x) ≈ (f(x+2h) - 2f(x+h) + f(x)) / h²
     Accuracy: O(dt)
     """
@@ -402,10 +402,10 @@ def diff2_forward(signal: torch.Tensor, dt: float) -> torch.Tensor:
     return torch.cat([first, interior, last], dim=1)
 
 
-@torch.jit.script
+@torch.compile
 def diff2_central(signal: torch.Tensor, dt: float) -> torch.Tensor:
     """
-    Second-order central difference (JIT-compiled).
+    Second-order central difference.
     f''(x) ≈ (f(x+h) - 2f(x) + f(x-h)) / h²
     Accuracy: O(dt²)
     """
@@ -416,10 +416,10 @@ def diff2_central(signal: torch.Tensor, dt: float) -> torch.Tensor:
     return torch.cat([first, interior, last], dim=1)
 
 
-@torch.jit.script
+@torch.compile
 def diff2_central_double(signal: torch.Tensor, dt: float) -> torch.Tensor:
     """
-    Second-order central difference (JIT-compiled).
+    Second-order central difference (float64).
     f''(x) ≈ (f(x+h) - 2f(x) + f(x-h)) / h²
     Accuracy: O(dt²)
     """
@@ -430,10 +430,10 @@ def diff2_central_double(signal: torch.Tensor, dt: float) -> torch.Tensor:
     last = (signal_double[:, -1:] - 2.0 * signal_double[:, -2:-1] + signal_double[:, -3:-2]) / dt_sq
     return torch.cat([first, interior, last], dim=1,).type(signal.dtype)
 
-@torch.jit.script
+@torch.compile
 def diff3_forward(signal: torch.Tensor, dt: float) -> torch.Tensor:
     """
-    Third-order forward difference (JIT-compiled).
+    Third-order forward difference.
     f'''(x) ≈ (f(x+3h) - 3f(x+2h) + 3f(x+h) - f(x)) / h³
     Accuracy: O(dt)
     """
@@ -445,10 +445,10 @@ def diff3_forward(signal: torch.Tensor, dt: float) -> torch.Tensor:
     return torch.cat([first, second, interior, last], dim=1)
 
 
-@torch.jit.script
+@torch.compile
 def diff3_central(signal: torch.Tensor, dt: float) -> torch.Tensor:
     """
-    Third-order central difference (JIT-compiled).
+    Third-order central difference.
     f'''(x) ≈ (f(x+2h) - 2f(x+h) + 2f(x-h) - f(x-2h)) / (2h³)
     Accuracy: O(dt²)
     """

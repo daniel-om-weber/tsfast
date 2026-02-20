@@ -24,7 +24,7 @@ _pi = torch.Tensor([3.14159265358979323846])
 def rad2deg(t):
     return 180. * t / _pi.to(t.device).type(t.dtype)
 
-@torch.jit.script
+@torch.compile
 def multiplyQuat(q1, q2):
     """quat1*quat2"""
     o1 = q1[..., 0] * q2[..., 0] - q1[..., 1] * q2[..., 1] - q1[..., 2] * q2[..., 2] - q1[..., 3] * q2[..., 3]
@@ -54,7 +54,7 @@ def diffQuat(q1,q2,norm=True):
 #     return multiplyQuat(nq1, conjQuat(nq2))
 
 
-@torch.jit.script
+@torch.compile
 def relativeQuat(q1, q2):
     """quat1*inv(quat2)"""
     
