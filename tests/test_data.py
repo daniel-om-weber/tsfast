@@ -2,6 +2,7 @@
 import pytest
 import torch
 import numpy as np
+from pathlib import Path
 
 
 class TestHDFFiles:
@@ -103,3 +104,92 @@ class TestDataLoader:
             n_batches_train=5,
         )
         assert len(dls.train) == 5
+
+
+class TestDataTransforms:
+    def test_seq_noise_injection(self, dls_simulation):
+        from tsfast.data.transforms import SeqNoiseInjection
+        from tsfast.data.core import TensorSequencesInput
+        batch = dls_simulation.one_batch()
+        x = batch[0]
+        tfm = SeqNoiseInjection(std=0.1, p=1.0)
+        noisy = tfm(x, split_idx=0)  # split_idx=0 to trigger training mode
+        assert noisy.shape == x.shape
+        assert isinstance(noisy, TensorSequencesInput)
+        assert not torch.allclose(noisy, x)
+
+    def test_seq_noise_injection_varying(self, dls_simulation):
+        from tsfast.data.transforms import SeqNoiseInjection_Varying
+        from tsfast.data.core import TensorSequencesInput
+        batch = dls_simulation.one_batch()
+        x = batch[0]
+        tfm = SeqNoiseInjection_Varying(std_std=0.1, p=1.0)
+        noisy = tfm(x, split_idx=0)
+        assert noisy.shape == x.shape
+        assert isinstance(noisy, TensorSequencesInput)
+
+    def test_seq_bias_injection(self, dls_simulation):
+        from tsfast.data.transforms import SeqBiasInjection
+        from tsfast.data.core import TensorSequencesInput
+        batch = dls_simulation.one_batch()
+        x = batch[0]
+        tfm = SeqBiasInjection(std=0.1, mean=0.0, p=1.0)
+        biased = tfm(x, split_idx=0)
+        assert biased.shape == x.shape
+        assert isinstance(biased, TensorSequencesInput)
+
+    def test_seq_slice_truncates(self):
+        from tsfast.data.transforms import SeqSlice
+        x = torch.rand(100, 3)
+        tfm = SeqSlice(l_slc=10, r_slc=-10)
+        sliced = tfm(x)
+        assert sliced.shape == (80, 3)
+
+    @pytest.mark.slow
+    def test_noise_injection_in_training_pipeline(self, wh_path):
+        from tsfast.datasets.core import create_dls
+        from tsfast.data.transforms import SeqNoiseInjection
+        from tsfast.models.rnn import RNNLearner
+        dls = create_dls(
+            u=["u"], y=["y"], dataset=wh_path,
+            win_sz=100, stp_sz=100, num_workers=0,
+            n_batches_train=5,
+        )
+        dls.add_tfms([SeqNoiseInjection(std=0.05)], 'after_batch')
+        lrn = RNNLearner(dls, rnn_type="gru", num_layers=1, hidden_size=10)
+        lrn.fit(1, 1e-4)
+
+
+class TestDataSplitting:
+    def test_parent_splitter(self, pinn_path):
+        from tsfast.data.split import ParentSplitter
+        from tsfast.data.core import get_hdf_files
+        files = get_hdf_files(pinn_path)
+        splitter = ParentSplitter(train_name="train", valid_name="valid")
+        train_idxs, valid_idxs = splitter(files)
+        assert len(train_idxs) == 2  # 2 train files
+        assert len(valid_idxs) == 1  # 1 valid file
+        assert all(Path(files[i]).parent.name == "train" for i in train_idxs)
+        assert all(Path(files[i]).parent.name == "valid" for i in valid_idxs)
+
+    def test_percentage_splitter(self):
+        from tsfast.data.split import PercentageSplitter
+        items = list(range(10))
+        splitter = PercentageSplitter(pct=0.7)
+        train_idxs, valid_idxs = splitter(items)
+        assert len(train_idxs) == 7
+        assert len(valid_idxs) == 3
+
+
+class TestDataUtilities:
+    def test_running_mean_shape(self):
+        from tsfast.data.core import running_mean
+        x = np.random.normal(size=(100, 2))
+        result = running_mean(x, 10)
+        assert result.shape == (91, 2)
+
+    def test_downsample_mean_shape(self):
+        from tsfast.data.core import downsample_mean
+        x = np.random.normal(size=(100, 3))
+        result = downsample_mean(x, 5)
+        assert result.shape == (20, 3)

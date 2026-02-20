@@ -55,3 +55,41 @@ def dls_prediction(wh_path):
         win_sz=100, stp_sz=100, num_workers=0,
         n_batches_train=10, prediction=True,
     )
+
+
+@pytest.fixture(scope="session")
+def pinn_path():
+    """Path to the PINN mass-spring-damper test dataset."""
+    p = PROJECT_ROOT / "test_data" / "pinn"
+    assert p.is_dir(), f"PINN test data not found at {p}"
+    return p
+
+
+@pytest.fixture(scope="session")
+def orientation_path():
+    """Path to the orientation/quaternion test dataset."""
+    p = PROJECT_ROOT / "test_data" / "orientation"
+    assert p.is_dir(), f"Orientation test data not found at {p}"
+    return p
+
+
+@pytest.fixture(scope="session")
+def dls_pinn(pinn_path):
+    """DataLoaders for PINN dataset in simulation mode (u -> x,v)."""
+    from tsfast.datasets.core import create_dls
+    return create_dls(
+        u=["u"], y=["x", "v"], dataset=pinn_path,
+        win_sz=100, stp_sz=100, num_workers=0,
+        n_batches_train=5,
+    )
+
+
+@pytest.fixture(scope="session")
+def dls_pinn_prediction(pinn_path):
+    """DataLoaders for PINN dataset in prediction mode."""
+    from tsfast.datasets.core import create_dls
+    return create_dls(
+        u=["u"], y=["x", "v"], dataset=pinn_path,
+        win_sz=100, stp_sz=100, num_workers=0,
+        n_batches_train=5, prediction=True,
+    )
