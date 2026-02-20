@@ -4,6 +4,8 @@ on: [workflow_dispatch, pull_request, push]
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      UV_TORCH_BACKEND: cpu
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
