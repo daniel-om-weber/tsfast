@@ -1,35 +1,59 @@
 [build-system]
-requires = ["setuptools>=64"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "tsfast"
 dynamic = ["version"]
-description = "A description of your project"
+description = "Deep learning library for time series analysis and system identification"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 authors = [{name = "Daniel Oliver Martin Weber", email = "daniel.om.weber@gmail.com"}]
-keywords = ['fastai', 'time-series', 'system-identification', 'deep-learning', 'pytorch', 'fransys']
-classifiers = ["Natural Language :: English", "Intended Audience :: Developers", "Development Status :: 2 - Pre-Alpha", "Programming Language :: Python :: 3", "Programming Language :: Python :: 3 :: Only"]
-dependencies = ['fastai>=2.7.0', 'fastprogress<1.1', 'torch>=2.1', 'identibench', 'matplotlib', 'nbdev>2', 'ray[tune]']
+keywords = ["fastai", "time-series", "system-identification", "deep-learning", "pytorch", "fransys"]
+classifiers = [
+    "Natural Language :: English",
+    "Intended Audience :: Developers",
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+]
+dependencies = [
+    "fastai>=2.7.0",
+    "fastprogress<1.1",
+    "torch>=2.1",
+    "identibench",
+    "matplotlib",
+    "ray[tune]",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "nbmake",
+    "ruff",
+    "ipykernel",
+    "twine",
+]
 
 [project.urls]
 Repository = "https://github.com/daniel-om-weber/tsfast"
-Documentation = "https://daniel-om-weber.github.io/tsfast"
 
-[project.entry-points.nbdev]
-tsfast = "tsfast._modidx:d"
+[tool.hatch.version]
+path = "tsfast/__init__.py"
 
-[project.optional-dependencies]
-dev = ['matplotlib', 'ipykernel', 'twine']
+[tool.hatch.build.targets.wheel]
+packages = ["tsfast"]
 
-[tool.setuptools.dynamic]
-version = {attr = "tsfast.__version__"}
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: tests that train models (call .fit())",
+    "pinn: tests requiring PINN test data",
+]
 
-[tool.setuptools.packages.find]
-include = ["tsfast"]
+[tool.ruff]
+line-length = 120
 
-[tool.nbdev]
-branch = 'master'
-jupyter_hooks = true
+[tool.ruff.lint]
+ignore = ["F403", "F405", "F811", "E401", "E701", "E702", "E402"]
