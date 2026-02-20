@@ -51,21 +51,25 @@ class TestResampling:
 
 
 class TestHDF2Sequence:
+    def _valid_file(self, hdf_files):
+        return next(f for f in hdf_files if "valid" in str(f))
+
     def test_basic_extraction(self, hdf_files):
         from tsfast.data.core import HDF2Sequence
         seq = HDF2Sequence(["u", "y"], cached=False)
-        result = seq(hdf_files[0])
+        result = seq(self._valid_file(hdf_files))
         assert result.shape == (20000, 2)
 
     def test_single_column(self, hdf_files):
         from tsfast.data.core import HDF2Sequence
         seq = HDF2Sequence(["u"])
-        assert seq(hdf_files[0]).shape == (20000, 1)
+        assert seq(self._valid_file(hdf_files)).shape == (20000, 1)
 
     def test_caching_consistent(self, hdf_files):
         from tsfast.data.core import HDF2Sequence
-        uncached = HDF2Sequence(["u", "y"], cached=False)(hdf_files[0])
-        cached = HDF2Sequence(["u", "y"], cached=True)(hdf_files[0])
+        f = self._valid_file(hdf_files)
+        uncached = HDF2Sequence(["u", "y"], cached=False)(f)
+        cached = HDF2Sequence(["u", "y"], cached=True)(f)
         np.testing.assert_array_equal(uncached, cached)
 
 
