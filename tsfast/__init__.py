@@ -1,6 +1,10 @@
 __version__ = "0.2.0"
 
-# Fix fastai >=2.8.6 _has_mps() bug: falls back to is_built() when is_available()
-# returns False, selecting MPS device on systems where it's not actually usable.
-import torch, fastai.torch_core as _ftc
-_ftc._has_mps = lambda: hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
+# Disable MPS auto-selection: PyTorch MPS backend is often unstable or slow for
+# time series workloads. Set TSFAST_USE_MPS=1 to opt in to MPS device selection.
+import os, torch, fastai.torch_core as _ftc
+_ftc._has_mps = lambda: (
+    os.environ.get('TSFAST_USE_MPS') == '1'
+    and hasattr(torch.backends, 'mps')
+    and torch.backends.mps.is_available()
+)
