@@ -1,3 +1,5 @@
+"""DataLoader creation and normalization utilities for HDF5 time-series datasets."""
+
 __all__ = [
     "create_dls_test",
     "extract_mean_std_from_dls",
@@ -116,10 +118,15 @@ def _load_norm_stats(dls_id):
 
 
 def extract_mean_std_from_hdffiles(
-    lst_files,  # List of paths to HDF5 files
-    lst_signals,  # List of signal names, each a dataset within the HDF5 files
+    lst_files,
+    lst_signals,
 ):
-    "Calculate the mean and standard deviation of the signals from the provided HDF5 files."
+    """Calculate the mean and standard deviation of the signals from the provided HDF5 files.
+
+    Args:
+        lst_files: list of paths to HDF5 files
+        lst_signals: list of signal names, each a dataset within the HDF5 files
+    """
     if len(lst_signals) == 0:
         return (None, None)
 
@@ -233,12 +240,14 @@ def split_by_parent(files_or_path, train_name="train", valid_name="valid", test_
 
 
 def is_dataset_directory(ds_path):
-    """
-    Checks if the given directory path is a dataset with hdf5 files.
+    """Checks if the given directory path is a dataset with hdf5 files.
 
-    :param ds_path: The path to the directory to check.
-    :return: True if the directory contains 'train', 'valid', and 'test' subdirectories,
-             each of which must contain at least one HDF5 file. False otherwise.
+    Args:
+        ds_path: the path to the directory to check
+
+    Returns:
+        True if the directory contains 'train', 'valid', and 'test' subdirectories,
+        each of which must contain at least one HDF5 file. False otherwise.
     """
     required_dirs = ["train", "valid", "test"]
 
@@ -255,25 +264,47 @@ def is_dataset_directory(ds_path):
 
 
 def create_dls(
-    u,  # list of input signal names
-    y,  # list of output signal names
-    dataset: Path | list | dict,  # path to dataset, list of filepaths, or {'train':[], 'valid':[], 'test':[]} dict
-    win_sz: int = 100,  # initial window size
-    x: list = [],  # optional list of state signal names
-    stp_sz: int = 1,  # step size between consecutive windows
-    sub_seq_len: int = None,  # if provided uses truncated backpropagation throug time with this sub sequence length
-    bs: int = 64,  # batch size
-    prediction: bool = False,  # if true, the output is concatenated to the input, mainly for prediction tasks
-    input_delay: bool = False,  # if true, the input is delayed by one step
-    valid_stp_sz: int = None,  # step size between consecutive validation windows, defaults to win_sz
-    cached: bool = True,  # if true, the data is cached in RAM
-    num_workers: int = 5,  # number of processes for the dataloader, 0 for no multiprocessing
-    n_batches_train: int | None = 300,  # exact number of training batches per epoch
-    n_batches_valid: int | None = None,  # exact number of validation batches per epoch
-    max_batches_training: int | None = None,  # DEPRECATED: limits the number of training batches in a single epoch
-    max_batches_valid: int | None = None,  # DEPRECATED: limits the number of validation batches in a single epoch
-    dls_id: str = None,  # cache id: when provided, computes exact stats from full training set and caches to disk
+    u,
+    y,
+    dataset: Path | list | dict,
+    win_sz: int = 100,
+    x: list = [],
+    stp_sz: int = 1,
+    sub_seq_len: int = None,
+    bs: int = 64,
+    prediction: bool = False,
+    input_delay: bool = False,
+    valid_stp_sz: int = None,
+    cached: bool = True,
+    num_workers: int = 5,
+    n_batches_train: int | None = 300,
+    n_batches_valid: int | None = None,
+    max_batches_training: int | None = None,
+    max_batches_valid: int | None = None,
+    dls_id: str = None,
 ):
+    """Create DataLoaders from HDF5 time-series files with normalization statistics.
+
+    Args:
+        u: list of input signal names
+        y: list of output signal names
+        dataset: path to dataset, list of filepaths, or {'train':[], 'valid':[], 'test':[]} dict
+        win_sz: initial window size
+        x: optional list of state signal names
+        stp_sz: step size between consecutive windows
+        sub_seq_len: if provided uses truncated backpropagation through time with this sub sequence length
+        bs: batch size
+        prediction: if true, the output is concatenated to the input, mainly for prediction tasks
+        input_delay: if true, the input is delayed by one step
+        valid_stp_sz: step size between consecutive validation windows, defaults to win_sz
+        cached: if true, the data is cached in RAM
+        num_workers: number of processes for the dataloader, 0 for no multiprocessing
+        n_batches_train: exact number of training batches per epoch
+        n_batches_valid: exact number of validation batches per epoch
+        max_batches_training: DEPRECATED: limits the number of training batches in a single epoch
+        max_batches_valid: DEPRECATED: limits the number of validation batches in a single epoch
+        dls_id: cache id: when provided, computes exact stats from full training set and caches to disk
+    """
     if valid_stp_sz is None:
         valid_stp_sz = win_sz
 
@@ -303,7 +334,7 @@ def create_dls(
 
     # choose input and output signal blocks
     if prediction:
-        if input_delay:  # if true, the input is delayed by one step
+        if input_delay:
             blocks = (
                 SequenceBlock.from_hdf(u + x + y, TensorSequencesInput, clm_shift=[-1] * len(u + x + y), cached=cached),
                 SequenceBlock.from_hdf(y, TensorSequencesOutput, clm_shift=[1] * len(y), cached=cached),
@@ -467,10 +498,16 @@ def clean_default_dataset_path():
 
 @delegates(create_dls, keep=True)
 def create_dls_downl(
-    dataset=None,  # path to the dataset directory, if not provided uses default
-    download_function=None,  # function
+    dataset=None,
+    download_function=None,
     **kwargs,
 ):
+    """Create DataLoaders, downloading the dataset first if needed.
+
+    Args:
+        dataset: path to the dataset directory, if not provided uses default
+        download_function: callable that downloads the dataset to a given path
+    """
     if dataset is None and download_function is not None:
         dataset = get_dataset_path() / download_function.__name__
     else:

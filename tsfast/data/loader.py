@@ -1,3 +1,5 @@
+"""Custom DataLoader factories for TBPTT, weighted sampling, and batch limiting."""
+
 __all__ = [
     "TbpttDl",
     "reset_model_state",
@@ -330,10 +332,17 @@ def NBatches_Factory(cls):
     assert issubclass(cls, TfmdDL)
 
     class NBatchesDL(cls):
+        """Fixed batch count dataloader with oversampling/undersampling support.
+
+        Args:
+            dataset: dataset to sample from
+            n_batches: target number of batches per epoch, None for original behavior
+        """
+
         def __init__(
             self,
-            dataset,  # dataset to sample from
-            n_batches=None,  # target number of batches per epoch (None for original behavior)
+            dataset,
+            n_batches=None,
             **kwargs,
         ):
             self.n_batches_target = n_batches

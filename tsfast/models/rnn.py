@@ -1,3 +1,5 @@
+"""RNN-based models for time series with regularization and DenseNet variants."""
+
 __all__ = [
     "RNN",
     "Sequential_RNN",
@@ -23,7 +25,21 @@ from fastai.text.models.awdlstm import RNNDropout, WeightDropout
 
 
 class RNN(nn.Module):
-    "inspired by https://arxiv.org/abs/1708.02182"
+    """Multi-layer RNN with dropout and normalization, inspired by https://arxiv.org/abs/1708.02182.
+
+    Args:
+        input_size: number of input features per timestep.
+        hidden_size: number of hidden units per layer.
+        num_layers: number of stacked RNN layers.
+        hidden_p: dropout probability applied between hidden layers.
+        input_p: dropout probability applied to the input.
+        weight_p: weight dropout probability applied within each RNN cell.
+        rnn_type: recurrent cell type, one of ``'gru'``, ``'lstm'``, or ``'rnn'``.
+        ret_full_hidden: if True, return stacked hidden outputs from all layers.
+        stateful: if True, persist hidden state across forward calls.
+        normalization: normalization between layers (``''``, ``'layernorm'``, or ``'batchnorm'``).
+        **kwargs: additional keyword arguments forwarded to the underlying ``nn.RNN``/``nn.GRU``/``nn.LSTM``.
+    """
 
     def __init__(
         self,
@@ -108,7 +124,6 @@ class RNN(nn.Module):
         return output, new_hidden
 
     def _get_hidden(self, bs):
-        """retrieve internal hidden state, check if model device has changed"""
         if self.hidden is None:
             return None
         if bs != self.bs:
@@ -119,7 +134,6 @@ class RNN(nn.Module):
         return self.hidden
 
     def _one_rnn(self, n_in, n_out, weight_p, rnn_type, **kwargs):
-        "Return one of the inner rnn"
         if rnn_type == "gru":
             rnn = nn.GRU(n_in, n_out, 1, batch_first=True, **kwargs)
             if weight_p > 0:
@@ -141,13 +155,25 @@ class RNN(nn.Module):
 
 
 class Sequential_RNN(RNN):
-    """RNN Variant for Sequential Modules"""
+    """RNN variant that returns only the output tensor, discarding hidden state."""
 
     def forward(self, inp, h_init=None):
         return super().forward(inp, h_init)[0]
 
 
 class SimpleRNN(nn.Module):
+    """Simple RNN with a linear output head.
+
+    Args:
+        input_size: number of input features per timestep.
+        output_size: number of output features per timestep.
+        num_layers: number of stacked RNN layers.
+        hidden_size: number of hidden units per RNN layer.
+        linear_layers: number of hidden linear layers in the output head.
+        return_state: if True, return ``(output, hidden_state)`` instead of just output.
+        **kwargs: additional keyword arguments forwarded to ``RNN``.
+    """
+
     @delegates(RNN, keep=True)
     def __init__(
         self, input_size, output_size, num_layers=1, hidden_size=100, linear_layers=0, return_state=False, **kwargs
@@ -183,6 +209,22 @@ def RNNLearner(
     output_norm=None,
     **kwargs,
 ):
+    """Create a fastai Learner with a SimpleRNN model and standard training setup.
+
+    Args:
+        dls: fastai DataLoaders providing training and validation data.
+        loss_func: loss function for training.
+        metrics: list of metric functions evaluated during validation.
+        n_skip: number of initial timesteps to skip in loss and metric computation.
+        num_layers: number of stacked RNN layers.
+        hidden_size: number of hidden units per RNN layer.
+        stateful: if True, enable stateful training with TBPTT reset callbacks.
+        opt_func: optimizer constructor.
+        cbs: additional callbacks to include in the Learner.
+        input_norm: scaler class for input normalization, or None to disable.
+        output_norm: scaler class for output denormalization, or None to disable.
+        **kwargs: additional keyword arguments forwarded to ``SimpleRNN``.
+    """
     if cbs is None:
         cbs = []
 
@@ -215,7 +257,19 @@ def RNNLearner(
 def AR_RNNLearner(
     dls, alpha=0, beta=0, early_stop=0, metrics=None, n_skip=0, opt_func=Adam, input_norm=StandardScaler1D, **kwargs
 ):
+    """Create a fastai Learner with an autoregressive RNN model.
 
+    Args:
+        dls: fastai DataLoaders providing training and validation data.
+        alpha: activation regularization penalty weight.
+        beta: temporal activation regularization penalty weight.
+        early_stop: patience for early stopping; 0 disables early stopping.
+        metrics: metric functions for validation, or None for default RMSE.
+        n_skip: number of initial timesteps to skip in metric computation.
+        opt_func: optimizer constructor.
+        input_norm: scaler class for input normalization, or None to disable.
+        **kwargs: additional keyword arguments forwarded to ``SimpleRNN``.
+    """
     inp, out = get_inp_out_size(dls)
     ar_model = AR_Model(SimpleRNN(inp + out, out, **kwargs), ar=False)
     rnn_module = ar_model.model.rnn
@@ -240,6 +294,14 @@ def AR_RNNLearner(
 
 
 class ResidualBlock_RNN(nn.Module):
+    """Two-layer RNN block with a residual skip connection.
+
+    Args:
+        input_size: number of input features per timestep.
+        hidden_size: number of hidden units in each RNN layer.
+        **kwargs: additional keyword arguments forwarded to ``RNN``.
+    """
+
     @delegates(RNN, keep=True)
     def __init__(self, input_size, hidden_size, **kwargs):
         super().__init__()
@@ -254,6 +316,16 @@ class ResidualBlock_RNN(nn.Module):
 
 
 class SimpleResidualRNN(nn.Sequential):
+    """Sequential stack of residual RNN blocks with a linear output head.
+
+    Args:
+        input_size: number of input features per timestep.
+        output_size: number of output features per timestep.
+        num_blocks: number of stacked residual RNN blocks.
+        hidden_size: number of hidden units per block.
+        **kwargs: additional keyword arguments forwarded to ``ResidualBlock_RNN``.
+    """
+
     @delegates(ResidualBlock_RNN, keep=True)
     def __init__(self, input_size, output_size, num_blocks=1, hidden_size=100, **kwargs):
         super().__init__()
@@ -266,6 +338,14 @@ class SimpleResidualRNN(nn.Sequential):
 
 
 class DenseLayer_RNN(nn.Module):
+    """Two-layer RNN that concatenates its output with the input (DenseNet-style).
+
+    Args:
+        input_size: number of input features per timestep.
+        hidden_size: growth rate (number of new features produced).
+        **kwargs: additional keyword arguments forwarded to ``RNN``.
+    """
+
     @delegates(RNN, keep=True)
     def __init__(self, input_size, hidden_size, **kwargs):
         super().__init__()
@@ -279,6 +359,15 @@ class DenseLayer_RNN(nn.Module):
 
 
 class DenseBlock_RNN(nn.Sequential):
+    """Sequential block of DenseNet-style RNN layers with feature concatenation.
+
+    Args:
+        num_layers: number of dense RNN layers in this block.
+        num_input_features: number of input features entering the block.
+        growth_rate: number of new features each dense layer adds.
+        **kwargs: additional keyword arguments forwarded to ``DenseLayer_RNN``.
+    """
+
     @delegates(DenseLayer_RNN, keep=True)
     def __init__(self, num_layers, num_input_features, growth_rate, **kwargs):
         super().__init__()
@@ -289,9 +378,19 @@ class DenseBlock_RNN(nn.Sequential):
 
 
 class DenseNet_RNN(nn.Sequential):
+    """DenseNet architecture using RNN layers with transition layers between blocks.
+
+    Args:
+        input_size: number of input features per timestep.
+        output_size: number of output features per timestep.
+        growth_rate: number of new features each dense layer adds.
+        block_config: tuple specifying the number of layers in each dense block.
+        num_init_features: number of features produced by the initial RNN layer.
+        **kwargs: additional keyword arguments forwarded to ``RNN``.
+    """
+
     @delegates(RNN, keep=True)
     def __init__(self, input_size, output_size, growth_rate=32, block_config=(3, 3), num_init_features=32, **kwargs):
-
         super().__init__()
         self.add_module("rnn0", Sequential_RNN(input_size, num_init_features, 1, **kwargs))
 
@@ -309,6 +408,17 @@ class DenseNet_RNN(nn.Sequential):
 
 
 class SeperateRNN(nn.Module):
+    """RNN that processes input channel groups separately before merging.
+
+    Args:
+        input_list: list of index lists, each defining a group of input channels.
+        output_size: number of output features per timestep.
+        num_layers: number of stacked RNN layers in the merging RNN.
+        hidden_size: total hidden size (split evenly across per-group RNNs).
+        linear_layers: number of hidden linear layers in the output head.
+        **kwargs: additional keyword arguments forwarded to ``RNN``.
+    """
+
     @delegates(RNN, keep=True)
     def __init__(self, input_list, output_size, num_layers=1, hidden_size=100, linear_layers=1, **kwargs):
         super().__init__()

@@ -1,3 +1,5 @@
+"""Hyperparameter optimization with Ray Tune integration."""
+
 __all__ = [
     "log_uniform",
     "LearnerTrainable",
@@ -23,7 +25,13 @@ from ray.tune import Checkpoint
 
 
 def log_uniform(min_bound, max_bound, base=10):
-    """uniform sampling in an exponential range"""
+    """Sample uniformly in an exponential (log) range.
+
+    Args:
+        min_bound: lower bound of the sampling range.
+        max_bound: upper bound of the sampling range.
+        base: logarithm base for the exponential scale.
+    """
     logmin = np.log(min_bound) / np.log(base)
     logmax = np.log(max_bound) / np.log(base)
 
@@ -34,6 +42,8 @@ def log_uniform(min_bound, max_bound, base=10):
 
 
 class LearnerTrainable(tune.Trainable):
+    """Ray Tune Trainable wrapper for fastai Learners."""
+
     def setup(self, config):
         self.create_lrn = ray.get(config["create_lrn"])
         self.dls = ray.get(config["dls"])
@@ -76,8 +86,10 @@ from multiprocessing.managers import SharedMemoryManager
 
 
 def stop_shared_memory_managers(obj):
-    """
-    Iteratively finds and stops all SharedMemoryManager instances contained within the provided object.
+    """Find and stop all SharedMemoryManager instances within an object.
+
+    Args:
+        obj: root object to traverse for SharedMemoryManager instances.
     """
     visited = set()  # Track visited objects to avoid infinite loops
     stack = [obj]  # Use a stack to manage objects to inspect
@@ -109,6 +121,12 @@ import gc
 
 
 def learner_optimize(config):
+    """Training function for Ray Tune function-based API.
+
+    Args:
+        config: Ray Tune config dict containing 'create_lrn', 'dls',
+            'fit_method', and hyperparameters.
+    """
     try:
         create_lrn = ray.get(config["create_lrn"])
         dls = ray.get(config["dls"])
@@ -140,6 +158,11 @@ def learner_optimize(config):
 
 
 def sample_config(config):
+    """Sample concrete values from a config of callables.
+
+    Args:
+        config: dict mapping keys to callable samplers.
+    """
     ret_conf = config.copy()
     for k in ret_conf:
         ret_conf[k] = ret_conf[k]()
@@ -147,7 +170,7 @@ def sample_config(config):
 
 
 class CBRayReporter(Callback):
-    "`Callback` reports progress after every epoch to the ray tune logger"
+    """Report training metrics and checkpoints to Ray Tune after each epoch."""
 
     order = 70  # order has to be >50, to be executed after the recorder callback
 
@@ -173,6 +196,13 @@ class CBRayReporter(Callback):
 
 
 class HPOptimizer:
+    """High-level interface for hyperparameter optimization with Ray Tune.
+
+    Args:
+        create_lrn: factory function that creates a Learner from (dls, config).
+        dls: DataLoaders to use for training.
+    """
+
     def __init__(self, create_lrn, dls):
         self.create_lrn = create_lrn
         self.dls = dls
@@ -180,14 +210,24 @@ class HPOptimizer:
 
     @delegates(ray.init)
     def start_ray(self, **kwargs):
+        """Initialize Ray runtime."""
         ray.shutdown()
         ray.init(**kwargs)
 
     def stop_ray(self):
+        """Shut down Ray runtime."""
         ray.shutdown()
 
     @delegates(tune.run, keep=True)
     def optimize(self, config, optimize_func=learner_optimize, resources_per_trial={"gpu": 1.0}, verbose=1, **kwargs):
+        """Run hyperparameter optimization using the function-based API.
+
+        Args:
+            config: Ray Tune search space configuration dict.
+            optimize_func: training function to optimize.
+            resources_per_trial: resource dict per trial (e.g. GPU/CPU counts).
+            verbose: Ray Tune verbosity level.
+        """
         config["create_lrn"] = ray.put(self.create_lrn)
         # dls are large objects, letting ray handle the copying process makes it much faster
         config["dls"] = ray.put(self.dls)
@@ -213,6 +253,19 @@ class HPOptimizer:
         quantile_fraction=0.25,
         **kwargs,
     ):
+        """Run Population Based Training optimization.
+
+        Args:
+            opt_name: experiment name for Ray Tune.
+            num_samples: number of parallel trials.
+            config: initial hyperparameter configuration dict.
+            mut_conf: mutable hyperparameter space for PBT mutations.
+            perturbation_interval: epochs between PBT perturbations.
+            stop: stopping criteria dict.
+            resources_per_trial: resource dict per trial.
+            resample_probability: probability of resampling vs. perturbing.
+            quantile_fraction: fraction of trials to exploit/explore.
+        """
         self.mut_conf = mut_conf
 
         config["create_lrn"] = ray.put(self.create_lrn)
@@ -245,6 +298,7 @@ class HPOptimizer:
         return self.analysis
 
     def best_model(self):
+        """Load and return the best model from the optimization run."""
         if self.analysis is None:
             raise Exception
         model = self.create_lrn(self.dls, sample_config(self.mut_conf)).model

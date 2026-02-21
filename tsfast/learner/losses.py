@@ -1,3 +1,5 @@
+"""Loss functions and loss-function modifiers for time series training."""
+
 __all__ = [
     "mse_nan",
     "ignore_nan",
@@ -24,7 +26,13 @@ import functools
 
 
 def ignore_nan(func):
-    """remove nan values from tensors before function execution, reduces tensor to a flat array, apply to functions such as mse"""
+    """Decorator that removes NaN values from tensors before function execution.
+
+    Reduces tensors to a flat array. Apply to functions such as mse.
+
+    Args:
+        func: loss function to wrap
+    """
 
     @functools.wraps(func)
     def ignore_nan_decorator(*args, **kwargs):
@@ -44,7 +52,11 @@ import warnings
 
 
 def float64_func(func):
-    """calculate function internally with float64 and convert the result back"""
+    """Decorator that computes a function in float64 and converts the result back.
+
+    Args:
+        func: function to wrap with float64 promotion
+    """
 
     @functools.wraps(func)
     def float64_func_decorator(*args, **kwargs):
@@ -67,7 +79,12 @@ def float64_func(func):
 
 
 def SkipNLoss(fn, n_skip=0):
-    """Loss-Function modifier that skips the first n samples of sequential data"""
+    """Loss-function modifier that skips the first n time steps of sequential data.
+
+    Args:
+        fn: base loss function to wrap
+        n_skip: number of initial time steps to discard
+    """
 
     @functools.wraps(fn)
     def _inner(input, target):
@@ -77,7 +94,13 @@ def SkipNLoss(fn, n_skip=0):
 
 
 def CutLoss(fn, l_cut=0, r_cut=None):
-    """Loss-Function modifier that skips the first n samples of sequential data"""
+    """Loss-function modifier that slices the sequence from l_cut to r_cut.
+
+    Args:
+        fn: base loss function to wrap
+        l_cut: left index to start the slice
+        r_cut: right index to end the slice (None keeps the rest)
+    """
 
     @functools.wraps(fn)
     def _inner(input, target):
@@ -87,7 +110,13 @@ def CutLoss(fn, l_cut=0, r_cut=None):
 
 
 def NormLoss(fn, norm_stats, scaler_cls=None):
-    "Loss wrapper that normalizes pred and target before computing loss."
+    """Loss wrapper that normalizes predictions and targets before computing loss.
+
+    Args:
+        fn: base loss function to wrap
+        norm_stats: normalization statistics used to build the scaler
+        scaler_cls: scaler class to use (defaults to StandardScaler1D)
+    """
     from ..models.layers import StandardScaler1D
 
     if scaler_cls is None:
@@ -103,6 +132,7 @@ def NormLoss(fn, norm_stats, scaler_cls=None):
 
 
 def weighted_mae(input, target):
+    """Weighted MAE with log-spaced weights decaying along the sequence axis."""
     max_weight = 1.0
     min_weight = 0.1
     seq_len = input.shape[1]
@@ -134,8 +164,16 @@ def weighted_mae(input, target):
 
 
 def RandSeqLenLoss(fn, min_idx=1, max_idx=None, mid_idx=None):
-    """Loss-Function modifier that truncates the sequence length of every sequence in the minibatch inidiviually randomly.
-    At the moment slow for very big batchsizes."""
+    """Loss-function modifier that randomly truncates each sequence in the minibatch individually.
+
+    Uses a triangular distribution. Slow for very large batch sizes.
+
+    Args:
+        fn: base loss function to wrap
+        min_idx: minimum sequence length
+        max_idx: maximum sequence length (defaults to full sequence)
+        mid_idx: mode of the triangular distribution (defaults to min_idx)
+    """
 
     @functools.wraps(fn)
     def _inner(input, target):
@@ -152,37 +190,39 @@ def RandSeqLenLoss(fn, min_idx=1, max_idx=None, mid_idx=None):
 
 
 def fun_rmse(inp, targ):
-    """rmse loss function defined as a function not as a AccumMetric"""
+    """RMSE loss function defined as a plain function."""
     return torch.sqrt(F.mse_loss(inp, targ))
 
 
 def cos_sim_loss(inp, targ):
-    """rmse loss function defined as a function not as a AccumMetric"""
+    """Cosine similarity loss (1 - cosine similarity), averaged over the batch."""
     return (1 - F.cosine_similarity(inp, targ, dim=-1)).mean()
 
 
 def cos_sim_loss_pow(inp, targ):
-    """rmse loss function defined as a function not as a AccumMetric"""
+    """Squared cosine similarity loss, averaged over the batch."""
     return (1 - F.cosine_similarity(inp, targ, dim=-1)).pow(2).mean()
 
 
 def nrmse(inp, targ):
-    """rmse loss function scaled by variance of each target variable"""
+    """RMSE loss normalized by variance of each target variable."""
     mse = (inp - targ).pow(2).mean(dim=[0, 1])
     var = targ.var(dim=[0, 1])
     return (mse / var).sqrt().mean()
 
 
 def nrmse_std(inp, targ):
-    """rmse loss function scaled by standard deviation of each target variable"""
+    """RMSE loss normalized by standard deviation of each target variable."""
     mse = (inp - targ).pow(2).mean(dim=[0, 1])
     var = targ.std(dim=[0, 1])
     return (mse / var).sqrt().mean()
 
 
 def mean_vaf(inp, targ):
+    """Variance accounted for (VAF) metric, returned as a percentage."""
     return (1 - ((targ - inp).var() / targ.var())) * 100
 
 
 def zero_loss(pred, targ):
+    """Always-zero loss that preserves the computation graph."""
     return (pred * 0).sum()

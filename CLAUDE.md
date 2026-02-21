@@ -38,6 +38,9 @@ Use `uv sync --extra dev` to install dependencies — it creates/manages the `.v
 ## Code Style
 
 - Inline type hints: `param:type = default` with modern union syntax (`str|None`)
-- Parameter descriptions as inline comments: `param:type, # description`
-- Single-line docstrings under 80 chars; no parameter docs in docstrings
+- Google-style docstrings with `Args:` sections for public APIs
+- Module docstrings: one-liner stating what the module provides
+- Class docstrings: short description + `Args:` for `__init__` params
+- Skip `Args:` for obvious signatures (`forward(self, x)`, `__call__`)
+- `Returns:` only when non-obvious from type hint
 - Use pattern matching (`match/case`) for type checking

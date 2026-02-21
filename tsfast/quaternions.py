@@ -1,3 +1,5 @@
+"""Quaternion math, loss functions, augmentations, and data blocks."""
+
 __all__ = [
     "TensorQuaternionInclination",
     "TensorQuaternionAngle",
@@ -98,6 +100,13 @@ def conjQuat(q):
 
 
 def diffQuat(q1, q2, norm=True):
+    """Compute the difference quaternion between q1 and q2.
+
+    Args:
+        q1: first quaternion tensor.
+        q2: second quaternion tensor.
+        norm: whether to normalize inputs before computing the difference.
+    """
     if norm:
         nq1 = norm_quaternion(q1)
         nq2 = norm_quaternion(q2)
@@ -192,6 +201,12 @@ def rot_vec(v, q):
 
 
 def quatFromAngleAxis(angle, axis):
+    """Create quaternions from angle-axis representation.
+
+    Args:
+        angle: rotation angles, shape (N,) or (1,).
+        axis: rotation axes, shape (3,) or (N, 3) or (1, 3).
+    """
     if len(axis.shape) == 2:
         N = max(angle.shape[0], axis.shape[0])
         assert angle.shape in ((1,), (N,))
@@ -208,16 +223,18 @@ def quatFromAngleAxis(angle, axis):
 
 
 def quatInterp(quat, ind, extend=False):
-    """
-    Interpolates an array of quaternions of (non-integer) indices using Slerp. Sampling indices are in the range
-    0..N-1, for values outside of this range, depending on "extend", the first/last element or NaN is returned.
+    """Interpolate quaternions at non-integer indices using Slerp.
 
-    See also csg_bigdata.dp.utils.vecInterp.
+    Sampling indices are in the range 0..N-1. For values outside this range,
+    depending on ``extend``, the first/last element or NaN is returned.
 
-    :param quat: array of input quaternions (N(xB)x4)
-    :param ind: vector containing the sampling indices, shape (M,)
-    :param extend: if true, the input data is virtually extended by the first/last value
-    :return: interpolated quaternions (Mx4)
+    Args:
+        quat: input quaternions, shape (N(xB)x4).
+        ind: sampling indices, shape (M,).
+        extend: if true, extend input by repeating first/last value.
+
+    Returns:
+        Interpolated quaternions, shape (Mx4).
     """
     N = quat.shape[0]
     M = ind.shape[0]
@@ -370,7 +387,12 @@ from fastai.callback.hook import *
 
 @delegates()
 class QuaternionRegularizer(HookCallback):
-    "Callback that adds AR and TAR to the loss, calculated by output of provided layer"
+    """Regularize quaternion output toward unit norm.
+
+    Args:
+        reg_unit: weight for the unit-norm regularization term.
+        detach: whether to detach the hook output from the computation graph.
+    """
 
     run_before = TrainEvalCallback
 
@@ -396,13 +418,25 @@ class QuaternionRegularizer(HookCallback):
 
 
 def augmentation_groups(u_groups):
-    """returns the rotation list corresponding to the input groups"""
+    """Convert channel group sizes into start/end index pairs.
+
+    Args:
+        u_groups: list of group sizes (number of channels per group).
+    """
     u_groups = np.cumsum([0] + u_groups)
     return [[u_groups[i], u_groups[i + 1] - 1] for i in range(len(u_groups) - 1)]
 
 
 class QuaternionAugmentation(Transform):
-    "A transform that before_call its state at each `__call__`"
+    """Apply random quaternion rotation to grouped signals.
+
+    Only applied to training data. Each call samples a new random quaternion
+    and applies it to all specified signal groups.
+
+    Args:
+        inp_groups: list of [start, end] index pairs defining signal groups
+            (groups of size 4 are rotated as quaternions, size 3 as vectors).
+    """
 
     split_idx = 0
 
@@ -441,11 +475,17 @@ from scipy.signal import resample
 
 
 class Quaternion_ResamplingModel(nn.Module):
-    """
-    Module that resamples the signal before and after the prediction of its model.
-    Usefull for using models on datasets with different samplingrates.
+    """Resample signals before and after model prediction.
 
-    sampling_method: method used for resampling ['resample','interpolate']
+    Useful for applying models to datasets with different sampling rates.
+
+    Args:
+        model: wrapped prediction model.
+        fs_targ: target sampling frequency for resampling.
+        fs_mean: mean used for denormalizing the sampling frequency input.
+        fs_std: std used for denormalizing the sampling frequency input.
+        quaternion_sampling: use quaternion Slerp interpolation for output
+            resampling instead of linear interpolation.
     """
 
     def __init__(self, model, fs_targ, fs_mean=0, fs_std=1, quaternion_sampling=True):
@@ -503,27 +543,18 @@ def relativeQuat_np(q1, q2):
 
 
 def quatFromAngleAxis_np(angle, axis):
-    """
-    Get quaternion from angle and axis.
+    """Create quaternions from angle-axis representation (numpy).
 
-    If angle is 0, the output will be an identity quaternion.
-    If axis is zero vector, a ValueError will be raised unless corresponding angle is 0.
-    If  Nx3 axis or N angle are given, the output will be row-wise broadcasted into Nx4:
+    If angle is 0, the output will be an identity quaternion. If axis is a
+    zero vector, a ValueError will be raised unless the corresponding angle
+    is 0.
 
-    >>> q = csgimu.quatFromAngleAxis([0, 1, 2], [1, 0, 0])
-    >>> q
-    array([[1.        , 0.        , 0.        , 0.        ],
-           [0.87758256, 0.47942554, 0.        , 0.        ],
-           [0.54030231, 0.84147098, 0.        , 0.        ]])
+    Args:
+        angle: scalar or N angles in radians.
+        axis: rotation axes, shape (3,) or (Nx3) or (1x3).
 
-    :param angle: scalar or N angle in rad input
-    :param axis: Nx3 or 1x3 vector input array
-    :param debug: enables debug output
-    :param plot: enables debug plot
-    :return:
-        - output: Nx4 or 1x4 quaternion output array
-        - debug: dict with debug values (only if debug==True)
-
+    Returns:
+        Quaternion array, shape (Nx4) or (1x4).
     """
 
     angle = np.asarray(angle, np.float64)
@@ -593,20 +624,18 @@ def multiplyQuat_np(q1, q2):
 
 
 def quatInterp_np(quat, ind, extend=True):
-    """
-    Interpolates an array of quaternions (Nx4) of (non-integer) indices using Slerp. Sampling indices are in the range
-    0..N-1. For values outside of this range, depending on "extend", the first/last element or NaN is returned.
-    If the input consists 2 quaternions and ind =[0.5], the result should be (1,4) and be the 50/50 interpolation
-    between the two input quaternions.
+    """Interpolate quaternions at non-integer indices using Slerp (numpy).
 
-    >>> a=csgimu.quatInterp(np.array([[1,0,0,0],[0,0,1,0]]), np.array([0.5]), extend=True,debug=False,plot=False)
-    >>> a
-        array([[0, 0, 0, 0]])
+    Sampling indices are in the range 0..N-1. For values outside this range,
+    depending on ``extend``, the first/last element or NaN is returned.
 
-    :param quat: array of input quaternions (Nx4)
-    :param ind: vector containing the sampling indices for desired output, shape (M,)
-    :param extend: if true, the input data is virtually extended by the first/last value
-    :return: interpolated quaternions (Mx4)
+    Args:
+        quat: input quaternions, shape (Nx4).
+        ind: sampling indices, shape (M,).
+        extend: if true, extend input by repeating first/last value.
+
+    Returns:
+        Interpolated quaternions, shape (Mx4).
     """
     ind = np.atleast_1d(ind)
     N = quat.shape[0]
@@ -652,6 +681,8 @@ import h5py
 
 
 class HDF2Quaternion(HDF2Sequence):
+    """Extract quaternion sequences from HDF5 files with Slerp resampling."""
+
     def _hdf_extract_sequence(
         self,
         hdf_path,
@@ -663,18 +694,6 @@ class HDF2Quaternion(HDF2Sequence):
         dt_idx=False,
         fast_resample=True,
     ):
-        """
-        extracts a sequence with the shape [seq_len x num_features]
-
-        hdf_path: file path of hdf file, may be a string or path type
-        clms: list of dataset names of sequences in hdf file
-        dataset: dataset root for clms. Useful for multiples sequences stored in one file.
-        l_slc: left boundary for extraction of a window of the whole sequence
-        r_slc: right boundary for extraction of a window of the whole sequence
-        resampling_factor: scaling factor for the sequence length, uses 'resample_interp' for resampling
-        fs_idx: clms list idx of fs entry in sequence. Will be scaled by resampling_factor after resampling
-        dt_idx: clms list idx of dt entry in sequence. Will be scaled by resampling_factor after resampling
-        """
 
         if resampling_factor is not None:
             seq_len = (
@@ -708,6 +727,13 @@ class HDF2Quaternion(HDF2Sequence):
 
 
 class QuaternionBlock(TransformBlock):
+    """TransformBlock for quaternion sequence data with normalization.
+
+    Args:
+        seq_extract: transform that extracts the quaternion sequence.
+        padding: whether to pad sequences of different lengths.
+    """
+
     def __init__(self, seq_extract, padding=False):
         return super().__init__(
             type_tfms=[seq_extract],
@@ -718,6 +744,13 @@ class QuaternionBlock(TransformBlock):
     @classmethod
     @delegates(HDF2Quaternion, keep=True)
     def from_hdf(cls, clm_names, seq_cls=TensorQuaternionInclination, padding=False, **kwargs):
+        """Create a QuaternionBlock from HDF5 files.
+
+        Args:
+            clm_names: column/dataset names to extract.
+            seq_cls: tensor class for the extracted quaternion sequences.
+            padding: whether to pad sequences of different lengths.
+        """
         return cls(HDF2Quaternion(clm_names, to_cls=seq_cls, **kwargs), padding)
 
 
@@ -729,6 +762,8 @@ import h5py
 
 
 class HDF2Inclination(HDF2Sequence):
+    """Extract inclination angle sequences from HDF5 quaternion data."""
+
     def _hdf_extract_sequence(self, hdf_path, dataset=None, l_slc=None, r_slc=None, down_s=None):
         with h5py.File(hdf_path, "r") as f:
             ds = f if dataset is None else f[dataset]
@@ -739,6 +774,13 @@ class HDF2Inclination(HDF2Sequence):
 
 
 class InclinationBlock(TransformBlock):
+    """TransformBlock for inclination angle sequence data.
+
+    Args:
+        seq_extract: transform that extracts the inclination sequence.
+        padding: whether to pad sequences of different lengths.
+    """
+
     def __init__(self, seq_extract, padding=False):
         return super().__init__(
             type_tfms=[seq_extract],
@@ -749,10 +791,25 @@ class InclinationBlock(TransformBlock):
     @classmethod
     @delegates(HDF2Inclination, keep=True)
     def from_hdf(cls, clm_names, seq_cls=TensorInclination, padding=False, **kwargs):
+        """Create an InclinationBlock from HDF5 files.
+
+        Args:
+            clm_names: column/dataset names to extract.
+            seq_cls: tensor class for the extracted inclination sequences.
+            padding: whether to pad sequences of different lengths.
+        """
         return cls(HDF2Inclination(clm_names, to_cls=seq_cls, **kwargs), padding)
 
 
 def plot_scalar_inclination(axs, in_sig, targ_sig, out_sig=None, **kwargs):
+    """Plot scalar inclination target, prediction, and error.
+
+    Args:
+        axs: list of matplotlib axes to plot on.
+        in_sig: input signal tensor.
+        targ_sig: target inclination tensor.
+        out_sig: predicted inclination tensor, or None for batch display.
+    """
     axs[0].plot(rad2deg(targ_sig).detach().numpy())
     axs[0].label_outer()
     axs[0].set_ylabel("inclination[°]")
@@ -768,7 +825,14 @@ def plot_scalar_inclination(axs, in_sig, targ_sig, out_sig=None, **kwargs):
 
 
 def plot_quaternion_inclination(axs, in_sig, targ_sig, out_sig=None, **kwargs):
-    #     import pdb; pdb.set_trace()
+    """Plot quaternion inclination target, prediction, and error.
+
+    Args:
+        axs: list of matplotlib axes to plot on.
+        in_sig: input signal tensor.
+        targ_sig: target quaternion tensor.
+        out_sig: predicted quaternion tensor, or None for batch display.
+    """
     axs[0].plot(rad2deg(inclinationAngleAbs(targ_sig)).detach().numpy())
     axs[0].label_outer()
     axs[0].legend(["y"])
@@ -790,7 +854,14 @@ def plot_quaternion_inclination(axs, in_sig, targ_sig, out_sig=None, **kwargs):
 
 
 def plot_quaternion_rel_angle(axs, in_sig, targ_sig, out_sig=None, **kwargs):
-    #     import pdb; pdb.set_trace()
+    """Plot relative quaternion angle target, prediction, and error.
+
+    Args:
+        axs: list of matplotlib axes to plot on.
+        in_sig: input signal tensor.
+        targ_sig: target quaternion tensor.
+        out_sig: predicted quaternion tensor, or None for batch display.
+    """
     first_targ = targ_sig[0].repeat(targ_sig.shape[0], 1)
     axs[0].plot(rad2deg(relativeAngle(first_targ, targ_sig)).detach().numpy())
     axs[0].label_outer()
@@ -809,6 +880,7 @@ def plot_quaternion_rel_angle(axs, in_sig, targ_sig, out_sig=None, **kwargs):
 
 @dispatch
 def show_results(x: TensorSequences, y: TensorInclination, samples, outs, ctxs=None, max_n=2, **kwargs):
+    """Show prediction results for scalar inclination targets."""
     n_samples = min(len(samples), max_n)
     n_targ = 2
     if n_samples > 3:
@@ -822,6 +894,7 @@ def show_results(x: TensorSequences, y: TensorInclination, samples, outs, ctxs=N
 
 @dispatch
 def show_batch(x: TensorSequences, y: TensorInclination, samples, ctxs=None, max_n=6, **kwargs):
+    """Show a batch of scalar inclination samples."""
     n_samples = min(len(samples), max_n)
     n_targ = 1
     if n_samples > 3:
@@ -835,6 +908,7 @@ def show_batch(x: TensorSequences, y: TensorInclination, samples, ctxs=None, max
 
 @dispatch
 def show_results(x: TensorSequences, y: TensorQuaternionInclination, samples, outs, ctxs=None, max_n=2, **kwargs):
+    """Show prediction results for quaternion inclination targets."""
     if "quat" in kwargs:
         return show_results(x, TensorSequencesOutput(y), samples, outs, ctxs, max_n, **kwargs)
     n_samples = min(len(samples), max_n)
@@ -850,6 +924,7 @@ def show_results(x: TensorSequences, y: TensorQuaternionInclination, samples, ou
 
 @dispatch
 def show_batch(x: TensorSequences, y: TensorQuaternionInclination, samples, ctxs=None, max_n=6, **kwargs):
+    """Show a batch of quaternion inclination samples."""
     n_samples = min(len(samples), max_n)
     n_targ = 1
     if n_samples > 3:
@@ -863,6 +938,7 @@ def show_batch(x: TensorSequences, y: TensorQuaternionInclination, samples, ctxs
 
 @dispatch
 def show_results(x: TensorSequences, y: TensorQuaternionAngle, samples, outs, ctxs=None, max_n=2, **kwargs):
+    """Show prediction results for quaternion angle targets."""
     n_samples = min(len(samples), max_n)
     n_targ = 2
     if n_samples > 3:
@@ -876,6 +952,7 @@ def show_results(x: TensorSequences, y: TensorQuaternionAngle, samples, outs, ct
 
 @dispatch
 def show_batch(x: TensorSequences, y: TensorQuaternionAngle, samples, ctxs=None, max_n=6, **kwargs):
+    """Show a batch of quaternion angle samples."""
     n_samples = min(len(samples), max_n)
     n_targ = 1
     if n_samples > 3:

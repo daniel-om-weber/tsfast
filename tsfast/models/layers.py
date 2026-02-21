@@ -1,3 +1,5 @@
+"""Reusable model layers, scalers, and wrappers for normalization and aggregation."""
+
 __all__ = [
     "BatchNorm_1D_Stateful",
     "SeqLinear",
@@ -384,13 +386,18 @@ def unwrap_model(model):
 
 
 class SeqAggregation(nn.Module):
-    "Creates an aggregation layer for a sequence, reducing the sequence dimension."
+    """Aggregation layer that reduces the sequence dimension.
+
+    Args:
+        func: aggregation function taking (tensor, dim) and returning reduced tensor
+        dim: sequence dimension to aggregate over
+    """
 
     def __init__(
         self,
-        func: callable = lambda x, dim: x.select(dim, -1),  # Aggregation function
+        func: callable = lambda x, dim: x.select(dim, -1),
         dim: int = 1,
-    ):  # The sequence dimension to aggregate over
+    ):
         super().__init__()
         self.func = func
         self.dim = dim

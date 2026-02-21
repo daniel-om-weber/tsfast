@@ -1,3 +1,5 @@
+"""Training callbacks for gradient control, sequence manipulation, and regularization."""
+
 __all__ = [
     "GradientClipping",
     "GradientNormPrint",
@@ -23,7 +25,11 @@ from fastai.basics import *
 
 
 class GradientClipping(Callback):
-    "`Callback` cutts of the gradient of every minibtch at `clip_val`"
+    """Clips the gradient of every minibatch at a given value.
+
+    Args:
+        clip_val: maximum gradient norm threshold
+    """
 
     def __init__(self, clip_val=10):
         self.clip_val = clip_val
@@ -33,7 +39,7 @@ class GradientClipping(Callback):
 
 
 class GradientNormPrint(Callback):
-    "`Callback` prints the norm of the gradient of every minibtch"
+    """Prints the norm of the gradient of every minibatch."""
 
     # def __init__(self, clip_val=10): self.clip_val = clip_val
 
@@ -44,7 +50,11 @@ class GradientNormPrint(Callback):
 
 
 class GradientBatchFiltering(Callback):
-    "`Callback` skips batches with a gradient norm larger than `filter_val`"
+    """Skips batches with a gradient norm larger than a given threshold.
+
+    Args:
+        filter_val: maximum gradient norm before the batch is skipped
+    """
 
     def __init__(self, filter_val=10):
         self.filter_val = filter_val
@@ -60,7 +70,12 @@ class GradientBatchFiltering(Callback):
 
 
 class WeightClipping(Callback):
-    "`Callback` that clips the weights of a given module at `clip_limit` after every iteration"
+    """Clips the weights of a given module after every iteration.
+
+    Args:
+        module: the module whose weights are clipped
+        clip_limit: symmetric clamp boundary for the weights
+    """
 
     def __init__(self, module, clip_limit=1):
         self.module = module
@@ -73,7 +88,11 @@ class WeightClipping(Callback):
 
 
 class SkipFirstNCallback(Callback):
-    "`Callback` skips first n samples from prediction and target, optionally `with_loss`"
+    """Skips first n time steps from prediction and target during training.
+
+    Args:
+        n_skip: number of initial time steps to discard
+    """
 
     def __init__(self, n_skip=0):
         self.n_skip = n_skip
@@ -94,7 +113,7 @@ class SkipFirstNCallback(Callback):
 
 
 class SkipNaNCallback(Callback):
-    "`Callback` skips minibatches with a NaN loss"
+    """Skips minibatches with a NaN loss."""
 
     def after_loss(self):
         #         import pdb;pdb.set_trace()
@@ -104,7 +123,7 @@ class SkipNaNCallback(Callback):
 
 
 class CancelNaNCallback(Callback):
-    "`Callback` cancels trainig minibatches with a NaN loss"
+    """Cancels training when a NaN loss is encountered."""
 
     def after_loss(self):
         if torch.isnan(self.learn.loss):
@@ -112,7 +131,11 @@ class CancelNaNCallback(Callback):
 
 
 class VarySeqLen(Callback):
-    "`Callback` varies sequence length of every mini batch"
+    """Randomly varies sequence length of every minibatch during training.
+
+    Args:
+        min_len: minimum sequence length to keep
+    """
 
     def __init__(self, min_len=50):
         self.min_len = min_len
@@ -132,10 +155,27 @@ class VarySeqLen(Callback):
 
 
 def sched_lin_p(start, end, pos, p=0.75):
+    """Linear schedule that reaches the end value at position p.
+
+    Args:
+        start: value at position 0
+        end: value at position p and beyond
+        pos: current position in [0, 1]
+        p: position at which the end value is reached
+    """
     return end if pos >= p else start + pos / p * (end - start)
 
 
 def sched_ramp(start, end, pos, p_left=0.2, p_right=0.6):
+    """Ramp schedule that linearly transitions between two plateau regions.
+
+    Args:
+        start: value before p_left
+        end: value after p_right
+        pos: current position in [0, 1]
+        p_left: position where the ramp begins
+        p_right: position where the ramp ends
+    """
     if pos >= p_right:
         return end
     elif pos <= p_left:
@@ -148,7 +188,12 @@ from fastai.callback.all import *
 
 
 class CB_TruncateSequence(Callback):
-    "`Callback` varies sequence length of every mini batch"
+    """Progressively truncates sequence length during training using a scheduler.
+
+    Args:
+        truncate_length: maximum number of time steps to truncate
+        scheduler: scheduling function controlling truncation over training
+    """
 
     def __init__(self, truncate_length=50, scheduler=sched_ramp):
         self._truncate_length = truncate_length
@@ -167,7 +212,12 @@ class CB_TruncateSequence(Callback):
 
 
 class CB_AddLoss(Callback):
-    """Callback that adds the results of a given loss_function to the mini_batch after the original loss function has been applied"""
+    """Adds an auxiliary loss to the minibatch after the primary loss is computed.
+
+    Args:
+        _loss_func: auxiliary loss function applied to predictions and targets
+        alpha: scaling factor for the auxiliary loss
+    """
 
     def __init__(self, _loss_func, alpha=1.0):
         self._loss_func = _loss_func
@@ -183,8 +233,12 @@ class CB_AddLoss(Callback):
 
 
 class BatchLossFilter(Callback):
-    """
-    Callback that selects the hardest samples in every batch representing a percentage of the total loss.
+    """Selects the hardest samples in every batch representing a percentage of the total loss.
+
+    Args:
+        loss_perc: fraction of total loss to keep (1.0 keeps all samples)
+        filter_criterion: per-sample loss function used for ranking
+        schedule_func: optional function to adjust loss_perc over training
     """
 
     def __init__(
@@ -195,37 +249,29 @@ class BatchLossFilter(Callback):
         self.schedule_func = schedule_func
 
     def after_pred(self):
-        """
-        Selects hardest samples after model prediction and before loss computation.
-        """
+        """Selects hardest samples after model prediction and before loss computation."""
         if not self.training:
-            return  # Skip if not in training mode
+            return
         if self.schedule_func is None:
             loss_perc = self.loss_perc
         else:
-            loss_perc = self.loss_perc * self.schedule_func(
-                self.pct_train
-            )  # Adjust loss_perc if a schedule function is given
+            loss_perc = self.loss_perc * self.schedule_func(self.pct_train)
         if loss_perc == 1.0:
-            return  # If loss_perc is 1, all samples are included, no need to filter
+            return
 
-        with torch.no_grad():  # No gradients needed for the filtering operation
-            losses = self.filter_criterion(self.pred, self.y)  # Compute individual losses with model's predictions
+        with torch.no_grad():
+            losses = self.filter_criterion(self.pred, self.y)
             if losses.ndim >= 2:
-                losses = losses.mean(
-                    tuple(range(1, losses.ndim))
-                )  # If loss is multi-dimensional, take the mean over all but the first dimension
-            losses /= losses.sum()  # Normalize losses to make them sum up to 1
+                losses = losses.mean(tuple(range(1, losses.ndim)))
+            losses /= losses.sum()
 
-            idxs = torch.argsort(losses, descending=True)  # Sort indices by loss
-            cut_idx = max(
-                1, torch.argmax((losses[idxs].cumsum(0) > loss_perc).float())
-            )  # Determine the cut-off index where cumulative sum exceeds loss_perc
-            idxs = idxs[:cut_idx]  # Select the hardest samples
+            idxs = torch.argsort(losses, descending=True)
+            cut_idx = max(1, torch.argmax((losses[idxs].cumsum(0) > loss_perc).float()))
+            idxs = idxs[:cut_idx]
 
-        self.learn.xb = tuple(xbi[idxs] for xbi in self.learn.xb)  # Filter the input batch
-        self.learn.yb = tuple(ybi[idxs] for ybi in self.learn.yb)  # Filter the output batch
-        self.learn.pred = self.pred[idxs]  # Update the predictions to match the filtered batch
+        self.learn.xb = tuple(xbi[idxs] for xbi in self.learn.xb)
+        self.learn.yb = tuple(ybi[idxs] for ybi in self.learn.yb)
+        self.learn.pred = self.pred[idxs]
 
 
 from fastai.callback.hook import *
@@ -233,7 +279,15 @@ from fastai.callback.hook import *
 
 @delegates()
 class TimeSeriesRegularizer(HookCallback):
-    "Callback that adds AR and TAR to the loss, calculated by output of provided layer"
+    """Adds activation regularization (AR) and temporal activation regularization (TAR) to the loss.
+
+    Args:
+        alpha: coefficient for AR penalty (L2 on activations)
+        beta: coefficient for TAR penalty (L2 on consecutive activation differences)
+        dim: time axis index; auto-detected from the hooked layer output if None
+        detach: whether to detach the hooked output before computing penalties
+        **kwargs: forwarded to HookCallback (must include modules)
+    """
 
     run_before = TrainEvalCallback
 
@@ -273,7 +327,7 @@ class TimeSeriesRegularizer(HookCallback):
 
 
 class ARInitCB(Callback):
-    """Concatenates the target variable to the input for autoregression"""
+    """Concatenates the target variable to the input for autoregression."""
 
     def before_fit(self):
         if hasattr(self.dls, "norm_stats"):
@@ -296,10 +350,12 @@ from matplotlib.lines import Line2D
 
 def plot_grad_flow(named_parameters):
     """Plots the gradients flowing through different layers in the net during training.
-    Can be used for checking for possible gradient vanishing / exploding problems.
-    *modified version of https://discuss.pytorch.org/t/check-gradient-flow-in-network/15063/8*
 
-    Call multiple time for transparent overlays, representing the mean gradients
+    Can be used for checking for possible gradient vanishing / exploding problems.
+    Call multiple times for transparent overlays representing the mean gradients.
+
+    Args:
+        named_parameters: iterator of (name, parameter) pairs from a model
     """
     ave_grads = []
     max_grads = []
@@ -328,18 +384,22 @@ def plot_grad_flow(named_parameters):
 
 
 class CB_PlotGradient(Callback):
-    """Plot the Gradient Distribution for every trainable parameter"""
+    """Plots the gradient distribution for every trainable parameter.
+
+    Args:
+        n_draws: number of gradient snapshots to plot across training
+    """
 
     def __init__(self, n_draws=20):
         self.n_draws = n_draws
 
     def begin_fit(self):
-        """Create a new figure to plot in"""
+        """Create a new figure to plot in."""
         plt.figure()
         plt.tight_layout()
 
     def after_backward(self):
-        """plot the gradient for every layer of the current minibatch"""
+        """Plot the gradient for every layer of the current minibatch."""
         # plotting n_draws times at the whole training
         if self.iter % (max(self.n_epoch * self.n_iter // self.n_draws, 1)) == 0:
             #         if self.iter == self.n_iter-1:

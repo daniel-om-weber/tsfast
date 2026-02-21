@@ -1,3 +1,5 @@
+"""Physics-informed neural network callbacks and signal generation utilities."""
+
 __all__ = [
     "DEFAULT_SIGNAL_TYPES",
     "DEFAULT_SIGNAL_PARAMS",
@@ -38,24 +40,24 @@ DEFAULT_SIGNAL_PARAMS = {
 
 
 def _generate_sine(
-    seq_length: int,  # Length of sequence
-    dt: float,  # Time step
-    amplitudes: np.ndarray,  # Signal amplitudes [num_signals]
-    frequencies: np.ndarray,  # Frequencies in Hz [num_signals]
-    phases: np.ndarray,  # Phase offsets in radians [num_signals]
-) -> np.ndarray:  # Signals [num_signals, seq_length]
-    """Generate multiple sine waves vectorized"""
+    seq_length: int,
+    dt: float,
+    amplitudes: np.ndarray,
+    frequencies: np.ndarray,
+    phases: np.ndarray,
+) -> np.ndarray:
+    """Generate multiple sine waves vectorized."""
     t = np.arange(seq_length) * dt
     return amplitudes[:, np.newaxis] * np.sin(2 * np.pi * frequencies[:, np.newaxis] * t + phases[:, np.newaxis])
 
 
 def _generate_multisine(
-    seq_length: int,  # Length of sequence
-    dt: float,  # Time step
-    amplitudes: np.ndarray,  # Total signal amplitudes [num_signals]
-    all_frequencies: list,  # List of frequency arrays, one per signal
-) -> np.ndarray:  # Signals [num_signals, seq_length]
-    """Generate multiple multisine signals vectorized"""
+    seq_length: int,
+    dt: float,
+    amplitudes: np.ndarray,
+    all_frequencies: list,
+) -> np.ndarray:
+    """Generate multiple multisine signals vectorized."""
     num_signals = len(amplitudes)
     t = np.arange(seq_length) * dt
     signals = np.zeros((num_signals, seq_length))
@@ -68,11 +70,11 @@ def _generate_multisine(
 
 
 def _generate_step(
-    seq_length: int,  # Length of sequence
-    amplitudes: np.ndarray,  # Step amplitudes [num_signals]
-    step_indices: np.ndarray,  # Indices where step occurs [num_signals]
-) -> np.ndarray:  # Signals [num_signals, seq_length]
-    """Generate multiple step signals vectorized"""
+    seq_length: int,
+    amplitudes: np.ndarray,
+    step_indices: np.ndarray,
+) -> np.ndarray:
+    """Generate multiple step signals vectorized."""
     num_signals = len(amplitudes)
     signals = np.zeros((num_signals, seq_length))
     for i in range(num_signals):
@@ -81,12 +83,12 @@ def _generate_step(
 
 
 def _generate_ramp(
-    seq_length: int,  # Length of sequence
-    amplitudes: np.ndarray,  # Final amplitudes [num_signals]
-    slopes: np.ndarray,  # Slopes of ramps [num_signals]
-    start_indices: np.ndarray,  # Start indices of ramps [num_signals]
-) -> np.ndarray:  # Signals [num_signals, seq_length]
-    """Generate multiple ramp signals vectorized"""
+    seq_length: int,
+    amplitudes: np.ndarray,
+    slopes: np.ndarray,
+    start_indices: np.ndarray,
+) -> np.ndarray:
+    """Generate multiple ramp signals vectorized."""
     num_signals = len(amplitudes)
     signals = np.zeros((num_signals, seq_length))
     for i in range(num_signals):
@@ -98,13 +100,13 @@ def _generate_ramp(
 
 
 def _generate_chirp(
-    seq_length: int,  # Length of sequence
-    dt: float,  # Time step
-    amplitudes: np.ndarray,  # Signal amplitudes [num_signals]
-    f0s: np.ndarray,  # Start frequencies [num_signals]
-    f1s: np.ndarray,  # End frequencies [num_signals]
-) -> np.ndarray:  # Signals [num_signals, seq_length]
-    """Generate multiple chirp signals vectorized"""
+    seq_length: int,
+    dt: float,
+    amplitudes: np.ndarray,
+    f0s: np.ndarray,
+    f1s: np.ndarray,
+) -> np.ndarray:
+    """Generate multiple chirp signals vectorized."""
     t = np.arange(seq_length) * dt
     duration = seq_length * dt
     k = (f1s - f0s) / duration
@@ -113,20 +115,20 @@ def _generate_chirp(
 
 
 def _generate_noise(
-    seq_length: int,  # Length of sequence
-    amplitudes: np.ndarray,  # Noise amplitudes (std) [num_signals]
-) -> np.ndarray:  # Signals [num_signals, seq_length]
-    """Generate multiple Gaussian white noise signals vectorized"""
+    seq_length: int,
+    amplitudes: np.ndarray,
+) -> np.ndarray:
+    """Generate multiple Gaussian white noise signals vectorized."""
     num_signals = len(amplitudes)
     return amplitudes[:, np.newaxis] * np.random.randn(num_signals, seq_length)
 
 
 def _generate_prbs(
-    seq_length: int,  # Length of sequence
-    amplitudes: np.ndarray,  # Signal amplitudes [num_signals]
-    switch_probs: np.ndarray,  # Probabilities of switching per time step [num_signals]
-) -> np.ndarray:  # Signals [num_signals, seq_length]
-    """Generate multiple PRBS signals"""
+    seq_length: int,
+    amplitudes: np.ndarray,
+    switch_probs: np.ndarray,
+) -> np.ndarray:
+    """Generate multiple PRBS signals."""
     num_signals = len(amplitudes)
     signals = np.zeros((num_signals, seq_length))
     for i in range(num_signals):
@@ -140,13 +142,13 @@ def _generate_prbs(
 
 
 def _generate_square(
-    seq_length: int,  # Length of sequence
-    dt: float,  # Time step
-    amplitudes: np.ndarray,  # Signal amplitudes [num_signals]
-    frequencies: np.ndarray,  # Frequencies in Hz [num_signals]
-    duty_cycles: np.ndarray,  # Duty cycles (0-1) [num_signals]
-) -> np.ndarray:  # Signals [num_signals, seq_length]
-    """Generate multiple square wave signals vectorized"""
+    seq_length: int,
+    dt: float,
+    amplitudes: np.ndarray,
+    frequencies: np.ndarray,
+    duty_cycles: np.ndarray,
+) -> np.ndarray:
+    """Generate multiple square wave signals vectorized."""
     t = np.arange(seq_length) * dt
     periods = 1.0 / frequencies
     phases = (t[np.newaxis, :] % periods[:, np.newaxis]) / periods[:, np.newaxis]
@@ -154,12 +156,12 @@ def _generate_square(
 
 
 def _generate_doublet(
-    seq_length: int,  # Length of sequence
-    amplitudes: np.ndarray,  # Pulse amplitudes [num_signals]
-    duration_indices: np.ndarray,  # Duration of pulse in samples [num_signals]
-    start_indices: np.ndarray,  # Start indices of pulses [num_signals]
-) -> np.ndarray:  # Signals [num_signals, seq_length]
-    """Generate multiple doublet signals"""
+    seq_length: int,
+    amplitudes: np.ndarray,
+    duration_indices: np.ndarray,
+    start_indices: np.ndarray,
+) -> np.ndarray:
+    """Generate multiple doublet signals."""
     num_signals = len(amplitudes)
     signals = np.zeros((num_signals, seq_length))
     for i in range(num_signals):
@@ -169,23 +171,44 @@ def _generate_doublet(
 
 
 def generate_excitation_signals(
-    batch_size: int,  # Number of sequences in batch
-    seq_length: int,  # Length of each sequence
-    n_inputs: int = 1,  # Number of input dimensions
-    dt: float = 0.01,  # Time step
-    device: str = "cpu",  # Device for tensors
-    signal_types: list = None,  # Signal types to use (None = all core types)
-    amplitude_range: tuple = (0.5, 2.0),  # Global amplitude range
-    frequency_range: tuple = (0.1, 3.0),  # Global frequency range
-    input_configs: list = None,  # Per-input configuration (list of dicts)
-    noise_probability: float = 0.0,  # Probability of adding noise per sequence
-    noise_std_range: tuple = (0.05, 0.15),  # Noise std as fraction of amplitude
-    bias_probability: float = 0.0,  # Probability of adding DC bias per sequence
-    bias_range: tuple = (-0.5, 0.5),  # DC bias range
-    synchronized_inputs: bool = False,  # If True, all inputs get same signal type
-    seed: int = None,  # Random seed
-) -> torch.Tensor:  # Returns [batch_size, seq_length, n_inputs]
-    """Generate standard excitation signals for PINN collocation points (vectorized)"""
+    batch_size: int,
+    seq_length: int,
+    n_inputs: int = 1,
+    dt: float = 0.01,
+    device: str = "cpu",
+    signal_types: list = None,
+    amplitude_range: tuple = (0.5, 2.0),
+    frequency_range: tuple = (0.1, 3.0),
+    input_configs: list = None,
+    noise_probability: float = 0.0,
+    noise_std_range: tuple = (0.05, 0.15),
+    bias_probability: float = 0.0,
+    bias_range: tuple = (-0.5, 0.5),
+    synchronized_inputs: bool = False,
+    seed: int = None,
+) -> torch.Tensor:
+    """Generate standard excitation signals for PINN collocation points (vectorized).
+
+    Args:
+        batch_size: number of sequences in batch
+        seq_length: length of each sequence
+        n_inputs: number of input dimensions
+        dt: time step
+        device: device for tensors
+        signal_types: signal types to use (None = all core types)
+        amplitude_range: global amplitude range
+        frequency_range: global frequency range
+        input_configs: per-input configuration (list of dicts)
+        noise_probability: probability of adding noise per sequence
+        noise_std_range: noise std as fraction of amplitude
+        bias_probability: probability of adding DC bias per sequence
+        bias_range: DC bias range
+        synchronized_inputs: if True, all inputs get same signal type
+        seed: random seed
+
+    Returns:
+        Excitation signal tensor of shape [batch_size, seq_length, n_inputs].
+    """
     if seed is not None:
         np.random.seed(seed)
 
@@ -416,13 +439,24 @@ def generate_excitation_signals(
 
 
 def generate_random_states(
-    batch_size: int,  # Number of states to generate
-    n_outputs: int,  # Number of output dimensions
-    output_ranges: list,  # List of (min, max) tuples for each dimension
-    device: str = "cpu",  # Device for tensor
-    seed: int = None,  # Random seed
-) -> torch.Tensor:  # Returns [batch_size, n_outputs]
-    """Generate random physical states for PINN collocation points"""
+    batch_size: int,
+    n_outputs: int,
+    output_ranges: list,
+    device: str = "cpu",
+    seed: int = None,
+) -> torch.Tensor:
+    """Generate random physical states for PINN collocation points.
+
+    Args:
+        batch_size: number of states to generate
+        n_outputs: number of output dimensions
+        output_ranges: list of (min, max) tuples for each dimension
+        device: device for tensor
+        seed: random seed
+
+    Returns:
+        Random state tensor of shape [batch_size, n_outputs].
+    """
     if seed is not None:
         np.random.seed(seed)
 
@@ -591,17 +625,24 @@ def diff3_central(signal: torch.Tensor, dt: float) -> torch.Tensor:
 
 
 class PhysicsLossCallback(Callback):
-    "`Callback` that adds physics-informed loss using actual training data"
+    """Callback that adds physics-informed loss using actual training data.
+
+    Args:
+        physics_loss_func: function(u, y_pred, y_ref) returning dict of losses or single loss tensor
+        weight: global scaling factor for physics loss contribution
+        loss_weights: per-component weights like {'physics': 1.0, 'derivative': 0.1}
+        n_inputs: number of input channels (if using concatenated inputs like FranSysLearner)
+        n_skip: number of initial timesteps to skip before computing physics loss
+    """
 
     def __init__(
         self,
-        physics_loss_func,  # Function(u, y_pred, y_ref) -> dict of losses or single loss tensor
-        weight: float = 1.0,  # Global scaling factor for physics loss contribution
-        loss_weights: dict = None,  # Per-component weights like {'physics': 1.0, 'derivative': 0.1}
-        n_inputs: int = None,  # Number of input channels (if using concatenated inputs like FranSysLearner)
-        n_skip: int = 0,  # Number of initial timesteps to skip before computing physics loss
+        physics_loss_func,
+        weight: float = 1.0,
+        loss_weights: dict = None,
+        n_inputs: int = None,
+        n_skip: int = 0,
     ):
-        """Apply physics-informed loss to training batches using raw inputs"""
         self.weight = weight
         self.loss_weights = loss_weights or {}
         self.physics_loss_func = physics_loss_func
@@ -646,7 +687,7 @@ class PhysicsLossCallback(Callback):
 
 
 class _CollocationDataset(torch.utils.data.IterableDataset):
-    "Module-level dataset for collocation point generation (picklable for spawn multiprocessing)"
+    """Module-level dataset for collocation point generation (picklable for spawn multiprocessing)."""
 
     def __init__(self, gen_fn, bs, seq_len):
         self.gen_fn = gen_fn
@@ -659,22 +700,34 @@ class _CollocationDataset(torch.utils.data.IterableDataset):
 
 
 class CollocationPointsCB(Callback):
-    "`Callback` that adds physics-informed loss using collocation points with user-defined physics"
+    """Callback that adds physics-informed loss using collocation points with user-defined physics.
+
+    Args:
+        generate_pinn_input: function(batch_size, seq_len, device) returning tensor of collocation points
+        physics_loss_func: function(u, y_pred, y_ref) returning dict of losses or single loss tensor
+        weight: global scaling factor for physics loss contribution
+        loss_weights: per-component weights like {'physics': 1.0, 'derivative': 0.1}
+        num_workers: number of parallel workers for collocation point generation
+        init_mode: initialization mode: 'none', 'state_encoder', or 'random_hidden'
+        output_ranges: list of (min, max) tuples for random state generation
+        hidden_std: std for random hidden state initialization
+        n_skip: number of initial timesteps to skip before computing physics loss
+        model: explicit inner model reference (auto-resolved via unwrap_model if None)
+    """
 
     def __init__(
         self,
-        generate_pinn_input,  # Function(batch_size, seq_len, device) -> tensor of collocation points
-        physics_loss_func,  # Function(u, y_pred, y_ref) -> dict of losses or single loss tensor
-        weight: float = 1.0,  # Global scaling factor for physics loss contribution
-        loss_weights: dict = None,  # Per-component weights like {'physics': 1.0, 'derivative': 0.1}
-        num_workers: int = 2,  # Number of parallel workers for collocation point generation
-        init_mode: str = "none",  # Initialization mode: 'none', 'state_encoder', or 'random_hidden'
-        output_ranges: list = None,  # List of (min, max) tuples for random state generation
-        hidden_std: float = 0.1,  # Std for random hidden state initialization
-        n_skip: int = 0,  # Number of initial timesteps to skip before computing physics loss
-        model=None,  # Explicit inner model reference (auto-resolved via unwrap_model if None)
+        generate_pinn_input,
+        physics_loss_func,
+        weight: float = 1.0,
+        loss_weights: dict = None,
+        num_workers: int = 2,
+        init_mode: str = "none",
+        output_ranges: list = None,
+        hidden_std: float = 0.1,
+        n_skip: int = 0,
+        model=None,
     ):
-        """Initialize callback with collocation generator, physics equations, and init mode"""
         self.weight = weight
         self.loss_weights = loss_weights or {}
         self.generate_pinn_input = generate_pinn_input
@@ -693,11 +746,8 @@ class CollocationPointsCB(Callback):
 
             self.inner_model = unwrap_model(self.learn.model)
 
-    def _prepare_loader(
-        self,
-        u_real,  # Sample tensor to infer batch_size and seq_length
-    ):  # DataLoader with parallel workers
-        "Create DataLoader with worker processes that continuously generate collocation points"
+    def _prepare_loader(self, u_real):
+        """Create DataLoader with worker processes that continuously generate collocation points."""
         loader = torch.utils.data.DataLoader(
             _CollocationDataset(self.generate_pinn_input, u_real.shape[0], u_real.shape[1]),
             batch_size=None,
@@ -781,15 +831,20 @@ import torch.nn.functional as F
 
 
 class ConsistencyCallback(HookCallback):
-    """Trains SequenceEncoder and StateEncoder compatibility on real data"""
+    """Trains SequenceEncoder and StateEncoder compatibility on real data.
+
+    Args:
+        weight: weight for consistency loss
+        match_at_timestep: timestep to match hidden states (default: model.init_sz)
+        model: explicit inner model reference (auto-resolved via unwrap_model if None)
+    """
 
     def __init__(
         self,
-        weight: float = 1.0,  # Weight for consistency loss
-        match_at_timestep: int = None,  # Timestep to match hidden states (default: model.init_sz)
-        model=None,  # Explicit inner model reference (auto-resolved via unwrap_model if None)
+        weight: float = 1.0,
+        match_at_timestep: int = None,
+        model=None,
     ):
-        """Initialize consistency callback with loss weight"""
         super().__init__(modules=[])
         self.weight = weight
         self.match_at_timestep = match_at_timestep
@@ -841,14 +896,18 @@ class ConsistencyCallback(HookCallback):
 
 
 class AlternatingEncoderCB(Callback):
-    """Randomly alternates between sequence and state encoder per training batch"""
+    """Randomly alternates between sequence and state encoder per training batch.
+
+    Args:
+        p_state: probability of using state encoder per batch
+        model: explicit inner model reference (auto-resolved via unwrap_model if None)
+    """
 
     def __init__(
         self,
-        p_state: float = 0.3,  # Probability of using state encoder per batch
-        model=None,  # Explicit inner model reference (auto-resolved via unwrap_model if None)
+        p_state: float = 0.3,
+        model=None,
     ):
-        """Alternate encoder modes to train state encoder on real data"""
         self.p_state = p_state
         self.inner_model = model
 
@@ -874,16 +933,22 @@ class AlternatingEncoderCB(Callback):
 
 
 class TransitionSmoothnessCallback(Callback):
-    """Penalizes curvature at the init-to-prognosis transition boundary"""
+    """Penalizes curvature at the init-to-prognosis transition boundary.
+
+    Args:
+        init_sz: init window size (transition at this index)
+        weight: loss weight
+        window: timesteps around boundary to penalize
+        dt: time step for derivative computation
+    """
 
     def __init__(
         self,
-        init_sz: int,  # Init window size (transition at this index)
-        weight: float = 1.0,  # Loss weight
-        window: int = 3,  # Timesteps around boundary to penalize
-        dt: float = 0.01,  # Time step for derivative computation
+        init_sz: int,
+        weight: float = 1.0,
+        window: int = 3,
+        dt: float = 0.01,
     ):
-        """Smooth the transition at t=init_sz using second-derivative penalty"""
         self.init_sz = init_sz
         self.weight = weight
         self.window = window

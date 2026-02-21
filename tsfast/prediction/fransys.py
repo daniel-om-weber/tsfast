@@ -1,3 +1,5 @@
+"""FranSys prediction framework: diagnosis/prognosis models and training utilities."""
+
 __all__ = [
     "Diag_RNN",
     "Diag_RNN_raw",
@@ -286,19 +288,34 @@ from fastai.callback.hook import *
 
 
 class FranSysCallback(HookCallback):
-    "`Callback` that regularizes the output of the FranSys model."
+    """Regularizes FranSys output by syncing diagnosis and prognosis hidden states.
+
+    Args:
+        modules: modules to hook into for capturing hidden states
+        p_state_sync: scaling factor for hidden state deviation between diagnosis
+            and prognosis modules
+        p_diag_loss: scaling factor for loss of diagnosis hidden state through
+            the final layer
+        p_osp_sync: scaling factor for hidden state deviation between one-step
+            prediction and diagnosis hidden states
+        p_osp_loss: scaling factor for one-step prediction loss of prognosis module
+        p_tar_loss: scaling factor for time activation regularization of combined
+            hidden states with target sequence length
+        osp_n_skip: number of elements to skip before one-step prediction is
+            applied, defaults to model.init_sz
+    """
 
     def __init__(
         self,
         modules,
-        p_state_sync=1e7,  # scalingfactor for regularization of hidden state deviation between diag and prog module
-        p_diag_loss=0.0,  # scalingfactor of loss calculation of diag hidden state to final layer
-        p_osp_sync=0,  # scalingfactor for regularization of hidden state deviation between one step prediction and diag hidden states
-        p_osp_loss=0,  # scalingfactor for loss calculation of one step prediction of prog module
-        p_tar_loss=0,  # scalingfactor for time activation regularization of combined hiddenstate of diag and prog with target sequence length
+        p_state_sync=1e7,
+        p_diag_loss=0.0,
+        p_osp_sync=0,
+        p_osp_loss=0,
+        p_tar_loss=0,
         sync_type="mse",
         targ_loss_func=mae,
-        osp_n_skip=None,  # number of elements to skip before osp is applied, defaults to model.init_sz
+        osp_n_skip=None,
         model=None,
         detach=False,
         **kwargs,
@@ -476,6 +493,21 @@ def FranSysLearner(
     output_norm=None,
     **kwargs,
 ):
+    """Create a Learner configured for FranSys diagnosis/prognosis training.
+
+    Args:
+        dls: DataLoaders with norm_stats for input/output normalization
+        init_sz: number of initial time steps used for diagnosis
+        attach_output: if True, use PredictionCallback to concatenate output
+            to input
+        loss_func: loss function, wrapped with SkipNLoss(init_sz)
+        metrics: metrics to track, each wrapped with SkipNLoss(init_sz)
+        opt_func: optimizer constructor
+        lr: learning rate
+        cbs: additional callbacks
+        input_norm: scaler class for input normalization, None to disable
+        output_norm: scaler class for output denormalization, None to disable
+    """
     cbs = [] if cbs is None else list(cbs)
     metrics = list(metrics) if is_iter(metrics) else [metrics]
 
