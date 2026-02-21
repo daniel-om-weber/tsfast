@@ -208,14 +208,18 @@ def AR_RNNLearner(
 ):
 
     inp, out = get_inp_out_size(dls)
-    model = AR_Model(SimpleRNN(inp + out, out, **kwargs), ar=False)
+    ar_model = AR_Model(SimpleRNN(inp + out, out, **kwargs), ar=False)
+    rnn_module = ar_model.model.rnn
 
-    # Set normalization on the AR model
     if input_norm is not None:
         norm_u, _, norm_y = dls.norm_stats
-        model.set_normalization(norm_u, norm_y, scaler_cls=input_norm)
+        in_scaler = input_norm.from_stats(norm_u + norm_y)
+        out_scaler = input_norm.from_stats(norm_y)
+        model = NormalizedModel(ar_model, in_scaler, out_scaler)
+    else:
+        model = ar_model
 
-    cbs = [ARInitCB(), TimeSeriesRegularizer(alpha=alpha, beta=beta, modules=[model.model.rnn])]  # SaveModelCallback()
+    cbs = [ARInitCB(), TimeSeriesRegularizer(alpha=alpha, beta=beta, modules=[rnn_module])]  # SaveModelCallback()
     if early_stop > 0:
         cbs += [EarlyStoppingCallback(patience=early_stop)]
 

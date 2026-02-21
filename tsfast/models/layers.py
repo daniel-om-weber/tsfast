@@ -7,6 +7,7 @@ __all__ = [
     "MaxAbsScaler1D",
     "AR_Model",
     "NormalizedModel",
+    "unwrap_model",
     "SeqAggregation",
 ]
 
@@ -273,7 +274,8 @@ class MaxAbsScaler1D(Scaler):
 class AR_Model(nn.Module):
     """
     Autoregressive model container which work autoregressively if the sequence y is not provided, otherwise it works as a normal model.
-    This way it can be trained either with teacher forcing or with autoregression
+    This way it can be trained either with teacher forcing or with autoregression.
+    Normalization should be handled externally via NormalizedModel wrapping.
     """
 
     def __init__(self, model, ar=True, stateful=False, model_has_state=False, return_state=False, out_sz=None):
@@ -281,41 +283,26 @@ class AR_Model(nn.Module):
         store_attr()
         if return_state and not model_has_state:
             raise ValueError("return_state=True requires model_has_state=True")
-        self.input_norm = None
-        self.output_norm = None
         self.y_init = None
 
-    def set_normalization(self, norm_u, norm_y, scaler_cls=None):
-        "Set input and output normalization from NormPair stats."
-        if scaler_cls is None:
-            scaler_cls = StandardScaler1D
-        self.input_norm = scaler_cls.from_stats(norm_u)
-        self.output_norm = scaler_cls.from_stats(norm_y)
-
-    def forward(self, u, y=None, h_init=None, ar=None):
+    def forward(self, inp, h_init=None, ar=None):
         if ar is None:
             ar = self.ar
-
-        # Normalize inputs
-        if self.input_norm is not None:
-            u = self.input_norm.normalize(u)
-        if y is not None and self.output_norm is not None:
-            y = self.output_norm.normalize(y)
 
         if ar:  # autoregressive mode
             y_e = []
 
-            y_next = self.y_init if self.y_init is not None else torch.zeros(u.shape[0], 1, self.out_sz).to(u.device)
+            y_next = self.y_init if self.y_init is not None else torch.zeros(inp.shape[0], 1, self.out_sz).to(inp.device)
 
             # two loops in the if clause to avoid the if inside the loop
             if self.model_has_state:
                 h0 = h_init
-                for u_in in u.split(1, dim=1):
+                for u_in in inp.split(1, dim=1):
                     x = torch.cat((u_in, y_next), dim=2)
                     y_next, h0 = self.model(x, h0)
                     y_e.append(y_next)
             else:
-                for u_in in u.split(1, dim=1):
+                for u_in in inp.split(1, dim=1):
                     x = torch.cat((u_in, y_next), dim=2)
                     y_next = self.model(x)
                     y_e.append(y_next)
@@ -323,22 +310,14 @@ class AR_Model(nn.Module):
             y_e = torch.cat(y_e, dim=1)
 
         else:  # teacherforcing mode
-            if y is None:
-                raise ValueError("y must be provided in teacher forcing mode")
-
-            x = torch.cat([u, y], dim=2)
-
             if self.model_has_state:
-                y_e, h0 = self.model(x, h_init)
+                y_e, h0 = self.model(inp, h_init)
             else:
-                y_e = self.model(x)
+                y_e = self.model(inp)
 
         if self.stateful:
             self.y_init = to_detach(y_e[:, -1:], cpu=False, gather=False)
 
-        # Denormalize output
-        if self.output_norm is not None:
-            y_e = self.output_norm.denormalize(y_e)
         return y_e if not self.return_state else (y_e, h0)
 
     def reset_state(self):
@@ -371,19 +350,17 @@ class NormalizedModel(nn.Module):
         norm_u, _, norm_y = extract_mean_std_from_dls(dls)
         return cls.from_stats(model, norm_u, norm_y, scaler_cls=scaler_cls)
 
-    def __getattr__(self, name):
-        "Delegate attribute access to inner model for transparency"
-        try:
-            return super().__getattr__(name)
-        except AttributeError:
-            return getattr(self._modules["model"], name)
-
     def forward(self, xb, **kwargs):
         xb = self.input_norm.normalize(xb)
         out = self.model(xb, **kwargs)
         if self.output_norm is not None:
             out = self.output_norm.denormalize(out)
         return out
+
+
+def unwrap_model(model):
+    "Get the inner model, unwrapping NormalizedModel if present."
+    return model.model if isinstance(model, NormalizedModel) else model
 
 
 class SeqAggregation(nn.Module):

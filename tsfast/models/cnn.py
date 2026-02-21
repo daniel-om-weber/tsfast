@@ -316,16 +316,20 @@ def AR_TCNLearner(
     n_skip = 2**hl_depth if n_skip is None else n_skip
 
     inp, out = get_inp_out_size(dls)
-    model = AR_Model(TCN(inp + out, out, hl_depth, **kwargs), ar=False)
+    ar_model = AR_Model(TCN(inp + out, out, hl_depth, **kwargs), ar=False)
+    conv_module = ar_model.model.conv_layers[-1]
 
-    # Set normalization on the AR model
     if input_norm is not None:
         norm_u, _, norm_y = dls.norm_stats
-        model.set_normalization(norm_u, norm_y, scaler_cls=input_norm)
+        in_scaler = input_norm.from_stats(norm_u + norm_y)
+        out_scaler = input_norm.from_stats(norm_y)
+        model = NormalizedModel(ar_model, in_scaler, out_scaler)
+    else:
+        model = ar_model
 
     cbs = [
         ARInitCB(),
-        TimeSeriesRegularizer(alpha=alpha, beta=beta, modules=[model.model.conv_layers[-1]]),
+        TimeSeriesRegularizer(alpha=alpha, beta=beta, modules=[conv_module]),
     ]  # SaveModelCallback()
     if early_stop > 0:
         cbs += [EarlyStoppingCallback(patience=early_stop)]
