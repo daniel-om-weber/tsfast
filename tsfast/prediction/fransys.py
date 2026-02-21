@@ -282,15 +282,22 @@ class FranSysCallback(HookCallback):
         sync_type="mse",
         targ_loss_func=mae,
         osp_n_skip=None,  # number of elements to skip before osp is applied, defaults to model.init_sz
-        FranSys_model=None,
+        model=None,
         detach=False,
         **kwargs,
     ):
         super().__init__(modules=modules, detach=detach, **kwargs)
         store_attr(
-            "p_state_sync,p_diag_loss,p_osp_sync,p_osp_loss,p_tar_loss,sync_type,targ_loss_func,osp_n_skip,FranSys_model"
+            "p_state_sync,p_diag_loss,p_osp_sync,p_osp_loss,p_tar_loss,sync_type,targ_loss_func,osp_n_skip,model"
         )
         self.clear()
+
+    def before_fit(self):
+        if self.model is None:
+            from ..models.layers import unwrap_model
+
+            self.model = unwrap_model(self.learn.model)
+        super().before_fit()
 
     def clear(self):
         self._out_diag = None
@@ -316,7 +323,7 @@ class FranSysCallback(HookCallback):
         diag = self._out_diag
         prog = self._out_prog
         self.clear()
-        model = self.learn.model if self.FranSys_model is None else self.FranSys_model
+        model = self.model
         win_reg = self.osp_n_skip if self.osp_n_skip is not None else model.init_sz
 
         diag_trunc = diag
@@ -386,7 +393,7 @@ class FranSysCallback(HookCallback):
 
         # tar hidden loss
         if self.p_tar_loss > 0:
-            h = torch.cat([diag[:, :, : self.init_sz], prog], 2)
+            h = torch.cat([diag[:, :, : model.init_sz], prog], 2)
             h_diff = h[:, :, 1:] - h[:, :, :-1]
             hidden_loss = h_diff.pow(2).mean()
 
@@ -398,20 +405,27 @@ class FranSysCallback(HookCallback):
 class FranSysCallback_variable_init(Callback):
     "`Callback` reports progress after every epoch to the ray tune logger"
 
-    def __init__(self, init_sz_min, init_sz_max, **kwargs):
+    def __init__(self, init_sz_min, init_sz_max, model=None, **kwargs):
         super().__init__(**kwargs)
         self.init_sz_valid = None
         self.init_sz_min = init_sz_min
         self.init_sz_max = init_sz_max
+        self.model = model
+
+    def before_fit(self):
+        if self.model is None:
+            from ..models.layers import unwrap_model
+
+            self.model = unwrap_model(self.learn.model)
 
     def before_batch(self):
-        if hasattr(self.learn.model, "init_sz"):
+        if hasattr(self.model, "init_sz"):
             if self.init_sz_valid is None:
-                self.init_sz_valid = self.learn.model.init_sz
+                self.init_sz_valid = self.model.init_sz
             if self.training:
-                self.learn.model.init_sz = np.random.randint(self.init_sz_min, self.init_sz_max + 1)
+                self.model.init_sz = np.random.randint(self.init_sz_min, self.init_sz_max + 1)
             else:
-                self.learn.model.init_sz = self.init_sz_valid
+                self.model.init_sz = self.init_sz_valid
 
 
 from .core import PredictionCallback

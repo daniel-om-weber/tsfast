@@ -40,8 +40,8 @@ class TestFranSys:
 class TestFranSysRegularization:
     def _get_model(self, lrn):
         """Unwrap NormalizedModel to access FranSys internals."""
-        model = lrn.model
-        return model.model if hasattr(model, 'model') else model
+        from tsfast.models.layers import unwrap_model
+        return unwrap_model(lrn.model)
 
     @pytest.mark.slow
     @pytest.mark.parametrize("sync_type", [
@@ -53,7 +53,7 @@ class TestFranSysRegularization:
         model = self._get_model(lrn)
         lrn.add_cb(FranSysCallback(
             modules=[model.rnn_diagnosis, model.rnn_prognosis],
-            p_state_sync=1.0, sync_type=sync_type,
+            p_state_sync=1.0, sync_type=sync_type, model=model,
         ))
         lrn.fit(1, 3e-3)
         assert not math.isnan(lrn.recorder.values[-1][1])
@@ -65,7 +65,7 @@ class TestFranSysRegularization:
         model = self._get_model(lrn)
         lrn.add_cb(FranSysCallback(
             modules=[model.rnn_diagnosis, model.rnn_prognosis],
-            p_state_sync=0, p_diag_loss=0.1,
+            p_state_sync=0, p_diag_loss=0.1, model=model,
         ))
         lrn.fit(1, 3e-3)
         assert not math.isnan(lrn.recorder.values[-1][1])
@@ -77,7 +77,7 @@ class TestFranSysRegularization:
         model = self._get_model(lrn)
         lrn.add_cb(FranSysCallback(
             modules=[model.rnn_diagnosis, model.rnn_prognosis],
-            p_state_sync=0, p_osp_loss=0.1, p_osp_sync=0.1,
+            p_state_sync=0, p_osp_loss=0.1, p_osp_sync=0.1, model=model,
         ))
         lrn.fit(1, 3e-3)
         assert not math.isnan(lrn.recorder.values[-1][1])
@@ -89,7 +89,7 @@ class TestFranSysRegularization:
         model = self._get_model(lrn)
         lrn.add_cb(FranSysCallback(
             modules=[model.rnn_diagnosis, model.rnn_prognosis],
-            p_state_sync=0, p_tar_loss=0.1,
+            p_state_sync=0, p_tar_loss=0.1, model=model,
         ))
         lrn.fit(1, 3e-3)
         assert not math.isnan(lrn.recorder.values[-1][1])
@@ -101,6 +101,33 @@ class TestFranSysRegularization:
         lrn.add_cb(FranSysCallback_variable_init(init_sz_min=30, init_sz_max=70))
         lrn.fit(1, 3e-3)
         assert not math.isnan(lrn.recorder.values[-1][1])
+
+    def test_fransys_variable_init_writes_through_unwrap(self, dls_prediction):
+        """Verify that unwrap_model returns the inner model and writes reach forward()."""
+        from tsfast.prediction.fransys import FranSysLearner
+        from tsfast.models.layers import NormalizedModel, unwrap_model
+
+        lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1)
+        wrapper = lrn.model
+        assert isinstance(wrapper, NormalizedModel), "Test requires NormalizedModel wrapping"
+        inner = unwrap_model(wrapper)
+        assert inner is wrapper.model, "unwrap_model should return the inner model"
+
+        batch = dls_prediction.one_batch()
+        xb = batch[0]
+
+        wrapper.eval()
+        with torch.no_grad():
+            # Write init_sz on the inner model (what callbacks now do via unwrap_model)
+            inner.init_sz = 30
+            out_30 = wrapper(xb).clone()
+            inner.init_sz = 50
+            out_50 = wrapper(xb).clone()
+
+        # Different init_sz produces different outputs
+        assert not torch.equal(out_30, out_50), (
+            "Writing init_sz on inner model did not affect forward output."
+        )
 
 
 class TestARRNN:

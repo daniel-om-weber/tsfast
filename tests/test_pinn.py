@@ -210,7 +210,8 @@ class TestPINNCallbacks:
         lrn = PIRNNLearner(dls_pinn_prediction, init_sz=20, hidden_size=20, rnn_layer=1)
         lrn.add_cb(AlternatingEncoderCB(p_state=0.3))
         lrn.fit(1, 3e-3)
-        assert lrn.model.default_encoder_mode == 'sequence'
+        from tsfast.models.layers import unwrap_model
+        assert unwrap_model(lrn.model).default_encoder_mode == 'sequence'
 
     @pytest.mark.slow
     def test_consistency_callback(self, dls_pinn_prediction):
