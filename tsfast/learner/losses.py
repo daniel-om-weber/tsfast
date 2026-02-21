@@ -4,6 +4,7 @@ __all__ = [
     "float64_func",
     "SkipNLoss",
     "CutLoss",
+    "NormLoss",
     "weighted_mae",
     "RandSeqLenLoss",
     "fun_rmse",
@@ -81,6 +82,22 @@ def CutLoss(fn, l_cut=0, r_cut=None):
     @functools.wraps(fn)
     def _inner(input, target):
         return fn(input[:, l_cut:r_cut], target[:, l_cut:r_cut])
+
+    return _inner
+
+
+def NormLoss(fn, norm_stats, scaler_cls=None):
+    "Loss wrapper that normalizes pred and target before computing loss."
+    from ..models.layers import StandardScaler1D
+
+    if scaler_cls is None:
+        scaler_cls = StandardScaler1D
+    scaler = scaler_cls.from_stats(norm_stats)
+
+    @functools.wraps(fn)
+    def _inner(input, target):
+        scaler.to(input.device)
+        return fn(scaler.normalize(input), scaler.normalize(target))
 
     return _inner
 
