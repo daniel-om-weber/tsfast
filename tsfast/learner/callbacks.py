@@ -190,7 +190,9 @@ class BatchLossFilter(Callback):
     def __init__(
         self, loss_perc=1.0, filter_criterion=nn.HuberLoss(reduction="none"), schedule_func: Optional[callable] = None
     ):
-        store_attr()
+        self.loss_perc = loss_perc
+        self.filter_criterion = filter_criterion
+        self.schedule_func = schedule_func
 
     def after_pred(self):
         """
@@ -239,7 +241,9 @@ class TimeSeriesRegularizer(HookCallback):
         if "modules" not in kwargs:
             print("Warning: No module was provided to TimeSerieRegularizer")
         super().__init__(detach=detach, **kwargs)
-        store_attr("alpha,beta,dim")
+        self.alpha = alpha
+        self.beta = beta
+        self.dim = dim
 
     def hook(self, m, i, o):
         #         import pdb; pdb.set_trace()

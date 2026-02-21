@@ -36,7 +36,9 @@ class SequenceBlock(TransformBlock):
 
 class ScalarNormalize(DisplayedTransform):
     def __init__(self, mean=None, std=None, axes=(0,)):
-        store_attr()
+        self.mean = mean
+        self.std = std
+        self.axes = axes
 
     @classmethod
     def from_stats(cls, mean, std, dim=1, ndim=4, cuda=True):

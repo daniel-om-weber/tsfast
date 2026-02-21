@@ -464,7 +464,13 @@ class HDF2Sequence(Transform):
             # self._exseq = MemoizeMP(self._hdf_extract_sequence)
 
         self.cached = cached is not None
-        store_attr("clm_names,clm_shift,truncate_sz,to_cls,fs_idx,dt_idx,fast_resample")
+        self.clm_names = clm_names
+        self.clm_shift = clm_shift
+        self.truncate_sz = truncate_sz
+        self.to_cls = to_cls
+        self.fs_idx = fs_idx
+        self.dt_idx = dt_idx
+        self.fast_resample = fast_resample
 
     def _hdf_extract_sequence(
         self,
@@ -569,7 +575,8 @@ def hdf_attrs2scalars(hdf_path: str, c_names: list[str], dataset: str | None = N
 
 class HDF_Attrs2Scalars(Transform):
     def __init__(self, clm_names: list[str], to_cls: Callable = noop):
-        store_attr("clm_names,to_cls")
+        self.clm_names = clm_names
+        self.to_cls = to_cls
 
     def _extract_dict_scalars(self, item: dict | str | Path):
         match item:
@@ -631,7 +638,10 @@ class HDF_DS2Scalars(Transform):
         to_cls: Callable = noop,  # transform to apply to final result
         **extract_kwargs,
     ):  # additional arguments passed to hdf_ds2scalars
-        store_attr("clm_names,index,agg_func,to_cls")
+        self.clm_names = clm_names
+        self.index = index
+        self.agg_func = agg_func
+        self.to_cls = to_cls
         self.extract_kwargs = extract_kwargs
 
     def _extract_dict_scalars(self, item: dict | str | Path):

@@ -8,7 +8,6 @@ from ..models.layers import SeqLinear, StandardScaler1D, NormalizedModel
 from ..learner.callbacks import CB_TruncateSequence
 from ..learner.losses import SkipNLoss
 from fastai.basics import *
-from fastcore.basics import store_attr
 from functools import partial
 
 
@@ -34,7 +33,15 @@ class PIRNN(nn.Module):
         """Initialize PIRNN with both sequence and state encoders"""
         super().__init__()
         n_y_supervised = n_y_supervised if n_y_supervised is not None else n_y
-        store_attr("n_u,n_y,n_x,n_y_supervised,init_sz,init_diag_only,hidden_size,rnn_layer,default_encoder_mode")
+        self.n_u = n_u
+        self.n_y = n_y
+        self.n_x = n_x
+        self.n_y_supervised = n_y_supervised
+        self.init_sz = init_sz
+        self.init_diag_only = init_diag_only
+        self.hidden_size = hidden_size
+        self.rnn_layer = rnn_layer
+        self.default_encoder_mode = default_encoder_mode
 
         # Instantiate FranSys components - diagnosis RNN uses supervised outputs only
         self.rnn_diagnosis = Diag_RNN(
@@ -150,7 +157,8 @@ class AuxiliaryOutputLoss:
         n_supervised: int,  # Number of supervised output channels
     ):
         """Wrap loss function to only compute on supervised outputs"""
-        store_attr()
+        self.loss_func = loss_func
+        self.n_supervised = n_supervised
 
     def __call__(
         self,
