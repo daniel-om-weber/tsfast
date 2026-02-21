@@ -102,6 +102,82 @@ class TestFranSysRegularization:
         lrn.fit(1, 3e-3)
         assert not math.isnan(lrn.recorder.values[-1][1])
 
+    @pytest.mark.slow
+    def test_fransys_diag_loss_with_output_norm(self, dls_prediction):
+        """Verify diag_loss denormalizes predictions when output_norm is used."""
+        from tsfast.prediction.fransys import FranSysLearner, FranSysCallback
+        from tsfast.models.layers import StandardScaler1D
+        lrn = FranSysLearner(
+            dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1,
+            output_norm=StandardScaler1D,
+        )
+        model = self._get_model(lrn)
+        lrn.add_cb(FranSysCallback(
+            modules=[model.rnn_diagnosis, model.rnn_prognosis],
+            p_state_sync=0, p_diag_loss=0.1, model=model,
+        ))
+        lrn.fit(1, 3e-3)
+        assert not math.isnan(lrn.recorder.values[-1][1])
+
+    @pytest.mark.slow
+    def test_fransys_osp_loss_with_output_norm(self, dls_prediction):
+        """Verify osp_loss denormalizes predictions when output_norm is used."""
+        from tsfast.prediction.fransys import FranSysLearner, FranSysCallback
+        from tsfast.models.layers import StandardScaler1D
+        lrn = FranSysLearner(
+            dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1,
+            output_norm=StandardScaler1D,
+        )
+        model = self._get_model(lrn)
+        lrn.add_cb(FranSysCallback(
+            modules=[model.rnn_diagnosis, model.rnn_prognosis],
+            p_state_sync=0, p_osp_loss=0.1, p_osp_sync=0.1, model=model,
+        ))
+        lrn.fit(1, 3e-3)
+        assert not math.isnan(lrn.recorder.values[-1][1])
+
+    def test_fransys_callback_captures_output_norm(self, dls_prediction):
+        """Verify FranSysCallback detects output_norm from NormalizedModel."""
+        from tsfast.prediction.fransys import FranSysLearner, FranSysCallback
+        from tsfast.models.layers import NormalizedModel, StandardScaler1D
+
+        lrn = FranSysLearner(
+            dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1,
+            output_norm=StandardScaler1D,
+        )
+        assert isinstance(lrn.model, NormalizedModel)
+        assert lrn.model.output_norm is not None
+
+        model = self._get_model(lrn)
+        cb = FranSysCallback(
+            modules=[model.rnn_diagnosis, model.rnn_prognosis],
+            p_state_sync=0, p_diag_loss=0.1, model=model,
+        )
+        lrn.add_cb(cb)
+        # before_fit triggers output_norm detection
+        cb.learn = lrn
+        cb.before_fit()
+        assert cb._output_norm is lrn.model.output_norm
+
+    def test_fransys_callback_no_output_norm(self, dls_prediction):
+        """Verify output_norm is None when NormalizedModel has no output scaler."""
+        from tsfast.prediction.fransys import FranSysLearner, FranSysCallback
+        from tsfast.models.layers import NormalizedModel
+
+        lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1)
+        assert isinstance(lrn.model, NormalizedModel)
+        assert lrn.model.output_norm is None
+
+        model = self._get_model(lrn)
+        cb = FranSysCallback(
+            modules=[model.rnn_diagnosis, model.rnn_prognosis],
+            p_state_sync=0, p_diag_loss=0.1, model=model,
+        )
+        lrn.add_cb(cb)
+        cb.learn = lrn
+        cb.before_fit()
+        assert cb._output_norm is None
+
     def test_fransys_variable_init_writes_through_unwrap(self, dls_prediction):
         """Verify that unwrap_model returns the inner model and writes reach forward()."""
         from tsfast.prediction.fransys import FranSysLearner
@@ -128,6 +204,59 @@ class TestFranSysRegularization:
         assert not torch.equal(out_30, out_50), (
             "Writing init_sz on inner model did not affect forward output."
         )
+
+
+class TestDDPUnwrap:
+    """Tests that unwrap_model and _output_norm detection work through DDP-like wrappers."""
+
+    def test_unwrap_model_through_ddp(self):
+        """unwrap_model returns the inner FranSys model through a DDP-like wrapper."""
+        from tsfast.prediction.fransys import FranSys
+        from tsfast.models.layers import NormalizedModel, StandardScaler1D, unwrap_model
+        import numpy as np
+
+        inner = FranSys(1, 1, init_sz=10, hidden_size=10, rnn_layer=1)
+        norm = NormalizedModel(inner, StandardScaler1D(np.zeros(2), np.ones(2)))
+
+        # Simulate DDP wrapper: an nn.Module with a .module attribute
+        class FakeDDP(torch.nn.Module):
+            def __init__(self, module):
+                super().__init__()
+                self.module = module
+
+        wrapped = FakeDDP(norm)
+        assert unwrap_model(wrapped) is inner
+
+    def test_unwrap_ddp_finds_normalized_model(self):
+        """_unwrap_ddp + isinstance check finds NormalizedModel through DDP wrapper."""
+        from tsfast.models.layers import NormalizedModel, StandardScaler1D, _unwrap_ddp
+        from tsfast.prediction.fransys import FranSys
+        import numpy as np
+
+        inner = FranSys(1, 1, init_sz=10, hidden_size=10, rnn_layer=1)
+        out_scaler = StandardScaler1D(np.zeros(1), np.ones(1))
+        norm = NormalizedModel(inner, StandardScaler1D(np.zeros(2), np.ones(2)), out_scaler)
+
+        class FakeDDP(torch.nn.Module):
+            def __init__(self, module):
+                super().__init__()
+                self.module = module
+
+        wrapped = FakeDDP(norm)
+        unwrapped = _unwrap_ddp(wrapped)
+        assert isinstance(unwrapped, NormalizedModel)
+        assert unwrapped.output_norm is out_scaler
+
+    def test_unwrap_model_no_ddp(self):
+        """unwrap_model still works when there is no DDP wrapper."""
+        from tsfast.prediction.fransys import FranSys
+        from tsfast.models.layers import NormalizedModel, StandardScaler1D, unwrap_model
+        import numpy as np
+
+        inner = FranSys(1, 1, init_sz=10, hidden_size=10, rnn_layer=1)
+        norm = NormalizedModel(inner, StandardScaler1D(np.zeros(2), np.ones(2)))
+        assert unwrap_model(norm) is inner
+        assert unwrap_model(inner) is inner
 
 
 class TestARRNN:
