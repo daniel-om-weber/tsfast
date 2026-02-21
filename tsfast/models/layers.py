@@ -297,7 +297,9 @@ class AR_Model(nn.Module):
         if ar:  # autoregressive mode
             y_e = []
 
-            y_next = self.y_init if self.y_init is not None else torch.zeros(inp.shape[0], 1, self.out_sz).to(inp.device)
+            y_next = (
+                self.y_init if self.y_init is not None else torch.zeros(inp.shape[0], 1, self.out_sz).to(inp.device)
+            )
 
             # two loops in the if clause to avoid the if inside the loop
             if self.model_has_state:
@@ -370,7 +372,7 @@ class NormalizedModel(nn.Module):
 
 def _unwrap_ddp(model):
     "Unwrap DistributedDataParallel/DataParallel wrappers."
-    while hasattr(model, 'module'):
+    while hasattr(model, "module"):
         model = model.module
     return model
 

@@ -93,6 +93,44 @@ class TestLosses:
         vaf = mean_vaf(x, x)
         assert vaf.item() == pytest.approx(100.0, abs=0.1)
 
+    def test_norm_loss_equalizes_scales(self):
+        """NormLoss should equalize the contribution of variables with different scales."""
+        import numpy as np
+        from tsfast.learner.losses import NormLoss
+        from tsfast.datasets.core import NormPair
+
+        # Two variables: var0 ~ O(1), var1 ~ O(1000)
+        stats = NormPair(
+            mean=np.array([0.0, 500.0]),
+            std=np.array([1.0, 500.0]),
+            min=np.array([-2.0, 0.0]),
+            max=np.array([2.0, 1000.0]),
+        )
+        pred = torch.zeros(2, 50, 2)
+        targ = torch.zeros(2, 50, 2)
+        # Same absolute error (1.0) in both variables
+        targ[..., 0] = 1.0
+        targ[..., 1] = 1.0
+
+        # Raw MSE: both contribute equally (error=1 for both)
+        raw_loss = nn.MSELoss()
+        raw = raw_loss(pred, targ)
+
+        # NormLoss: var1 error is 1/500 after normalization, var0 stays 1/1
+        norm_loss = NormLoss(nn.MSELoss(), stats)
+        normed = norm_loss(pred, targ)
+
+        # var0 dominates → normed loss is almost entirely from var0
+        # so normed ≈ 0.5 * (1/1)^2 + 0.5 * (1/500)^2 ≈ 0.5
+        # while raw = 1.0 (equal contribution)
+        assert normed.item() < raw.item()
+
+        # Verify it composes with SkipNLoss
+        from tsfast.learner.losses import SkipNLoss
+        composed = SkipNLoss(NormLoss(nn.MSELoss(), stats), n_skip=10)
+        loss = composed(pred, targ)
+        assert loss.item() >= 0
+
 
 class TestCallbacks:
     @pytest.mark.slow

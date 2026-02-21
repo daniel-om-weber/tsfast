@@ -276,13 +276,15 @@ class ARInitCB(Callback):
     """Concatenates the target variable to the input for autoregression"""
 
     def before_fit(self):
-        if hasattr(self.dls, 'norm_stats'):
+        if hasattr(self.dls, "norm_stats"):
             n_u = len(self.dls.norm_stats.u.mean)
             n_inp = self.dls.one_batch()[0].shape[-1]
             if n_inp > n_u:
-                raise ValueError("ARInitCB is incompatible with prediction-mode DataLoaders "
-                                 "(input already contains output features). "
-                                 "Use create_dls(..., prediction=False).")
+                raise ValueError(
+                    "ARInitCB is incompatible with prediction-mode DataLoaders "
+                    "(input already contains output features). "
+                    "Use create_dls(..., prediction=False)."
+                )
 
     def before_batch(self):
         x, y = self.xb[0], self.yb[0].as_subclass(type(self.xb[0]))
