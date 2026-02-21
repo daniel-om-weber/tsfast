@@ -37,10 +37,12 @@ Use `uv sync --extra dev` to install dependencies — it creates/manages the `.v
 
 ## Code Style
 
-- Inline type hints: `param:type = default` with modern union syntax (`str|None`)
-- Google-style docstrings with `Args:` sections for public APIs
+- Inline type hints on all public API signatures: `param:type = default` with modern union syntax (`str|None`)
+- Google-style docstrings — types belong in the signature, never duplicated in `Args:`
 - Module docstrings: one-liner stating what the module provides
-- Class docstrings: short description + `Args:` for `__init__` params
+- Class docstrings: short description + `Args:` for `__init__` params (describe meaning, not types)
 - Skip `Args:` for obvious signatures (`forward(self, x)`, `__call__`)
 - `Returns:` only when non-obvious from type hint
+- One-liner docstrings are fine for simple utility functions
+- No docstrings needed for: private helpers, fastai callback lifecycle methods, trivial property accessors
 - Use pattern matching (`match/case`) for type checking

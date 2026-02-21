@@ -22,7 +22,7 @@ class ARProg(nn.Module):
     """
 
     @delegates(RNN, keep=True)
-    def __init__(self, n_u, n_x, n_y, init_sz, **kwargs):
+    def __init__(self, n_u: int, n_x: int, n_y: int, init_sz: int, **kwargs):
         super().__init__()
         self.n_u = n_u
         self.n_x = n_x
@@ -37,7 +37,7 @@ class ARProg(nn.Module):
             out_sz=n_x + n_y,
         )
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         y_x = x[..., self.n_u :]
         u = x[..., : self.n_u]
 

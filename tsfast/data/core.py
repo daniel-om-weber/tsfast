@@ -51,26 +51,26 @@ from fastai.data.all import *
 import h5py
 
 
-def obj_in_lst(lst, cls):
-    """retrieve first object of type cls from a list"""
+def obj_in_lst(lst: list, cls: type):
+    """Retrieve first object of type cls from a list."""
     return next(o for o in lst if type(o) is cls)
 
 
-def count_parameters(model):
-    """retrieve number of trainable parameters of a model"""
+def count_parameters(model: nn.Module) -> int:
+    """Retrieve number of trainable parameters of a model."""
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
 hdf_extensions = [".hdf5", ".h5"]
 
 
-def get_hdf_files(path, recurse=True, folders=None):
+def get_hdf_files(path: Path, recurse: bool = True, folders: list | None = None) -> L:
     "Get hdf5 files in `path` recursively, only in `folders`, if specified."
     return get_files(path, extensions=hdf_extensions, recurse=recurse, folders=folders)
 
 
-def apply_df_tfms(src, pd_tfms=None):
-    """Create Pandas Dataframe out of a list of items, with a list of df transforms applied"""
+def apply_df_tfms(src, pd_tfms: list | None = None) -> pd.DataFrame:
+    """Create Pandas DataFrame from a list of items, with a list of DataFrame transforms applied."""
     if type(src) is pd.DataFrame:
         df = src
     else:
@@ -81,8 +81,8 @@ def apply_df_tfms(src, pd_tfms=None):
     return df
 
 
-def CreateDict(pd_tfms=None):
-    """Create List of Dictionarys out of a list of items, with a list of df transforms applied"""
+def CreateDict(pd_tfms: list | None = None):
+    """Create list of dictionaries from a list of items, with a list of DataFrame transforms applied."""
 
     def _inner(src):
         df = apply_df_tfms(src, pd_tfms)
@@ -95,8 +95,8 @@ def CreateDict(pd_tfms=None):
     return _inner
 
 
-def ValidClmContains(lst_valid):
-    """add validation column using a list of strings that are part of the validation frames"""
+def ValidClmContains(lst_valid: list[str]):
+    """Add validation column using a list of strings that are part of the validation frames."""
 
     def _inner(df):
         re_valid = "|".join([re.escape(f) for f in lst_valid])
@@ -106,8 +106,8 @@ def ValidClmContains(lst_valid):
     return _inner
 
 
-def ValidClmIs(lst_valid):
-    """adds validation column using a list of validation filenames"""
+def ValidClmIs(lst_valid: list):
+    """Add validation column using a list of validation filenames."""
 
     def _inner(df):
         df["valid"] = df.path.isin([str(f) for f in lst_valid])
@@ -116,8 +116,8 @@ def ValidClmIs(lst_valid):
     return _inner
 
 
-def FilterClm(clm_name, func=lambda x: x):
-    """adds validation column using a list of validation filenames"""
+def FilterClm(clm_name: str, func: Callable = lambda x: x):
+    """Filter DataFrame rows by applying a function to a column."""
 
     def _inner(df):
         return df[func(df[clm_name])]
@@ -125,22 +125,24 @@ def FilterClm(clm_name, func=lambda x: x):
     return _inner
 
 
-def get_hdf_seq_len(df, clm, ds=None):
-    """extract the sequence length of the dataset with the 'clm' name and 'f_path' path"""
+def get_hdf_seq_len(df, clm: str, ds=None) -> int:
+    """Extract the sequence length of the dataset with the given column name and file path."""
     with h5py.File(df["path"], "r") as f:
         ds = f if "dataset" not in df else f[df["dataset"]]
         f_len = max(ds[clm].shape)
     return f_len
 
 
-def df_get_hdf_seq_len(df, clm, ds=None):
-    """extracts the sequence length of every file in advance to prepare repeated window extractions with 'DfHDFCreateWindows'"""
+def df_get_hdf_seq_len(df: pd.DataFrame, clm: str, ds=None) -> pd.DataFrame:
+    """Extract the sequence length of every file to prepare window extractions with DfHDFCreateWindows."""
     #     df['seq_len'] = ([get_hdf_seq_len(row.path,clm) for (idx, row) in df.iterrows()])
     df["seq_len"] = df.apply(lambda x: get_hdf_seq_len(x, clm), axis=1)
     return df
 
 
-def DfHDFGetSeqLen(clm):
+def DfHDFGetSeqLen(clm: str):
+    """DataFrame transform that adds sequence length column from HDF5 files."""
+
     def _inner(df):
         return df_get_hdf_seq_len(df, clm)
 
@@ -150,7 +152,8 @@ def DfHDFGetSeqLen(clm):
 import numbers
 
 
-def DfResamplingFactor(src_fs, lst_targ_fs):
+def DfResamplingFactor(src_fs: float | str, lst_targ_fs: list[float]):
+    """DataFrame transform that expands rows with resampling factors for target frequencies."""
     if not isinstance(src_fs, numbers.Number) and type(src_fs) is not str:
         raise ValueError("src_fs has to be a column name or a fixed number")
 
@@ -179,8 +182,8 @@ def DfResamplingFactor(src_fs, lst_targ_fs):
     return _inner
 
 
-def DfHDFCreateWindows(win_sz, stp_sz, clm, fixed_start=False, fixed_end=False):
-    """create windows of sequences, splits sequence into multiple items"""
+def DfHDFCreateWindows(win_sz: int, stp_sz: int, clm: str, fixed_start: bool = False, fixed_end: bool = False):
+    """Create windows of sequences, splitting each sequence into multiple items."""
 
     def _inner(df):
         if fixed_start and fixed_end:
@@ -221,9 +224,14 @@ def DfHDFCreateWindows(win_sz, stp_sz, clm, fixed_start=False, fixed_end=False):
     return _inner
 
 
-def DfApplyFuncSplit(split_func, func1, func2):
-    """apply two different functions on the dataframe, func1 on the first indices of split_func, func2 on the second indices.
-    Split_func is a Training, Validation split function"""
+def DfApplyFuncSplit(split_func: Callable, func1: Callable, func2: Callable):
+    """Apply different DataFrame transforms per split.
+
+    Args:
+        split_func: train/validation split function returning two index lists
+        func1: transform applied to the first split indices
+        func2: transform applied to the second split indices
+    """
 
     def _inner(df):
         (idxs1, idxs2) = split_func(df.path)
@@ -234,15 +242,17 @@ def DfApplyFuncSplit(split_func, func1, func2):
     return _inner
 
 
-def DfFilterQuery(query):
+def DfFilterQuery(query: str):
+    """DataFrame transform that filters rows using a pandas query string."""
+
     def _inner(df):
         return df.query(query)
 
     return _inner
 
 
-def DfDropClmExcept(clms=["path", "l_slc", "r_slc", "p_sample", "resampling_factor"]):
-    """drop unused dataframe columns as a last optional step to accelerate dictionary conversion"""
+def DfDropClmExcept(clms: list[str] = ["path", "l_slc", "r_slc", "p_sample", "resampling_factor"]):
+    """Drop unused DataFrame columns to accelerate dictionary conversion."""
 
     def _inner(df):
         return df[[c for c in clms if c in df]]
@@ -250,7 +260,8 @@ def DfDropClmExcept(clms=["path", "l_slc", "r_slc", "p_sample", "resampling_fact
     return _inner
 
 
-def calc_shift_offsets(clm_shift):
+def calc_shift_offsets(clm_shift: list[int]):
+    """Compute left/right shift offsets and dimension reduction from column shifts."""
     clm_shift = np.array(clm_shift)
     l_offs = -min(clm_shift.min(), 0)
     r_offs = -max(clm_shift.max(), 0)
@@ -260,12 +271,14 @@ def calc_shift_offsets(clm_shift):
     return l_shift, r_shift, dim_red
 
 
-def running_mean(x, N):
+def running_mean(x: np.ndarray, N: int) -> np.ndarray:
+    """Compute running mean with window size N."""
     cumsum = np.cumsum(np.insert(x, 0, 0, axis=0), axis=0)
     return (cumsum[N:] - cumsum[:-N]) / float(N)
 
 
-def downsample_mean(x, N):
+def downsample_mean(x: np.ndarray, N: int) -> np.ndarray:
+    """Downsample by averaging consecutive groups of N samples."""
     trunc = -(x.shape[0] % N)
     trunc = trunc if trunc != 0 else None
     return x[:trunc, :].reshape((-1, N, x.shape[-1])).mean(axis=1)
@@ -274,7 +287,13 @@ def downsample_mean(x, N):
 from scipy.signal import butter, lfilter, lfilter_zi
 
 
-def resample_interp(x, resampling_factor, sequence_first=True, lowpass_cut=1.0, upsample_cubic_cut=None):
+def resample_interp(
+    x: np.ndarray,
+    resampling_factor: float,
+    sequence_first: bool = True,
+    lowpass_cut: float = 1.0,
+    upsample_cubic_cut: float | None = None,
+) -> np.ndarray:
     """Signal resampling using linear or cubic interpolation.
 
     Args:
@@ -326,16 +345,16 @@ from scipy.signal import resample
 
 
 def hdf_extract_sequence(
-    hdf_path,
-    clms,
-    dataset=None,
-    l_slc=None,
-    r_slc=None,
-    resampling_factor=None,
-    fs_idx=None,
-    dt_idx=False,
-    fast_resample=True,
-):
+    hdf_path: str | Path,
+    clms: list[str],
+    dataset: str | None = None,
+    l_slc: int | None = None,
+    r_slc: int | None = None,
+    resampling_factor: float | None = None,
+    fs_idx: int | None = None,
+    dt_idx: int | bool = False,
+    fast_resample: bool = True,
+) -> np.ndarray:
     """Extract a sequence with shape [seq_len x num_features] from an HDF5 file.
 
     Args:
@@ -384,7 +403,13 @@ def hdf_extract_sequence(
 
 
 class Memoize:
-    def __init__(self, fn):
+    """Single-process memoization cache for function results.
+
+    Args:
+        fn: function to memoize
+    """
+
+    def __init__(self, fn: Callable):
         self.fn = fn
         self.memo = {}
 
@@ -398,7 +423,13 @@ from multiprocessing import Lock, Manager, shared_memory
 
 
 class MemoizeMP:
-    def __init__(self, fn):
+    """Multi-process memoization cache using shared memory.
+
+    Args:
+        fn: function to memoize
+    """
+
+    def __init__(self, fn: Callable):
         self.fn = fn
         self.manager = Manager()
         self.results_dict = self.manager.dict()  # Stores metadata about computed results
@@ -446,16 +477,29 @@ class MemoizeMP:
 
 
 class HDF2Sequence(Transform):
+    """Transform that extracts sequences from HDF5 files.
+
+    Args:
+        clm_names: list of dataset column names to extract
+        clm_shift: per-column integer shifts for temporal alignment
+        truncate_sz: number of leading samples to truncate after shifting
+        to_cls: callable to convert the resulting array to a specific type
+        cached: True for memoized caching, False to disable, or "local" for local-only cache
+        fs_idx: index of frequency column, scaled by resampling_factor after resampling
+        dt_idx: index of time column, scaled by resampling_factor after resampling
+        fast_resample: use linear interpolation vs fft resampling
+    """
+
     def __init__(
         self,
-        clm_names,
-        clm_shift=None,
-        truncate_sz=None,
-        to_cls=noop,
-        cached=True,
-        fs_idx=None,
-        dt_idx=None,
-        fast_resample=True,
+        clm_names: list[str],
+        clm_shift: list[int] | None = None,
+        truncate_sz: int | None = None,
+        to_cls: Callable = noop,
+        cached: bool | str = True,
+        fs_idx: int | None = None,
+        dt_idx: int | None = None,
+        fast_resample: bool = True,
     ):
         if clm_shift is not None:
             assert len(clm_shift) == len(clm_names) and all(isinstance(n, int) for n in clm_shift)
@@ -559,7 +603,10 @@ class HDF2Sequence(Transform):
         return self._extract_dict_sequence(item)
 
 
-def hdf_attrs2scalars(hdf_path: str, c_names: list[str], dataset: str | None = None, dtype: np.dtype = np.float32):
+def hdf_attrs2scalars(
+    hdf_path: str, c_names: list[str], dataset: str | None = None, dtype: np.dtype = np.float32
+) -> np.ndarray:
+    """Extract scalar values from HDF5 file attributes."""
     with h5py.File(hdf_path, "r") as f:
         ds = f if dataset is None else f[dataset]
         l_array = [dtype(ds.attrs[n]).item() for n in c_names]
@@ -568,6 +615,13 @@ def hdf_attrs2scalars(hdf_path: str, c_names: list[str], dataset: str | None = N
 
 
 class HDF_Attrs2Scalars(Transform):
+    """Transform that extracts scalar values from HDF5 file attributes.
+
+    Args:
+        clm_names: attribute names to extract
+        to_cls: callable to convert the resulting array to a specific type
+    """
+
     def __init__(self, clm_names: list[str], to_cls: Callable = noop):
         self.clm_names = clm_names
         self.to_cls = to_cls
@@ -602,7 +656,7 @@ def hdf_ds2scalars(
     index: int | Callable | None = None,
     agg_func: Callable | None = None,
     dtype: np.dtype = np.float32,
-):
+) -> np.ndarray:
     """Extract scalar values from HDF datasets using indexing or aggregation.
 
     Args:
@@ -690,12 +744,15 @@ class HDF_DS2Scalars(Transform):
         return self._extract_dict_scalars(item)
 
 
-class TensorSequences(TensorBase):  # TensorBase
+class TensorSequences(TensorBase):
+    """Tensor type for time series sequence data with plotting support."""
+
     #     def __init__(self,x,c_names=None, **kwargs):
     #         super().__init__()
     #         self.c_names = c_names
 
-    def show(self, ctx=None, **kwargs):
+    def show(self, ctx: plt.Axes | None = None, **kwargs) -> plt.Axes:
+        """Display the sequence as a line plot."""
         # Get the figure and axis
         if ctx is None:
             fig, ax = plt.subplots(figsize=kwargs.get("figsize", (8, 4)))
@@ -712,29 +769,38 @@ class TensorSequences(TensorBase):  # TensorBase
 
     @classmethod
     @delegates(HDF2Sequence, keep=True)
-    def from_hdf(cls, clm_names, **kwargs):
+    def from_hdf(cls, clm_names: list[str], **kwargs) -> HDF2Sequence:
+        """Create a transform for extracting sequences from HDF5 files."""
         return HDF2Sequence(clm_names, **kwargs)
 
 
 class TensorSequencesInput(TensorSequences):
+    """Input tensor type for time series sequences."""
+
     pass
 
 
 class TensorSequencesOutput(TensorSequences):
+    """Output tensor type for time series sequences."""
+
     pass
 
 
 @Transform
-def toTensorSequencesInput(o):
+def toTensorSequencesInput(o) -> TensorSequencesInput:
+    """Convert input to TensorSequencesInput."""
     return TensorSequencesInput(o)
 
 
 @Transform
-def toTensorSequencesOutput(o):
+def toTensorSequencesOutput(o) -> TensorSequencesOutput:
+    """Convert input to TensorSequencesOutput."""
     return TensorSequencesOutput(o)
 
 
 class TensorScalars(TensorBase):
+    """Tensor type for scalar values with formatting and plotting support."""
+
     def __format__(
         self,
         format_spec: str,
@@ -791,48 +857,44 @@ class TensorScalars(TensorBase):
     @delegates(HDF_Attrs2Scalars, keep=True)
     def from_hdf_attrs(
         cls,
-        clm_names,
+        clm_names: list[str],
         **kwargs,
     ) -> HDF_Attrs2Scalars:
-        """Create a transform for extracting scalars from HDF attributes.
-
-        Args:
-            clm_names: column names to extract from attributes
-            **kwargs: additional arguments for HDF_Attrs2Scalars
-        """
+        """Create a transform for extracting scalars from HDF attributes."""
         return HDF_Attrs2Scalars(clm_names, **kwargs)
 
     @classmethod
     @delegates(HDF_DS2Scalars, keep=True)
     def from_hdf_ds(
         cls,
-        clm_names,
+        clm_names: list[str],
         **kwargs,
     ) -> HDF_DS2Scalars:
-        """Create a transform for extracting scalars from HDF datasets.
-
-        Args:
-            clm_names: column names to extract from datasets
-            **kwargs: additional arguments for HDF_DS2Scalars
-        """
+        """Create a transform for extracting scalars from HDF datasets."""
         return HDF_DS2Scalars(clm_names, **kwargs)
 
 
 class TensorScalarsInput(TensorScalars):
+    """Input tensor type for scalar values."""
+
     pass
 
 
 class TensorScalarsOutput(TensorScalars):
+    """Output tensor type for scalar values."""
+
     pass
 
 
 @Transform
-def toTensorScalarsInput(o):
+def toTensorScalarsInput(o) -> TensorScalarsInput:
+    """Convert input to TensorScalarsInput."""
     return TensorScalarsInput(o)
 
 
 @Transform
-def toTensorScalarsOutput(o):
+def toTensorScalarsOutput(o) -> TensorScalarsOutput:
+    """Convert input to TensorScalarsOutput."""
     return TensorScalarsOutput(o)
 
 
@@ -855,7 +917,8 @@ for f in (
     TensorBase.register_func(f, TensorScalars)
 
 
-def plot_sequence(axs, in_sig, targ_sig, out_sig=None, **kwargs):
+def plot_sequence(axs: list, in_sig: Tensor, targ_sig: Tensor, out_sig: Tensor | None = None, **kwargs):
+    """Plot input, target, and optional prediction sequences on subplot axes."""
     n_targ = targ_sig.shape[1]  # Number of supervised outputs
     n_out = out_sig.shape[1] if out_sig is not None else n_targ  # Total model outputs
     n_ax = len(axs) - 1  # Axes available for outputs (last one for input)
@@ -881,7 +944,10 @@ def plot_sequence(axs, in_sig, targ_sig, out_sig=None, **kwargs):
     axs[-1].plot(in_sig)
 
 
-def plot_seqs_single_figure(n_samples, n_targ, samples, plot_func, outs=None, **kwargs):
+def plot_seqs_single_figure(
+    n_samples: int, n_targ: int, samples: list, plot_func: Callable, outs: list | None = None, **kwargs
+):
+    """Plot multiple sample sequences in a single figure grid."""
     rows = max(1, ((n_samples - 1) // 3) + 1)
     cols = min(3, n_samples)
     fig = plt.figure(figsize=(9, 2 * cols))
@@ -898,7 +964,10 @@ def plot_seqs_single_figure(n_samples, n_targ, samples, plot_func, outs=None, **
     plt.tight_layout()
 
 
-def plot_seqs_multi_figures(n_samples, n_targ, samples, plot_func, outs=None, **kwargs):
+def plot_seqs_multi_figures(
+    n_samples: int, n_targ: int, samples: list, plot_func: Callable, outs: list | None = None, **kwargs
+):
+    """Plot each sample sequence in its own separate figure."""
     for i in range(n_samples):
         fig = plt.figure(figsize=(9, 3))
         axs = fig.subplots(nrows=n_targ + 1, sharex=True)
@@ -916,7 +985,8 @@ from plum import dispatch
 
 
 @dispatch
-def show_batch(x: TensorSequences, y: TensorSequences, samples, ctxs=None, max_n=6, **kwargs):
+def show_batch(x: TensorSequences, y: TensorSequences, samples: list, ctxs=None, max_n: int = 6, **kwargs):
+    """Display a batch of input/target sequence pairs."""
     n_samples = min(len(samples), max_n)
     n_targ = samples[0][1].shape[1]
     if n_samples > 3:
@@ -929,7 +999,10 @@ def show_batch(x: TensorSequences, y: TensorSequences, samples, ctxs=None, max_n
 
 
 @dispatch
-def show_results(x: TensorSequences, y: TensorSequences, samples, outs, ctxs=None, max_n=2, **kwargs):
+def show_results(
+    x: TensorSequences, y: TensorSequences, samples: list, outs: list, ctxs=None, max_n: int = 2, **kwargs
+):
+    """Display input/target/prediction results for model evaluation."""
     n_samples = min(len(samples), max_n)
     n_targ = samples[0][1].shape[1]
     if n_samples > 3:

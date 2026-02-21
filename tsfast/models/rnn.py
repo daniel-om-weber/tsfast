@@ -43,16 +43,16 @@ class RNN(nn.Module):
 
     def __init__(
         self,
-        input_size,
-        hidden_size,
-        num_layers,
-        hidden_p=0.0,
-        input_p=0.0,
-        weight_p=0.0,
-        rnn_type="gru",
-        ret_full_hidden=False,
-        stateful=False,
-        normalization="",
+        input_size: int,
+        hidden_size: int,
+        num_layers: int,
+        hidden_p: float = 0.0,
+        input_p: float = 0.0,
+        weight_p: float = 0.0,
+        rnn_type: str = "gru",
+        ret_full_hidden: bool = False,
+        stateful: bool = False,
+        normalization: str = "",
         **kwargs,
     ):
         super().__init__()
@@ -95,7 +95,7 @@ class RNN(nn.Module):
             raise ValueError("Invalid value for normalization")
         self.reset_state()
 
-    def forward(self, inp, h_init=None):
+    def forward(self, inp: Tensor, h_init: list | None = None):
         bs, seq_len, _ = inp.shape
         if h_init is None and self.stateful:
             h_init = self._get_hidden(bs)
@@ -150,14 +150,15 @@ class RNN(nn.Module):
             raise Exception
         return rnn
 
-    def reset_state(self):
+    def reset_state(self) -> None:
+        """Clear the stored hidden state."""
         self.hidden = None
 
 
 class Sequential_RNN(RNN):
     """RNN variant that returns only the output tensor, discarding hidden state."""
 
-    def forward(self, inp, h_init=None):
+    def forward(self, inp: Tensor, h_init: list | None = None):
         return super().forward(inp, h_init)[0]
 
 
@@ -176,7 +177,14 @@ class SimpleRNN(nn.Module):
 
     @delegates(RNN, keep=True)
     def __init__(
-        self, input_size, output_size, num_layers=1, hidden_size=100, linear_layers=0, return_state=False, **kwargs
+        self,
+        input_size: int,
+        output_size: int,
+        num_layers: int = 1,
+        hidden_size: int = 100,
+        linear_layers: int = 0,
+        return_state: bool = False,
+        **kwargs,
     ):
         super().__init__()
         self.return_state = return_state
@@ -185,7 +193,7 @@ class SimpleRNN(nn.Module):
             hidden_size, output_size, hidden_size=hidden_size, hidden_layer=linear_layers, act=nn.LeakyReLU
         )
 
-    def forward(self, x, h_init=None):
+    def forward(self, x: Tensor, h_init: list | None = None):
         out, h = self.rnn(x, h_init)
         out = self.final(out)
         return out if not self.return_state else (out, h)
@@ -196,17 +204,17 @@ from ..data.loader import get_inp_out_size
 
 @delegates(SimpleRNN, keep=True)
 def RNNLearner(
-    dls,
+    dls: DataLoaders,
     loss_func=nn.L1Loss(),
-    metrics=[fun_rmse],
-    n_skip=0,
-    num_layers=1,
-    hidden_size=100,
-    stateful=False,
+    metrics: list | None = [fun_rmse],
+    n_skip: int = 0,
+    num_layers: int = 1,
+    hidden_size: int = 100,
+    stateful: bool = False,
     opt_func=Adam,
-    cbs=None,
-    input_norm=StandardScaler1D,
-    output_norm=None,
+    cbs: list | None = None,
+    input_norm: type | None = StandardScaler1D,
+    output_norm: type | None = None,
     **kwargs,
 ):
     """Create a fastai Learner with a SimpleRNN model and standard training setup.
@@ -255,7 +263,15 @@ def RNNLearner(
 
 @delegates(SimpleRNN, keep=True)
 def AR_RNNLearner(
-    dls, alpha=0, beta=0, early_stop=0, metrics=None, n_skip=0, opt_func=Adam, input_norm=StandardScaler1D, **kwargs
+    dls: DataLoaders,
+    alpha: float = 0,
+    beta: float = 0,
+    early_stop: int = 0,
+    metrics: list | None = None,
+    n_skip: int = 0,
+    opt_func=Adam,
+    input_norm: type | None = StandardScaler1D,
+    **kwargs,
 ):
     """Create a fastai Learner with an autoregressive RNN model.
 
@@ -303,13 +319,13 @@ class ResidualBlock_RNN(nn.Module):
     """
 
     @delegates(RNN, keep=True)
-    def __init__(self, input_size, hidden_size, **kwargs):
+    def __init__(self, input_size: int, hidden_size: int, **kwargs):
         super().__init__()
         self.rnn1 = RNN(input_size, hidden_size, num_layers=1, **kwargs)
         self.rnn2 = RNN(hidden_size, hidden_size, num_layers=1, **kwargs)
         self.residual = SeqLinear(input_size, hidden_size, hidden_layer=0) if hidden_size != input_size else noop
 
-    def forward(self, x):
+    def forward(self, x: Tensor):
         out, _ = self.rnn1(x)
         out, _ = self.rnn2(out)
         return out + self.residual(x)
@@ -327,7 +343,7 @@ class SimpleResidualRNN(nn.Sequential):
     """
 
     @delegates(ResidualBlock_RNN, keep=True)
-    def __init__(self, input_size, output_size, num_blocks=1, hidden_size=100, **kwargs):
+    def __init__(self, input_size: int, output_size: int, num_blocks: int = 1, hidden_size: int = 100, **kwargs):
         super().__init__()
         for i in range(num_blocks):
             self.add_module(
@@ -347,12 +363,12 @@ class DenseLayer_RNN(nn.Module):
     """
 
     @delegates(RNN, keep=True)
-    def __init__(self, input_size, hidden_size, **kwargs):
+    def __init__(self, input_size: int, hidden_size: int, **kwargs):
         super().__init__()
         self.rnn1 = RNN(input_size, hidden_size, num_layers=1, **kwargs)
         self.rnn2 = RNN(hidden_size, hidden_size, num_layers=1, **kwargs)
 
-    def forward(self, x):
+    def forward(self, x: Tensor):
         out, _ = self.rnn1(x)
         out, _ = self.rnn2(out)
         return torch.cat([x, out], 2)
@@ -369,7 +385,7 @@ class DenseBlock_RNN(nn.Sequential):
     """
 
     @delegates(DenseLayer_RNN, keep=True)
-    def __init__(self, num_layers, num_input_features, growth_rate, **kwargs):
+    def __init__(self, num_layers: int, num_input_features: int, growth_rate: int, **kwargs):
         super().__init__()
         for i in range(num_layers):
             self.add_module(
@@ -390,7 +406,15 @@ class DenseNet_RNN(nn.Sequential):
     """
 
     @delegates(RNN, keep=True)
-    def __init__(self, input_size, output_size, growth_rate=32, block_config=(3, 3), num_init_features=32, **kwargs):
+    def __init__(
+        self,
+        input_size: int,
+        output_size: int,
+        growth_rate: int = 32,
+        block_config: tuple = (3, 3),
+        num_init_features: int = 32,
+        **kwargs,
+    ):
         super().__init__()
         self.add_module("rnn0", Sequential_RNN(input_size, num_init_features, 1, **kwargs))
 
@@ -420,7 +444,15 @@ class SeperateRNN(nn.Module):
     """
 
     @delegates(RNN, keep=True)
-    def __init__(self, input_list, output_size, num_layers=1, hidden_size=100, linear_layers=1, **kwargs):
+    def __init__(
+        self,
+        input_list: list[list[int]],
+        output_size: int,
+        num_layers: int = 1,
+        hidden_size: int = 100,
+        linear_layers: int = 1,
+        **kwargs,
+    ):
         super().__init__()
         self.input_list = input_list
 
@@ -433,7 +465,7 @@ class SeperateRNN(nn.Module):
         self.rnn = RNN(input_size=rnn_width * len(input_list), hidden_size=hidden_size, num_layers=num_layers, **kwargs)
         self.final = SeqLinear(hidden_size, output_size, hidden_size=hidden_size, hidden_layer=linear_layers)
 
-    def forward(self, x):
+    def forward(self, x: Tensor):
         rnn_out = [rnn(x[..., group])[0] for rnn, group in zip(self.rnns, self.input_list)]
         out = torch.cat(rnn_out, dim=-1)
         out, _ = self.rnn(out)

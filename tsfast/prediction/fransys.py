@@ -21,16 +21,28 @@ from fastai.basics import *
 
 
 class Diag_RNN(nn.Module):
+    """RNN-based diagnosis model with configurable output layers.
+
+    Args:
+        input_size: number of input features
+        output_size: number of output features per output layer
+        output_layer: number of stacked output layers
+        hidden_size: number of hidden units in the RNN
+        rnn_layer: number of RNN layers
+        linear_layer: number of linear layers in the output head
+        stateful: whether to maintain hidden state across batches
+    """
+
     @delegates(RNN, keep=True)
     def __init__(
         self,
-        input_size,
-        output_size,
-        output_layer=1,
-        hidden_size=100,
-        rnn_layer=1,
-        linear_layer=1,
-        stateful=False,
+        input_size: int,
+        output_size: int,
+        output_layer: int = 1,
+        hidden_size: int = 100,
+        rnn_layer: int = 1,
+        linear_layer: int = 1,
+        stateful: bool = False,
         **kwargs,
     ):
         super().__init__()
@@ -39,13 +51,14 @@ class Diag_RNN(nn.Module):
         self.rnn = RNN(input_size, hidden_size, rnn_layer, stateful=stateful, ret_full_hidden=False, **kwargs)
         self.final = SeqLinear(hidden_size, int(output_size * output_layer), hidden_layer=linear_layer - 1)
 
-    def forward(self, x, init_state=None):
+    def forward(self, x: torch.Tensor, init_state: list | None = None) -> tuple[torch.Tensor, list]:
         out, hidden = self.rnn(x, init_state)
         out = self.final(out)
         out = torch.stack(torch.split(out, split_size_or_sections=self.output_size, dim=-1), 0)
         return out, hidden
 
-    def output_to_hidden(self, out, idx):
+    def output_to_hidden(self, out: torch.Tensor, idx: int) -> list[torch.Tensor]:
+        """Extract hidden states from output at a given time index."""
         hidden = list(out[:, None, :, idx])
         #         hidden = torch.split(out[:,:,idx],split_size_or_sections=1,dim = 0)
         hidden = [h.contiguous() for h in hidden]
@@ -56,18 +69,38 @@ class Diag_RNN(nn.Module):
 
 
 class Diag_RNN_raw(nn.Module):
+    """Raw RNN diagnosis model that returns full hidden states directly.
+
+    Args:
+        input_size: number of input features
+        output_size: number of output features
+        output_layer: number of stacked output layers
+        hidden_size: number of hidden units in the RNN
+        rnn_layer: number of RNN layers
+        linear_layer: number of linear layers (unused, kept for API compatibility)
+        stateful: whether to maintain hidden state across batches
+    """
+
     def __init__(
-        self, input_size, output_size, output_layer=1, hidden_size=100, rnn_layer=1, linear_layer=1, stateful=False
+        self,
+        input_size: int,
+        output_size: int,
+        output_layer: int = 1,
+        hidden_size: int = 100,
+        rnn_layer: int = 1,
+        linear_layer: int = 1,
+        stateful: bool = False,
     ):
         super().__init__()
 
         self.rnn = RNN(input_size, output_size, output_layer, stateful=stateful, ret_full_hidden=True)
 
-    def forward(self, x, init_state=None):
+    def forward(self, x: torch.Tensor, init_state: list | None = None):
 
         return self.rnn(x, init_state)
 
-    def output_to_hidden(self, out, idx):
+    def output_to_hidden(self, out: torch.Tensor, idx: int) -> list[torch.Tensor]:
+        """Extract hidden states from output at a given time index."""
         hidden = list(out[:, None, :, idx])
         #         hidden = torch.split(out[:,:,idx],split_size_or_sections=1,dim = 0)
         hidden = [h.contiguous() for h in hidden]
@@ -75,8 +108,28 @@ class Diag_RNN_raw(nn.Module):
 
 
 class DiagLSTM(nn.Module):
+    """LSTM-based diagnosis model with configurable output layers.
+
+    Args:
+        input_size: number of input features
+        output_size: number of output features per output layer
+        output_layer: number of stacked output layers
+        hidden_size: number of hidden units in the LSTM
+        rnn_layer: number of LSTM layers
+        linear_layer: number of linear layers in the output head
+    """
+
     @delegates(nn.LSTM, keep=True)
-    def __init__(self, input_size, output_size, output_layer=1, hidden_size=100, rnn_layer=1, linear_layer=1, **kwargs):
+    def __init__(
+        self,
+        input_size: int,
+        output_size: int,
+        output_layer: int = 1,
+        hidden_size: int = 100,
+        rnn_layer: int = 1,
+        linear_layer: int = 1,
+        **kwargs,
+    ):
         super().__init__()
         self.input_size = input_size
         self.output_size = output_size
@@ -88,14 +141,15 @@ class DiagLSTM(nn.Module):
         self.rnn = nn.LSTM(input_size, hidden_size, rnn_layer, batch_first=True, **kwargs)
         self.final = SeqLinear(hidden_size, int(output_size * output_layer * 2), hidden_layer=linear_layer - 1)
 
-    def forward(self, x, init_state=None):
+    def forward(self, x: torch.Tensor, init_state: tuple | None = None) -> torch.Tensor:
         out, _ = self.rnn(x, init_state)
         out = self.final(out)
         # split tensor in n hidden layers of the prognosis rnn
         out = torch.stack(torch.split(out, split_size_or_sections=self.output_size, dim=-1), 0)
         return out
 
-    def output_to_hidden(self, out, idx):
+    def output_to_hidden(self, out: torch.Tensor, idx: int) -> list[tuple[torch.Tensor, ...]]:
+        """Extract LSTM hidden and cell states from output at a given time index."""
         hidden = out[:, :, idx]
         # split in target rnn layers
         lst_hidden = hidden.split(hidden.shape[0] // self.output_layer)
@@ -108,8 +162,20 @@ class DiagLSTM(nn.Module):
 
 
 class Diag_TCN(nn.Module):
+    """TCN-based diagnosis model with optional MLP output head.
+
+    Args:
+        input_size: number of input features
+        output_size: number of output features per output layer
+        output_layer: number of stacked output layers
+        hl_width: width of TCN hidden layers
+        mlp_layers: number of additional MLP layers after the TCN
+    """
+
     @delegates(TCN, keep=True)
-    def __init__(self, input_size, output_size, output_layer, hl_width, mlp_layers=0, **kwargs):
+    def __init__(
+        self, input_size: int, output_size: int, output_layer: int, hl_width: int, mlp_layers: int = 0, **kwargs
+    ):
         super().__init__()
         self.output_size = output_size
 
@@ -122,13 +188,14 @@ class Diag_TCN(nn.Module):
             self._model = TCN(input_size, int(output_size * output_layer), hl_width=hl_width, **kwargs)
             self.final = nn.Identity()
 
-    def forward(self, x, init_state=None):
+    def forward(self, x: torch.Tensor, init_state: list | None = None) -> tuple[torch.Tensor, torch.Tensor]:
         out = self._model(x)
         out = self.final(out)
         out = torch.stack(torch.split(out, split_size_or_sections=self.output_size, dim=-1), 0)
         return out, out
 
-    def output_to_hidden(self, out, idx):
+    def output_to_hidden(self, out: torch.Tensor, idx: int) -> list[torch.Tensor]:
+        """Extract hidden states from output at a given time index."""
         hidden = list(out[:, None, :, idx])
         #         hidden = torch.split(out[:,:,idx],split_size_or_sections=1,dim = 0)
         hidden = [h.contiguous() for h in hidden]
@@ -136,18 +203,32 @@ class Diag_TCN(nn.Module):
 
 
 class ARProg_Init(nn.Module):
+    """Autoregressive prognosis model with diagnosis-based initialization.
+
+    Args:
+        n_u: number of input channels
+        n_y: number of output channels
+        init_sz: number of initial time steps used for diagnosis
+        n_x: number of external state channels
+        hidden_size: number of hidden units in the RNN
+        rnn_layer: number of RNN layers
+        diag_model: custom diagnosis model, defaults to Diag_RNN
+        linear_layer: number of linear layers in the diagnosis output head
+        final_layer: number of additional final layers (unused, reserved)
+    """
+
     @delegates(RNN, keep=True)
     def __init__(
         self,
-        n_u,
-        n_y,
-        init_sz,
-        n_x=0,
-        hidden_size=100,
-        rnn_layer=1,
-        diag_model=None,
-        linear_layer=1,
-        final_layer=0,
+        n_u: int,
+        n_y: int,
+        init_sz: int,
+        n_x: int = 0,
+        hidden_size: int = 100,
+        rnn_layer: int = 1,
+        diag_model: nn.Module | None = None,
+        linear_layer: int = 1,
+        final_layer: int = 0,
         **kwargs,
     ):
         super().__init__()
@@ -184,7 +265,7 @@ class ARProg_Init(nn.Module):
             out_sz=n_x + n_y,
         )
 
-    def forward(self, inp):
+    def forward(self, inp: torch.Tensor) -> torch.Tensor:
         y_x = inp[..., self.n_u :]  # measured output and external state
         u = inp[..., : self.n_u]  # measured input
 
@@ -202,19 +283,34 @@ class ARProg_Init(nn.Module):
 
 
 class FranSys(nn.Module):
+    """Framework for Analysis of Systems: combined diagnosis/prognosis RNN model.
+
+    Args:
+        n_u: number of input channels
+        n_y: number of output channels
+        init_sz: number of initial time steps used for diagnosis
+        n_x: number of external state channels
+        hidden_size: number of hidden units in the RNN
+        rnn_layer: number of RNN layers
+        diag_model: custom diagnosis model, defaults to Diag_RNN
+        linear_layer: number of linear layers in the diagnosis output head
+        init_diag_only: if True, limit diagnosis to init_sz time steps during training
+        final_layer: number of additional layers in the shared output head
+    """
+
     @delegates(RNN, keep=True)
     def __init__(
         self,
-        n_u,
-        n_y,
-        init_sz,
-        n_x=0,
-        hidden_size=100,
-        rnn_layer=1,
-        diag_model=None,
-        linear_layer=1,
-        init_diag_only=False,
-        final_layer=0,
+        n_u: int,
+        n_y: int,
+        init_sz: int,
+        n_x: int = 0,
+        hidden_size: int = 100,
+        rnn_layer: int = 1,
+        diag_model: nn.Module | None = None,
+        linear_layer: int = 1,
+        init_diag_only: bool = False,
+        final_layer: int = 0,
         **kwargs,
     ):
         super().__init__()
@@ -244,7 +340,7 @@ class FranSys(nn.Module):
         #        self.final = SeqLinear(int(hidden_size*rnn_layer),n_y,hidden_layer=0)
         self.final = SeqLinear(hidden_size, n_y, hidden_layer=final_layer)
 
-    def forward(self, x, init_state=None):
+    def forward(self, x: torch.Tensor, init_state: list | None = None) -> torch.Tensor:
         x_diag = x[..., : self.n_u + self.n_x + self.n_y]
         x_prog = x[..., : self.n_u]
 
@@ -301,23 +397,27 @@ class FranSysCallback(HookCallback):
         p_osp_loss: scaling factor for one-step prediction loss of prognosis module
         p_tar_loss: scaling factor for time activation regularization of combined
             hidden states with target sequence length
+        sync_type: distance metric for state synchronization loss
+        targ_loss_func: loss function used for target-based regularization terms
         osp_n_skip: number of elements to skip before one-step prediction is
             applied, defaults to model.init_sz
+        model: explicit FranSys model reference, auto-detected if None
+        detach: whether to detach hooked outputs from the computation graph
     """
 
     def __init__(
         self,
-        modules,
-        p_state_sync=1e7,
-        p_diag_loss=0.0,
-        p_osp_sync=0,
-        p_osp_loss=0,
-        p_tar_loss=0,
-        sync_type="mse",
+        modules: list[nn.Module],
+        p_state_sync: float = 1e7,
+        p_diag_loss: float = 0.0,
+        p_osp_sync: float = 0,
+        p_osp_loss: float = 0,
+        p_tar_loss: float = 0,
+        sync_type: str = "mse",
         targ_loss_func=mae,
-        osp_n_skip=None,
-        model=None,
-        detach=False,
+        osp_n_skip: int | None = None,
+        model: nn.Module | None = None,
+        detach: bool = False,
         **kwargs,
     ):
         super().__init__(modules=modules, detach=detach, **kwargs)
@@ -344,11 +444,12 @@ class FranSysCallback(HookCallback):
         super().before_fit()
 
     def clear(self):
+        """Reset captured diagnosis and prognosis outputs."""
         self._out_diag = None
         self._out_prog = None
 
     def hook(self, m, i, o):
-        """add output of diagnosis and prognosis modules to a list for regularization in after_loss"""
+        """Capture output of diagnosis and prognosis modules for regularization in after_loss."""
         if "Diag" in type(m).__name__:
             self._out_diag = o[0]
         else:
@@ -451,9 +552,15 @@ class FranSysCallback(HookCallback):
 
 
 class FranSysCallback_variable_init(Callback):
-    "`Callback` reports progress after every epoch to the ray tune logger"
+    """Randomizes the diagnosis initialization window size during training.
 
-    def __init__(self, init_sz_min, init_sz_max, model=None, **kwargs):
+    Args:
+        init_sz_min: minimum initialization window size
+        init_sz_max: maximum initialization window size (inclusive)
+        model: explicit FranSys model reference, auto-detected if None
+    """
+
+    def __init__(self, init_sz_min: int, init_sz_max: int, model: nn.Module | None = None, **kwargs):
         super().__init__(**kwargs)
         self.init_sz_valid = None
         self.init_sz_min = init_sz_min
@@ -481,18 +588,18 @@ from .core import PredictionCallback
 
 @delegates(FranSys, keep=True)
 def FranSysLearner(
-    dls,
-    init_sz,
-    attach_output=False,
+    dls: DataLoaders,
+    init_sz: int,
+    attach_output: bool = False,
     loss_func=nn.L1Loss(),
     metrics=fun_rmse,
     opt_func=Adam,
-    lr=3e-3,
-    cbs=None,
-    input_norm=StandardScaler1D,
-    output_norm=None,
+    lr: float = 3e-3,
+    cbs: list | None = None,
+    input_norm: type | None = StandardScaler1D,
+    output_norm: type | None = None,
     **kwargs,
-):
+) -> Learner:
     """Create a Learner configured for FranSys diagnosis/prognosis training.
 
     Args:

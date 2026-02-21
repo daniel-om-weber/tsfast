@@ -23,7 +23,25 @@ _loaders = (_MultiProcessingDataLoaderIter, _SingleProcessDataLoaderIter)
 
 @delegates()
 class TbpttDl(TfmdDL):
-    def __init__(self, dataset, sub_seq_len=None, seq_len=None, shuffle=True, num_workers=2, **kwargs):
+    """Truncated backpropagation through time DataLoader that splits sequences into sub-windows.
+
+    Args:
+        dataset: dataset containing time series sequences
+        sub_seq_len: length of each sub-sequence window, None to use full sequences
+        seq_len: total sequence length, inferred from data if None
+        shuffle: whether to shuffle samples each epoch
+        num_workers: number of worker processes for data loading
+    """
+
+    def __init__(
+        self,
+        dataset,
+        sub_seq_len: int | None = None,
+        seq_len: int | None = None,
+        shuffle: bool = True,
+        num_workers: int = 2,
+        **kwargs,
+    ):
         #         assert sub_seq_len is not None
         self.sub_seq_len = sub_seq_len
         self.seq_len = seq_len
@@ -44,7 +62,8 @@ class TbpttDl(TfmdDL):
                 )
 
     @property
-    def n_sub_seq(self):
+    def n_sub_seq(self) -> int:
+        """Number of sub-sequence windows per full sequence."""
         if self.sub_seq_len is None:
             return 1
         if self.seq_len is None:
@@ -67,7 +86,7 @@ class TbpttDl(TfmdDL):
     #         return (b for i,b in enumerate(self.get_idxs()) if i//(self.bs or 1)%self.num_workers==self.offs)
 
     def __iter__(self):
-        """iterator that handles multiprocessing by caching samples that are generated out of order"""
+        """Iterator that handles multiprocessing by caching samples generated out of order."""
         self.randomize()
         self.before_iter()
         self.__idxs = self.get_idxs()  # called in context of main process (not workers/subprocesses)
@@ -136,14 +155,15 @@ class TbpttDl(TfmdDL):
                 )
 
 
-def reset_model_state(model):
+def reset_model_state(model: nn.Module) -> None:
+    """Reset hidden state on all modules that implement `reset_state`."""
     for m in model.modules():
         if hasattr(m, "reset_state"):
             m.reset_state()
 
 
 class TbpttResetCB(Callback):
-    "`Callback` resets the rnn model with every new sequence for tbptt, calls `reset_state` in every module of the model"
+    """Resets RNN hidden state at each new sequence boundary during TBPTT training."""
 
     def before_batch(self):
         dl = self.learn.dls.train if self.training else self.learn.dls.valid
@@ -155,17 +175,22 @@ class TbpttResetCB(Callback):
         reset_model_state(self.learn.model)
 
 
-def WeightedDL_Factory(cls):
-    """
-    Weighted Dataloader that provides control over sampling probabilities.
-    wgts: probability array with probability for every item
-            gets extracted from the pandas 'p_sample' column if given.
-            Otherwise uniform sampling will be enabled
+def WeightedDL_Factory(cls: type) -> type:
+    """Create a weighted DataLoader class with control over sampling probabilities.
 
+    Args:
+        cls: base DataLoader class to extend, must be a subclass of TfmdDL
     """
     assert issubclass(cls, TfmdDL)
 
     class WeightedDL(cls):
+        """DataLoader that samples according to per-item probability weights.
+
+        Args:
+            dataset: dataset to load from
+            wgts: per-item sampling weights, inferred from 'p_sample' column if None
+        """
+
         def __init__(self, dataset, wgts=None, **kwargs):
             #             import pdb;pdb.set_trace()
             self.wgts = None
@@ -200,8 +225,8 @@ def WeightedDL_Factory(cls):
     return WeightedDL
 
 
-def uniform_p_of_category(cat_name):
-    """Scales sampling weights for an even distribution between every category"""
+def uniform_p_of_category(cat_name: str):
+    """Scales sampling weights for an even distribution between every category."""
 
     def _inner(df):
         if "p_sample" in df:
@@ -224,8 +249,8 @@ def uniform_p_of_category(cat_name):
     return _inner
 
 
-def uniform_p_of_float(var_name, bins=10):
-    """Scales sampling weights for an even distribution of the continous variable by creating equi sized bins"""
+def uniform_p_of_float(var_name: str, bins: int = 10):
+    """Scales sampling weights for an even distribution of the continuous variable by creating equi-sized bins."""
 
     def _inner(df):
         if "p_sample" in df:
@@ -250,8 +275,8 @@ def uniform_p_of_float(var_name, bins=10):
     return _inner
 
 
-def uniform_p_of_float_with_gaps(var_name, bins=100):
-    """Scales sampling weights for an even distribution of the continous variable by creating equi sized bins"""
+def uniform_p_of_float_with_gaps(var_name: str, bins: int = 100):
+    """Scales sampling weights for an even distribution of a continuous variable with gaps using quantile bins."""
 
     def _inner(df):
         if "p_sample" in df:
@@ -281,16 +306,23 @@ def uniform_p_of_float_with_gaps(var_name, bins=100):
     return _inner
 
 
-def BatchLimit_Factory(cls):
-    """
-    Batch limited Dataloader that provides an upper limit for the number of mini batches per epoch
-    max_batches: upper limit for minibatch count per epoch
+def BatchLimit_Factory(cls: type) -> type:
+    """Create a batch-limited DataLoader class with an upper bound on batches per epoch.
 
+    Args:
+        cls: base DataLoader class to extend, must be a subclass of TfmdDL
     """
     assert issubclass(cls, TfmdDL)
 
     class BatchLimitDL(cls):
-        def __init__(self, dataset, max_batches=None, **kwargs):
+        """DataLoader that caps the number of mini-batches per epoch.
+
+        Args:
+            dataset: dataset to load from
+            max_batches: upper limit for batches per epoch, None for unlimited
+        """
+
+        def __init__(self, dataset, max_batches: int | None = None, **kwargs):
             self.max_batches = max_batches
             # kwargs['n'] = max_batches*kwargs['bs'] n has to remain the full size, in order to create all indices if shuffled
             super().__init__(dataset=dataset, **kwargs)
@@ -321,28 +353,29 @@ def BatchLimit_Factory(cls):
     return BatchLimitDL
 
 
-def NBatches_Factory(cls):
-    """
-    Fixed batch count dataloader that samples exactly `n_batches` per epoch.
-    Oversamples (with replacement) if fewer samples exist, undersamples if more exist.
-    Fully composable with other factories like `WeightedDL_Factory`.
+def NBatches_Factory(cls: type) -> type:
+    """Create a fixed batch count DataLoader class with oversampling/undersampling support.
 
-    n_batches: exact number of minibatches per epoch (None disables fixed batching)
+    Args:
+        cls: base DataLoader class to extend, must be a subclass of TfmdDL
     """
     assert issubclass(cls, TfmdDL)
 
     class NBatchesDL(cls):
-        """Fixed batch count dataloader with oversampling/undersampling support.
+        """Fixed batch count DataLoader that samples exactly `n_batches` per epoch.
+
+        Oversamples with replacement if fewer samples exist, undersamples if more exist.
+        Fully composable with other factories like `WeightedDL_Factory`.
 
         Args:
             dataset: dataset to sample from
-            n_batches: target number of batches per epoch, None for original behavior
+            n_batches: exact number of batches per epoch, None for original behavior
         """
 
         def __init__(
             self,
             dataset,
-            n_batches=None,
+            n_batches: int | None = None,
             **kwargs,
         ):
             self.n_batches_target = n_batches
@@ -384,8 +417,8 @@ def NBatches_Factory(cls):
     return NBatchesDL
 
 
-def get_inp_out_size(dls):
-    """returns input and output size of a timeseries databunch"""
+def get_inp_out_size(dls) -> tuple[int, int]:
+    """Returns input and output feature dimensions from a DataLoaders."""
     tup = dls.one_batch()
     inp = tup[0].shape[-1]
     out = tup[1].shape[-1]

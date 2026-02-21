@@ -9,7 +9,7 @@ def _parent_idxs(items, name):
     return mask2idxs(Path(o).parent.name == name for o in items)
 
 
-def ParentSplitter(train_name="train", valid_name="valid"):
+def ParentSplitter(train_name: str = "train", valid_name: str = "valid") -> Callable:
     """Split items based on parent folder names.
 
     Args:
@@ -25,7 +25,7 @@ def ParentSplitter(train_name="train", valid_name="valid"):
     return _inner
 
 
-def PercentageSplitter(pct=0.8):
+def PercentageSplitter(pct: float = 0.8) -> Callable:
     """Split items sequentially by a percentage threshold.
 
     Args:
@@ -39,7 +39,7 @@ def PercentageSplitter(pct=0.8):
     return _inner
 
 
-def ApplyToDict(fn, key="path"):
+def ApplyToDict(fn: Callable, key: str = "path") -> Callable:
     """Wrap a splitter function to operate on a specific dict key.
 
     Args:

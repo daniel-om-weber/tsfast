@@ -68,7 +68,12 @@ def export_onnx(
 
 
 class OnnxInferenceWrapper:
-    "Run an exported ONNX model with onnxruntime. Same API as InferenceWrapper."
+    """Run an exported ONNX model with onnxruntime. Same API as InferenceWrapper.
+
+    Args:
+        path: path to the exported .onnx model file
+        session_options: additional keyword arguments forwarded to onnxruntime.InferenceSession
+    """
 
     def __init__(self, path: str | Path, **session_options):
         import onnxruntime as ort

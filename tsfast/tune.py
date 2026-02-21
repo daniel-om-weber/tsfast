@@ -16,6 +16,7 @@ from .learner import *
 
 from fastai.basics import *
 from fastai.callback.core import Callback
+from collections.abc import Callable
 
 import ray
 from ray import tune
@@ -24,7 +25,7 @@ from ray.tune.experiment.trial import ExportFormat
 from ray.tune import Checkpoint
 
 
-def log_uniform(min_bound, max_bound, base=10):
+def log_uniform(min_bound: float, max_bound: float, base: float = 10) -> Callable:
     """Sample uniformly in an exponential (log) range.
 
     Args:
@@ -42,27 +43,31 @@ def log_uniform(min_bound, max_bound, base=10):
 
 
 class LearnerTrainable(tune.Trainable):
-    """Ray Tune Trainable wrapper for fastai Learners."""
+    """Ray Tune Trainable wrapper for fastai Learners.
 
-    def setup(self, config):
+    Args:
+        config: Ray Tune config dict containing 'create_lrn' and 'dls' references.
+    """
+
+    def setup(self, config: dict):
         self.create_lrn = ray.get(config["create_lrn"])
         self.dls = ray.get(config["dls"])
 
         self.lrn = self.create_lrn(self.dls, config)
 
-    def step(self):
+    def step(self) -> dict:
         with self.lrn.no_bar():
             self.lrn.fit(1)
         train_loss, valid_loss, rmse = self.lrn.recorder.values[-1]
         result = {"train_loss": train_loss, "valid_loss": valid_loss, "mean_loss": rmse}
         return result
 
-    def save_checkpoint(self, tmp_checkpoint_dir):
+    def save_checkpoint(self, tmp_checkpoint_dir: str) -> str:
         checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.pth")
         torch.save(self.lrn.model.state_dict(), checkpoint_path)
         return tmp_checkpoint_dir
 
-    def load_checkpoint(self, tmp_checkpoint_dir):
+    def load_checkpoint(self, tmp_checkpoint_dir: str):
         checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.pth")
         self.lrn.model.load_state_dict(torch.load(checkpoint_path))
 
@@ -76,7 +81,7 @@ class LearnerTrainable(tune.Trainable):
 
     # the learner class will be recreated with every perturbation, saving the model
     # that way the new hyperparameter will be applied
-    def reset_config(self, new_config):
+    def reset_config(self, new_config: dict) -> bool:
         self.lrn = self.create_lrn(self.dls, new_config)
         self.config = new_config
         return True
@@ -85,7 +90,7 @@ class LearnerTrainable(tune.Trainable):
 from multiprocessing.managers import SharedMemoryManager
 
 
-def stop_shared_memory_managers(obj):
+def stop_shared_memory_managers(obj: object):
     """Find and stop all SharedMemoryManager instances within an object.
 
     Args:
@@ -120,7 +125,7 @@ def stop_shared_memory_managers(obj):
 import gc
 
 
-def learner_optimize(config):
+def learner_optimize(config: dict):
     """Training function for Ray Tune function-based API.
 
     Args:
@@ -157,7 +162,7 @@ def learner_optimize(config):
             gc.collect()
 
 
-def sample_config(config):
+def sample_config(config: dict) -> dict:
     """Sample concrete values from a config of callables.
 
     Args:
@@ -203,7 +208,7 @@ class HPOptimizer:
         dls: DataLoaders to use for training.
     """
 
-    def __init__(self, create_lrn, dls):
+    def __init__(self, create_lrn: Callable, dls):
         self.create_lrn = create_lrn
         self.dls = dls
         self.analysis = None
@@ -219,7 +224,14 @@ class HPOptimizer:
         ray.shutdown()
 
     @delegates(tune.run, keep=True)
-    def optimize(self, config, optimize_func=learner_optimize, resources_per_trial={"gpu": 1.0}, verbose=1, **kwargs):
+    def optimize(
+        self,
+        config: dict,
+        optimize_func: Callable = learner_optimize,
+        resources_per_trial: dict = {"gpu": 1.0},
+        verbose: int = 1,
+        **kwargs,
+    ):
         """Run hyperparameter optimization using the function-based API.
 
         Args:
@@ -242,15 +254,15 @@ class HPOptimizer:
     @delegates(tune.run, keep=True)
     def optimize_pbt(
         self,
-        opt_name,
-        num_samples,
-        config,
-        mut_conf,
-        perturbation_interval=2,
-        stop={"training_iteration": 40},
-        resources_per_trial={"gpu": 1},
-        resample_probability=0.25,
-        quantile_fraction=0.25,
+        opt_name: str,
+        num_samples: int,
+        config: dict,
+        mut_conf: dict,
+        perturbation_interval: int = 2,
+        stop: dict = {"training_iteration": 40},
+        resources_per_trial: dict = {"gpu": 1},
+        resample_probability: float = 0.25,
+        quantile_fraction: float = 0.25,
         **kwargs,
     ):
         """Run Population Based Training optimization.
@@ -297,7 +309,7 @@ class HPOptimizer:
         )
         return self.analysis
 
-    def best_model(self):
+    def best_model(self) -> nn.Module:
         """Load and return the best model from the optimization run."""
         if self.analysis is None:
             raise Exception

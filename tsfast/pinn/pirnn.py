@@ -10,6 +10,7 @@ from ..models.layers import SeqLinear, StandardScaler1D, NormalizedModel
 from ..learner.callbacks import CB_TruncateSequence
 from ..learner.losses import SkipNLoss
 from fastai.basics import *
+from collections.abc import Callable
 from functools import partial
 
 
@@ -42,7 +43,7 @@ class PIRNN(nn.Module):
         n_u: int,
         n_y: int,
         init_sz: int,
-        n_y_supervised: int = None,
+        n_y_supervised: int | None = None,
         n_x: int = 0,
         hidden_size: int = 100,
         rnn_layer: int = 1,
@@ -93,7 +94,7 @@ class PIRNN(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        init_state: list = None,
+        init_state: list | None = None,
         encoder_mode: str = "default",
     ) -> torch.Tensor:
         """Forward pass with encoder mode auto-detection or explicit selection.
@@ -219,7 +220,7 @@ class AuxiliaryOutputLoss:
 
     def __init__(
         self,
-        loss_func,
+        loss_func: Callable,
         n_supervised: int,
     ):
         self.loss_func = loss_func
@@ -236,19 +237,19 @@ class AuxiliaryOutputLoss:
 
 @delegates(PIRNN, keep=True)
 def PIRNNLearner(
-    dls,
+    dls: DataLoaders,
     init_sz: int,
     n_aux_outputs: int = 0,
     attach_output: bool = False,
-    loss_func=nn.L1Loss(),
-    metrics=None,
-    opt_func=Adam,
+    loss_func: Callable = nn.L1Loss(),
+    metrics: list | None = None,
+    opt_func: Callable = Adam,
     lr: float = 3e-3,
-    cbs=None,
-    input_norm=StandardScaler1D,
-    output_norm=None,
+    cbs: list | None = None,
+    input_norm: type | None = StandardScaler1D,
+    output_norm: type | None = None,
     **kwargs,
-):
+) -> Learner:
     """Create PIRNN learner with appropriate configuration.
 
     Args:

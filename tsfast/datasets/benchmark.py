@@ -75,7 +75,7 @@ BENCHMARK_DL_KWARGS = {
 def create_dls_from_spec(
     spec: idb.benchmark.BenchmarkSpecBase,
     **kwargs,
-):
+) -> DataLoaders:
     """Create DataLoaders from an identibench benchmark specification.
 
     Extracts benchmark-specific kwargs from BENCHMARK_DL_KWARGS and merges them
