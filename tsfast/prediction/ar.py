@@ -1,3 +1,5 @@
+"""Autoregressive progressive prediction model."""
+
 __all__ = ["ARProg"]
 
 from ..data import *
@@ -7,6 +9,18 @@ from fastai.basics import *
 
 
 class ARProg(nn.Module):
+    """RNN model with teacher-forced initialization and autoregressive prediction.
+
+    Uses an initial segment with teacher forcing to warm up hidden state,
+    then switches to autoregressive mode for the remaining sequence.
+
+    Args:
+        n_u: number of input signals.
+        n_x: number of external state signals.
+        n_y: number of output signals.
+        init_sz: number of time steps for teacher-forced initialization.
+    """
+
     @delegates(RNN, keep=True)
     def __init__(self, n_u, n_x, n_y, init_sz, **kwargs):
         super().__init__()
@@ -15,7 +29,6 @@ class ARProg(nn.Module):
         self.n_y = n_y
         self.init_sz = init_sz
 
-        # the output is n_x+n_y even if we output only n_y, because we need the output external states back into the model
         self.rnn_model = AR_Model(
             SimpleRNN(input_size=n_u + n_x + n_y, output_size=n_x + n_y, return_state=True, **kwargs),
             model_has_state=True,
@@ -25,8 +38,8 @@ class ARProg(nn.Module):
         )
 
     def forward(self, x):
-        y_x = x[..., self.n_u :]  # measured output and external state
-        u = x[..., : self.n_u]  # measured input
+        y_x = x[..., self.n_u :]
+        u = x[..., : self.n_u]
 
         inp_tf = torch.cat([u[:, : self.init_sz], y_x[:, : self.init_sz]], dim=-1)
         out_init, h = self.rnn_model(inp_tf, ar=False)

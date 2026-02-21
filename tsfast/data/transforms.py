@@ -1,3 +1,5 @@
+"""Data augmentation transforms for time series sequences."""
+
 __all__ = [
     "SeqSlice",
     "SeqNoiseInjection",
@@ -12,7 +14,12 @@ from fastai.vision.augment import RandTransform
 
 
 class SeqSlice(Transform):
-    """Take a slice from an array-like object. Useful for e.g. shifting input and output"""
+    """Slice a subsequence from an array-like object.
+
+    Args:
+        l_slc: left slice boundary index.
+        r_slc: right slice boundary index.
+    """
 
     def __init__(self, l_slc=None, r_slc=None):
         self.l_slc, self.r_slc = l_slc, r_slc
@@ -22,8 +29,17 @@ class SeqSlice(Transform):
 
 
 class SeqNoiseInjection(RandTransform):
-    split_idx = 0  # apply only to training data, if None it will be applied to all data
-    """Adds normal distributed noise to the tensor sequence with seperate mean and std for every signal"""
+    """Add normal-distributed noise with per-signal mean and std.
+
+    Only applied to training data.
+
+    Args:
+        std: standard deviation of the noise per signal.
+        mean: mean of the noise per signal.
+        p: probability of applying the transform.
+    """
+
+    split_idx = 0
 
     def __init__(self, std=1e-1, mean=0.0, p=1.0):
         super().__init__(p=p)
@@ -39,8 +55,16 @@ class SeqNoiseInjection(RandTransform):
 
 
 class SeqNoiseInjection_Varying(RandTransform):
+    """Add noise with a randomly sampled standard deviation per application.
+
+    Only applied to training data.
+
+    Args:
+        std_std: standard deviation of the noise std distribution.
+        p: probability of applying the transform.
+    """
+
     split_idx = 0
-    """Adds normal distributed noise to the tensor sequence with a normal distributed standard deviation for every application"""
 
     def __init__(self, std_std=0.1, p=1.0):
         super().__init__(p=p)
@@ -56,8 +80,18 @@ class SeqNoiseInjection_Varying(RandTransform):
 
 
 class SeqNoiseInjection_Grouped(RandTransform):
+    """Add noise with per-group randomly sampled standard deviations.
+
+    Only applied to training data. Each group of signals shares a
+    randomly drawn noise std.
+
+    Args:
+        std_std: standard deviation of the noise std distribution per group.
+        std_idx: index mapping each signal to its noise group.
+        p: probability of applying the transform.
+    """
+
     split_idx = 0
-    """Adds normal distributed noise to the tensor sequence with a normal distributed standard deviation for every application, every group gert"""
 
     def __init__(self, std_std, std_idx, p=1.0):
         super().__init__(p=p)
@@ -74,8 +108,17 @@ class SeqNoiseInjection_Grouped(RandTransform):
 
 
 class SeqBiasInjection(RandTransform):
+    """Add a constant normal-distributed offset per signal per sample.
+
+    Only applied to training data.
+
+    Args:
+        std: standard deviation of the bias per signal.
+        mean: mean of the bias per signal.
+        p: probability of applying the transform.
+    """
+
     split_idx = 0
-    """Adds a normal distributed offset to the tensor sequence with seperate mean and std for every signal"""
 
     def __init__(self, std=1e-1, mean=0.0, p=1.0):
         super().__init__(p=p)

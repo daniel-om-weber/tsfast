@@ -1,3 +1,5 @@
+"""NumPy-in/NumPy-out inference for trained fastai Learners."""
+
 __all__ = ["InferenceWrapper"]
 
 from ..data.loader import reset_model_state
@@ -9,10 +11,20 @@ import torch
 
 
 class InferenceWrapper:
+    """NumPy-in/NumPy-out inference for trained fastai Learners.
+
+    Reconstructs the training-time input pipeline (including PredictionCallback
+    concatenation) so models get the same input format they saw during training.
+
+    Args:
+        learner: trained fastai Learner with model and dls
+        device: device for inference ('cpu', 'cuda')
+    """
+
     def __init__(
         self,
-        learner: Learner,  # The trained fastai Learner object.
-        device: str | torch.device = "cpu",  # Device for inference ('cpu', 'cuda').
+        learner: Learner,
+        device: str | torch.device = "cpu",
     ):
         if not isinstance(learner, Learner) or not hasattr(learner, "model") or not hasattr(learner, "dls"):
             raise TypeError("Input 'learner' must be a valid fastai Learner with model and dls.")
@@ -47,10 +59,20 @@ class InferenceWrapper:
     @torch.no_grad()
     def inference(
         self,
-        np_input: np.ndarray,  # Input time series (u). Shape [seq_len], [seq_len, u_features], or [1, seq_len, u_features].
-        np_output_init: np.ndarray
-        | None = None,  # Initial output series (y_init). Required if trained with PredictionCallback. Defaults to None.
+        np_input: np.ndarray,
+        np_output_init: np.ndarray | None = None,
     ) -> np.ndarray:
+        """Run inference on numpy input, returns numpy output.
+
+        Args:
+            np_input: input time series (u), shape [seq_len], [seq_len, features],
+                or [1, seq_len, features]
+            np_output_init: initial output series (y_init), required if trained
+                with PredictionCallback
+
+        Returns:
+            Model prediction as numpy array with shape [seq_len, out_features].
+        """
         u_tensor = self._prepare_tensor(np_input, "np_input")
         input_seq_len = u_tensor.shape[1]
         y_init_tensor = self._prepare_tensor(np_output_init, "np_output_init") if np_output_init is not None else None

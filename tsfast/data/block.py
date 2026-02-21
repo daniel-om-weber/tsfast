@@ -1,3 +1,5 @@
+"""Data blocks for sequence and scalar inputs."""
+
 __all__ = ["pad_sequence", "SequenceBlock", "ScalarNormalize", "ScalarBlock"]
 
 from fastai.data.all import *
@@ -5,7 +7,12 @@ from .core import *
 
 
 def pad_sequence(batch, sorting=False):
-    """collate_fn for padding of sequences of different lengths, use in before_batch of databunch, still quite slow"""
+    """Collate function that pads sequences of different lengths.
+
+    Args:
+        batch: list of tuples containing tensors to pad.
+        sorting: whether to sort the batch by first tensor length descending.
+    """
     # takes list of tuples as input, returns list of tuples
     sorted_batch = sorted(batch, key=lambda x: x[0].shape[0], reverse=True) if sorting else batch
 
@@ -19,6 +26,13 @@ def pad_sequence(batch, sorting=False):
 
 
 class SequenceBlock(TransformBlock):
+    """TransformBlock for time series sequence data.
+
+    Args:
+        seq_extract: transform that extracts the sequence from the data source.
+        padding: whether to pad sequences of different lengths in each batch.
+    """
+
     def __init__(self, seq_extract, padding=False):
         return super().__init__(
             type_tfms=[seq_extract], dls_kwargs={} if not padding else {"before_batch": pad_sequence}
@@ -27,14 +41,35 @@ class SequenceBlock(TransformBlock):
     @classmethod
     @delegates(HDF2Sequence, keep=True)
     def from_hdf(cls, clm_names, seq_cls=TensorSequencesInput, padding=False, **kwargs):
+        """Create a SequenceBlock from HDF5 files.
+
+        Args:
+            clm_names: column/dataset names to extract from the HDF5 file.
+            seq_cls: tensor class for the extracted sequences.
+            padding: whether to pad sequences of different lengths.
+        """
         return cls(HDF2Sequence(clm_names, to_cls=seq_cls, **kwargs), padding)
 
     @classmethod
     def from_numpy(cls, seq_cls=TensorSequencesInput, padding=False, **kwargs):
+        """Create a SequenceBlock from numpy arrays.
+
+        Args:
+            seq_cls: tensor class for the extracted sequences.
+            padding: whether to pad sequences of different lengths.
+        """
         return cls(ToTensor(enc=seq_cls), padding)
 
 
 class ScalarNormalize(DisplayedTransform):
+    """Normalize scalar inputs by mean and standard deviation.
+
+    Args:
+        mean: precomputed mean for normalization, or None to compute from data.
+        std: precomputed std for normalization, or None to compute from data.
+        axes: axes over which to compute statistics.
+    """
+
     def __init__(self, mean=None, std=None, axes=(0,)):
         self.mean = mean
         self.std = std
@@ -42,6 +77,15 @@ class ScalarNormalize(DisplayedTransform):
 
     @classmethod
     def from_stats(cls, mean, std, dim=1, ndim=4, cuda=True):
+        """Create from precomputed statistics with broadcasting.
+
+        Args:
+            mean: mean value(s) for normalization.
+            std: standard deviation value(s) for normalization.
+            dim: dimension index for broadcasting.
+            ndim: total number of dimensions for the broadcast shape.
+            cuda: whether to place tensors on GPU.
+        """
         return cls(*broadcast_vec(dim, ndim, mean, std, cuda=cuda))
 
     def setups(self, dl: DataLoader):
@@ -66,15 +110,33 @@ class ScalarNormalize(DisplayedTransform):
 
 
 class ScalarBlock(TransformBlock):
+    """TransformBlock for scalar input data with automatic normalization.
+
+    Args:
+        scl_extract: transform that extracts scalars from the data source.
+    """
+
     def __init__(self, scl_extract):
         return super().__init__(type_tfms=[scl_extract], batch_tfms=[ScalarNormalize()])
 
     @classmethod
     @delegates(HDF_Attrs2Scalars, keep=True)
     def from_hdf_attrs(cls, clm_names, scl_cls=TensorScalarsInput, **kwargs):
+        """Create a ScalarBlock from HDF5 file attributes.
+
+        Args:
+            clm_names: attribute names to extract from the HDF5 file.
+            scl_cls: tensor class for the extracted scalars.
+        """
         return cls(HDF_Attrs2Scalars(clm_names, to_cls=scl_cls, **kwargs))
 
     @classmethod
     @delegates(HDF_DS2Scalars, keep=True)
     def from_hdf_ds(cls, clm_names, scl_cls=TensorScalarsInput, **kwargs):
+        """Create a ScalarBlock from HDF5 datasets.
+
+        Args:
+            clm_names: dataset names to extract from the HDF5 file.
+            scl_cls: tensor class for the extracted scalars.
+        """
         return cls(HDF_DS2Scalars(clm_names, to_cls=scl_cls, **kwargs))

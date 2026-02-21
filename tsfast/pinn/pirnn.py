@@ -1,3 +1,5 @@
+"""Physics-Informed RNN models with dual encoder architecture."""
+
 __all__ = ["PIRNN", "AuxiliaryOutputLoss", "PIRNNLearner"]
 
 import torch
@@ -12,25 +14,45 @@ from functools import partial
 
 
 class PIRNN(nn.Module):
-    """Physics-Informed RNN with dual encoders: Sequence and State"""
+    """Physics-Informed RNN with dual encoders: Sequence and State.
+
+    Uses a diagnosis RNN (sequence encoder) to estimate initial hidden state
+    from an initialization window, then a prognosis RNN to predict forward.
+    Alternatively, an MLP state encoder maps a single physical state to hidden
+    state for faster initialization.
+
+    Args:
+        n_u: Number of inputs.
+        n_y: Number of outputs (total: supervised + auxiliary).
+        init_sz: Initialization sequence length.
+        n_y_supervised: Number of supervised outputs (in dataset). Defaults to n_y.
+        n_x: Number of extra states.
+        hidden_size: Hidden state size.
+        rnn_layer: Number of RNN layers.
+        state_encoder_hidden: Hidden size for state encoder MLP.
+        linear_layer: Linear layers in diagnosis RNN.
+        final_layer: Final layer complexity.
+        init_diag_only: Limit diagnosis to init_sz.
+        default_encoder_mode: Default encoder mode.
+        **kwargs: Additional arguments passed to RNN constructors.
+    """
 
     def __init__(
         self,
-        n_u: int,  # Number of inputs
-        n_y: int,  # Number of outputs (total: supervised + auxiliary)
-        init_sz: int,  # Initialization sequence length
-        n_y_supervised: int = None,  # Number of supervised outputs (in dataset)
-        n_x: int = 0,  # Number of extra states
-        hidden_size: int = 100,  # Hidden state size
-        rnn_layer: int = 1,  # Number of RNN layers
-        state_encoder_hidden: int = 64,  # Hidden size for state encoder MLP
-        linear_layer: int = 1,  # Linear layers in diagnosis RNN
-        final_layer: int = 0,  # Final layer complexity
-        init_diag_only: bool = False,  # Limit diagnosis to init_sz
-        default_encoder_mode: str = "sequence",  # Default encoder mode
+        n_u: int,
+        n_y: int,
+        init_sz: int,
+        n_y_supervised: int = None,
+        n_x: int = 0,
+        hidden_size: int = 100,
+        rnn_layer: int = 1,
+        state_encoder_hidden: int = 64,
+        linear_layer: int = 1,
+        final_layer: int = 0,
+        init_diag_only: bool = False,
+        default_encoder_mode: str = "sequence",
         **kwargs,
     ):
-        """Initialize PIRNN with both sequence and state encoders"""
         super().__init__()
         n_y_supervised = n_y_supervised if n_y_supervised is not None else n_y
         self.n_u = n_u
@@ -70,11 +92,17 @@ class PIRNN(nn.Module):
 
     def forward(
         self,
-        x: torch.Tensor,  # Input tensor
-        init_state: list = None,  # Initial hidden state (optional)
-        encoder_mode: str = "default",  # 'none', 'sequence', or 'state'
-    ) -> torch.Tensor:  # Output predictions
-        """Forward pass with encoder mode auto-detection or explicit selection"""
+        x: torch.Tensor,
+        init_state: list = None,
+        encoder_mode: str = "default",
+    ) -> torch.Tensor:
+        """Forward pass with encoder mode auto-detection or explicit selection.
+
+        Args:
+            x: Input tensor [batch, seq, features].
+            init_state: Initial hidden state. If None, estimated by encoder.
+            encoder_mode: Encoder selection - 'none', 'sequence', or 'state'.
+        """
 
         u = x[:, :, : self.n_u]
         # Use n_y_supervised for initialization sequence (only supervised outputs in data)
@@ -94,11 +122,20 @@ class PIRNN(nn.Module):
 
     def _forward_sequence_encoder(
         self,
-        u: torch.Tensor,  # Full input [batch, seq, n_u+n_x+n_y]
-        x_init: torch.Tensor,  # Initial state [batch, seq, n_x+n_y]
-        init_state: list = None,  # Initial hidden state (optional)
-    ) -> torch.Tensor:  # Output predictions
-        """Forward using sequence encoder (diagnosis RNN)"""
+        u: torch.Tensor,
+        x_init: torch.Tensor,
+        init_state: list = None,
+    ) -> torch.Tensor:
+        """Forward using sequence encoder (diagnosis RNN).
+
+        Args:
+            u: Prognosis input [batch, seq - init_sz, n_u].
+            x_init: Initialization window [batch, init_sz, n_u + n_x + n_y_supervised].
+            init_state: Initial hidden state. If None, estimated from x_init.
+
+        Returns:
+            Predictions [batch, seq, n_y] covering both init and prognosis windows.
+        """
         out_init, _ = self.rnn_diagnosis(x_init)
         if init_state is None:
             init_state = self.rnn_diagnosis.output_to_hidden(out_init, -1)
@@ -110,11 +147,20 @@ class PIRNN(nn.Module):
 
     def _forward_state_encoder(
         self,
-        u: torch.Tensor,  # Prognosis input [batch, seq, n_u]
-        x_init: torch.Tensor,  # Init window input [batch, init_sz, n_x + n_y_supervised]
+        u: torch.Tensor,
+        x_init: torch.Tensor,
         init_state,
-    ) -> torch.Tensor:  # Output predictions
-        """Forward using state encoder (MLP), zero-pads init window"""
+    ) -> torch.Tensor:
+        """Forward using state encoder (MLP), zero-pads init window.
+
+        Args:
+            u: Prognosis input [batch, seq - init_sz, n_u].
+            x_init: Init window [batch, init_sz, n_x + n_y_supervised].
+            init_state: Pre-computed hidden state, or None to encode from x_init last step.
+
+        Returns:
+            Predictions [batch, seq, n_y] with init window zero-padded.
+        """
         if init_state is None:  # If init_state is not provided, use last initialization step
             init_state = x_init[:, -1, -self.n_y_supervised :]
         init_state = self.encode_single_state(init_state)
@@ -123,18 +169,33 @@ class PIRNN(nn.Module):
 
     def _forward_predictor(
         self,
-        u: torch.Tensor,  # Input tensor
-        init_state: list,  # Initial hidden state
-    ) -> torch.Tensor:  # Output predictions
-        """Forward using predictor RNN"""
+        u: torch.Tensor,
+        init_state: list,
+    ) -> torch.Tensor:
+        """Forward using predictor RNN.
+
+        Args:
+            u: Input tensor [batch, seq, n_u].
+            init_state: Initial hidden state [rnn_layer, batch, hidden_size].
+
+        Returns:
+            Predictions [batch, seq, n_y].
+        """
         out_prog, _ = self.rnn_prognosis(u, init_state)
         return self.final(out_prog[-1])
 
     def encode_single_state(
         self,
-        physical_state: torch.Tensor,  # Physical state [batch, n_y_supervised]
-    ) -> list:  # Hidden state compatible with RNN [rnn_layer, batch, hidden_size]
-        """Convert single physical state to RNN-compatible hidden state"""
+        physical_state: torch.Tensor,
+    ) -> list:
+        """Convert single physical state to RNN-compatible hidden state.
+
+        Args:
+            physical_state: Physical state [batch, n_y_supervised].
+
+        Returns:
+            Hidden state as list of [1, batch, hidden_size] tensors, one per RNN layer.
+        """
         batch_size = physical_state.shape[0]
 
         # Encode: [batch, n_y_supervised] -> [batch, hidden_size * rnn_layer]
@@ -149,42 +210,61 @@ class PIRNN(nn.Module):
 
 
 class AuxiliaryOutputLoss:
-    """Wrapper that applies loss only to supervised outputs, ignoring auxiliary outputs"""
+    """Wrapper that applies loss only to supervised outputs, ignoring auxiliary outputs.
+
+    Args:
+        loss_func: Loss function to wrap.
+        n_supervised: Number of supervised output channels.
+    """
 
     def __init__(
         self,
-        loss_func,  # Loss function to wrap
-        n_supervised: int,  # Number of supervised output channels
+        loss_func,
+        n_supervised: int,
     ):
-        """Wrap loss function to only compute on supervised outputs"""
         self.loss_func = loss_func
         self.n_supervised = n_supervised
 
     def __call__(
         self,
-        pred: torch.Tensor,  # Predictions [batch, seq, n_y_total]
-        targ: torch.Tensor,  # Targets [batch, seq, n_y_supervised]
-    ) -> torch.Tensor:  # Loss value
-        """Apply loss only to first n_supervised channels of predictions"""
+        pred: torch.Tensor,
+        targ: torch.Tensor,
+    ) -> torch.Tensor:
+        """Apply loss only to first n_supervised channels of predictions."""
         return self.loss_func(pred[..., : self.n_supervised], targ)
 
 
 @delegates(PIRNN, keep=True)
 def PIRNNLearner(
-    dls,  # DataLoaders
-    init_sz: int,  # Initialization sequence length
-    n_aux_outputs: int = 0,  # Number of auxiliary outputs (not in dataset)
-    attach_output: bool = False,  # Whether to attach output to input
-    loss_func=nn.L1Loss(),  # Loss function
-    metrics=None,  # Metrics
-    opt_func=Adam,  # Optimizer
-    lr: float = 3e-3,  # Learning rate
-    cbs=None,  # Additional callbacks
-    input_norm=StandardScaler1D,  # Input normalization Scaler class
-    output_norm=None,  # Output denormalization Scaler class
-    **kwargs,  # Additional arguments for PIRNN
+    dls,
+    init_sz: int,
+    n_aux_outputs: int = 0,
+    attach_output: bool = False,
+    loss_func=nn.L1Loss(),
+    metrics=None,
+    opt_func=Adam,
+    lr: float = 3e-3,
+    cbs=None,
+    input_norm=StandardScaler1D,
+    output_norm=None,
+    **kwargs,
 ):
-    """Create PIRNN learner with appropriate configuration"""
+    """Create PIRNN learner with appropriate configuration.
+
+    Args:
+        dls: DataLoaders.
+        init_sz: Initialization sequence length.
+        n_aux_outputs: Number of auxiliary outputs (not in dataset).
+        attach_output: Whether to attach output to input via PredictionCallback.
+        loss_func: Loss function.
+        metrics: Metrics.
+        opt_func: Optimizer.
+        lr: Learning rate.
+        cbs: Additional callbacks.
+        input_norm: Input normalization Scaler class.
+        output_norm: Output denormalization Scaler class.
+        **kwargs: Additional arguments for PIRNN.
+    """
     from tsfast.prediction.core import PredictionCallback
     from tsfast.learner.losses import fun_rmse
 

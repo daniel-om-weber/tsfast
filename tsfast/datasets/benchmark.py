@@ -1,3 +1,5 @@
+"""Pre-configured DataLoader factories for identibench benchmark datasets."""
+
 __all__ = [
     "BENCHMARK_DL_KWARGS",
     "create_dls_wh",
@@ -71,12 +73,16 @@ BENCHMARK_DL_KWARGS = {
 
 @delegates(create_dls_downl, keep=True)
 def create_dls_from_spec(
-    spec: idb.benchmark.BenchmarkSpecBase,  # Specification of the benchmark from identibench
-    **kwargs,  # kwargs for create_dls_downl
+    spec: idb.benchmark.BenchmarkSpecBase,
+    **kwargs,
 ):
-    """
-    Create a dataloaders object from identibench benchmark specification. Extracts
-    benchmark specific kwargs from BENCHMARK_DL_KWARGS and adds them to the kwargs for create_dls_downl.
+    """Create DataLoaders from an identibench benchmark specification.
+
+    Extracts benchmark-specific kwargs from BENCHMARK_DL_KWARGS and merges them
+    with the provided kwargs for create_dls_downl.
+
+    Args:
+        spec: benchmark specification from identibench
     """
     # add kwargs form spec to dl_kwargs if the key is not already in dl_kwargs
     spec_kwargs = {

@@ -1,3 +1,5 @@
+"""HDF5 data extraction, resampling, and tensor types for time series."""
+
 __all__ = [
     "hdf_extensions",
     "obj_in_lst",
@@ -273,13 +275,17 @@ from scipy.signal import butter, lfilter, lfilter_zi
 
 
 def resample_interp(x, resampling_factor, sequence_first=True, lowpass_cut=1.0, upsample_cubic_cut=None):
-    """signal resampling using linear or cubic interpolation
+    """Signal resampling using linear or cubic interpolation.
 
-    x: signal to resample with shape: features x resampling_dimension or resampling_dimension x  features if sequence_first=True
-    resampling_factor: Factor > 0 that scales the signal
-    lowpass_cut: Upper boundary for resampling_factor that activates the lowpassfilter, low values exchange accuracy for performance, default is 0.7
-    upsample_cubic_cut: Lower boundary for resampling_factor that activates cubic interpolation at high upsampling values.
-                        Improves signal dynamics in exchange of performance. None deactivates cubic interpolation
+    Args:
+        x: signal to resample with shape features x resampling_dimension
+            or resampling_dimension x features if sequence_first=True
+        resampling_factor: factor > 0 that scales the signal
+        sequence_first: whether the resampling dimension is the first axis
+        lowpass_cut: upper boundary for resampling_factor that activates the
+            lowpass filter, low values exchange accuracy for performance
+        upsample_cubic_cut: lower boundary for resampling_factor that activates
+            cubic interpolation at high upsampling values, None deactivates it
     """
 
     if sequence_first:
@@ -330,18 +336,18 @@ def hdf_extract_sequence(
     dt_idx=False,
     fast_resample=True,
 ):
-    """
-    extracts a sequence with the shape [seq_len x num_features]
+    """Extract a sequence with shape [seq_len x num_features] from an HDF5 file.
 
-    hdf_path: file path of hdf file, may be a string or path type
-    clms: list of dataset names of sequences in hdf file
-    dataset: dataset root for clms. Useful for multiples sequences stored in one file.
-    l_slc: left boundary for extraction of a window of the whole sequence
-    r_slc: right boundary for extraction of a window of the whole sequence
-    resampling_factor: scaling factor for the sequence length, uses 'resample_interp' for resampling
-    fs_idx: clms list idx of fs entry in sequence. Will be scaled by resampling_factor after resampling
-    dt_idx: clms list idx of dt entry in sequence. Will be scaled by resampling_factor after resampling
-    fast_resample: if True, uses linear interpolation with anti-aliasing filter for faster resampling. Is less accurate than fft based resampling
+    Args:
+        hdf_path: file path of hdf file, may be a string or path type
+        clms: list of dataset names of sequences in hdf file
+        dataset: dataset root for clms, useful for multiple sequences stored in one file
+        l_slc: left boundary for extraction of a window of the whole sequence
+        r_slc: right boundary for extraction of a window of the whole sequence
+        resampling_factor: scaling factor for the sequence length, uses resample_interp
+        fs_idx: clms list idx of fs entry, scaled by resampling_factor after resampling
+        dt_idx: clms list idx of dt entry, scaled by resampling_factor after resampling
+        fast_resample: if True, uses linear interpolation with anti-aliasing filter instead of fft
     """
 
     if resampling_factor is not None:
@@ -483,19 +489,7 @@ class HDF2Sequence(Transform):
         dt_idx=None,
         fast_resample=True,
     ):
-        """
-        extracts a sequence with the shape [seq_len x num_features]
-
-        hdf_path: file path of hdf file, may be a string or path type
-        clms: list of dataset names of sequences in hdf file
-        dataset: dataset root for clms. Useful for multiples sequences stored in one file.
-        l_slc: left boundary for extraction of a window of the whole sequence
-        r_slc: right boundary for extraction of a window of the whole sequence
-        resampling_factor: scaling factor for the sequence length, uses 'resample_interp' for resampling
-        fs_idx: clms list idx of fs entry in sequence. Will be scaled by resampling_factor after resampling
-        dt_idx: clms list idx of dt entry in sequence. Will be scaled by resampling_factor after resampling
-        fast_resample: if True, uses linear interpolation with anti-aliasing filter for faster resampling. Is less accurate than fft based resampling
-        """
+        """Extract a sequence with shape [seq_len x num_features]."""
 
         if resampling_factor is not None:
             seq_len = (
@@ -596,20 +590,35 @@ class HDF_Attrs2Scalars(Transform):
 
 
 def hdf_ds2scalars(
-    hdf_path: str,  # path to hdf5 file
-    clm_names: list[str],  # list of dataset column names to extract
-    dataset: str | None = None,  # dataset root for columns
-    l_slc: int | None = None,  # left boundary for sequence window
-    r_slc: int | None = None,  # right boundary for sequence window
-    resampling_factor: float | None = None,  # scaling factor for sequence length
-    fs_idx: int | None = None,  # index of frequency column for resampling
-    dt_idx: int | None = None,  # index of time column for resampling
-    fast_resample: bool = True,  # use linear interpolation vs fft resampling
-    index: int | Callable | None = None,  # specific index to extract or aggregation function
-    agg_func: Callable | None = None,  # aggregation function to apply
-    dtype: np.dtype = np.float32,  # output data type for result array
-):  # array of scalar values, one per column
-    """extract scalar values from hdf datasets using indexing or aggregation"""
+    hdf_path: str,
+    clm_names: list[str],
+    dataset: str | None = None,
+    l_slc: int | None = None,
+    r_slc: int | None = None,
+    resampling_factor: float | None = None,
+    fs_idx: int | None = None,
+    dt_idx: int | None = None,
+    fast_resample: bool = True,
+    index: int | Callable | None = None,
+    agg_func: Callable | None = None,
+    dtype: np.dtype = np.float32,
+):
+    """Extract scalar values from HDF datasets using indexing or aggregation.
+
+    Args:
+        hdf_path: path to hdf5 file
+        clm_names: list of dataset column names to extract
+        dataset: dataset root for columns
+        l_slc: left boundary for sequence window
+        r_slc: right boundary for sequence window
+        resampling_factor: scaling factor for sequence length
+        fs_idx: index of frequency column for resampling
+        dt_idx: index of time column for resampling
+        fast_resample: use linear interpolation vs fft resampling
+        index: specific index to extract or aggregation function
+        agg_func: aggregation function to apply
+        dtype: output data type for result array
+    """
     seq = hdf_extract_sequence(
         hdf_path, clm_names, dataset, l_slc, r_slc, resampling_factor, fs_idx, dt_idx, fast_resample
     )
@@ -628,16 +637,23 @@ def hdf_ds2scalars(
 
 
 class HDF_DS2Scalars(Transform):
-    """extract scalar values from hdf datasets using indexing or aggregation"""
+    """Extract scalar values from HDF datasets using indexing or aggregation.
+
+    Args:
+        clm_names: list of dataset column names to extract
+        index: specific index to extract or aggregation function
+        agg_func: aggregation function to apply
+        to_cls: transform to apply to final result
+    """
 
     def __init__(
         self,
-        clm_names: list[str],  # list of dataset column names to extract
-        index: int | Callable | None = None,  # specific index to extract or aggregation function
-        agg_func: Callable | None = None,  # aggregation function to apply
-        to_cls: Callable = noop,  # transform to apply to final result
+        clm_names: list[str],
+        index: int | Callable | None = None,
+        agg_func: Callable | None = None,
+        to_cls: Callable = noop,
         **extract_kwargs,
-    ):  # additional arguments passed to hdf_ds2scalars
+    ):
         self.clm_names = clm_names
         self.index = index
         self.agg_func = agg_func
@@ -721,9 +737,9 @@ def toTensorSequencesOutput(o):
 class TensorScalars(TensorBase):
     def __format__(
         self,
-        format_spec: str,  # format specification string for numeric formatting
-    ) -> str:  # formatted string representation of scalars
-        """format tensor scalars using standard format specifications"""
+        format_spec: str,
+    ) -> str:
+        """Format tensor scalars using standard format specifications."""
         if self.ndim == 0:
             # 0-dimensional tensor (single scalar)
             return format(self.item(), format_spec)
@@ -737,13 +753,20 @@ class TensorScalars(TensorBase):
 
     def show(
         self,
-        ctx: plt.Axes | None = None,  # matplotlib axes to draw on
-        labels: list[str] | None = None,  # labels for each scalar value
-        title_prefix: str = "",  # prefix for plot title
-        format_spec: str = ".3g",  # format specification for values
-        **kwargs,  # additional arguments for subplots or set_title
-    ) -> plt.Axes:  # axes object with scalars as title
-        """show scalar values as plot title with optional labels"""
+        ctx: plt.Axes | None = None,
+        labels: list[str] | None = None,
+        title_prefix: str = "",
+        format_spec: str = ".3g",
+        **kwargs,
+    ) -> plt.Axes:
+        """Show scalar values as plot title with optional labels.
+
+        Args:
+            ctx: matplotlib axes to draw on
+            labels: labels for each scalar value
+            title_prefix: prefix for plot title
+            format_spec: format specification for values
+        """
         if ctx is None:
             figsize = kwargs.pop("figsize", None)
             ctx = plt.subplots(figsize=figsize)[1]
@@ -768,18 +791,30 @@ class TensorScalars(TensorBase):
     @delegates(HDF_Attrs2Scalars, keep=True)
     def from_hdf_attrs(
         cls,
-        clm_names,  # column names to extract from attributes
-        **kwargs,  # additional arguments for transform
-    ) -> HDF_Attrs2Scalars:  # transform for hdf attributes
+        clm_names,
+        **kwargs,
+    ) -> HDF_Attrs2Scalars:
+        """Create a transform for extracting scalars from HDF attributes.
+
+        Args:
+            clm_names: column names to extract from attributes
+            **kwargs: additional arguments for HDF_Attrs2Scalars
+        """
         return HDF_Attrs2Scalars(clm_names, **kwargs)
 
     @classmethod
     @delegates(HDF_DS2Scalars, keep=True)
     def from_hdf_ds(
         cls,
-        clm_names,  # column names to extract from datasets
-        **kwargs,  # additional arguments for transform
-    ) -> HDF_DS2Scalars:  # transform for hdf datasets
+        clm_names,
+        **kwargs,
+    ) -> HDF_DS2Scalars:
+        """Create a transform for extracting scalars from HDF datasets.
+
+        Args:
+            clm_names: column names to extract from datasets
+            **kwargs: additional arguments for HDF_DS2Scalars
+        """
         return HDF_DS2Scalars(clm_names, **kwargs)
 
 

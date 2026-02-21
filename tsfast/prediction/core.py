@@ -1,3 +1,5 @@
+"""Prediction callbacks for autoregressive input concatenation."""
+
 __all__ = ["PredictionCallback"]
 
 from ..data import *
@@ -7,13 +9,21 @@ from fastai.basics import *
 
 
 class PredictionCallback(Callback):
-    "Concatenates the system output to the input data for autoregression, assumes 1-tuple as input"
+    """Concatenates system output to input for autoregression.
 
-    order = -56  # the callback has to be the first one executed, so everything else has the correct database
+    Assumes a 1-tuple as input. Must execute first so downstream callbacks
+    see the correct data.
+
+    Args:
+        t_offset: number of steps the output is shifted in the past, shortens
+            the sequence length by that amount
+    """
+
+    order = -56
 
     def __init__(
         self,
-        t_offset=1,  # the number of steps output is shifted in the past, shortens the sequence length by that number
+        t_offset=1,
     ):
         super().__init__()
         self.t_offset = t_offset
