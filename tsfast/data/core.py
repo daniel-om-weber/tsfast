@@ -1,249 +1,338 @@
-
-__all__ = ['hdf_extensions', 'obj_in_lst', 'count_parameters', 'get_hdf_files', 'apply_df_tfms', 'CreateDict', 'ValidClmContains',
-           'ValidClmIs', 'FilterClm', 'get_hdf_seq_len', 'df_get_hdf_seq_len', 'DfHDFGetSeqLen', 'DfResamplingFactor',
-           'DfHDFCreateWindows', 'DfApplyFuncSplit', 'DfFilterQuery', 'DfDropClmExcept', 'calc_shift_offsets',
-           'running_mean', 'downsample_mean', 'resample_interp', 'hdf_extract_sequence', 'Memoize', 'MemoizeMP',
-           'HDF2Sequence', 'hdf_attrs2scalars', 'HDF_Attrs2Scalars', 'hdf_ds2scalars', 'HDF_DS2Scalars',
-           'TensorSequences', 'TensorSequencesInput', 'TensorSequencesOutput', 'toTensorSequencesInput',
-           'toTensorSequencesOutput', 'TensorScalars', 'TensorScalarsInput', 'TensorScalarsOutput',
-           'toTensorScalarsInput', 'toTensorScalarsOutput', 'plot_sequence', 'plot_seqs_single_figure',
-           'plot_seqs_multi_figures', 'show_batch', 'show_results']
+__all__ = [
+    "hdf_extensions",
+    "obj_in_lst",
+    "count_parameters",
+    "get_hdf_files",
+    "apply_df_tfms",
+    "CreateDict",
+    "ValidClmContains",
+    "ValidClmIs",
+    "FilterClm",
+    "get_hdf_seq_len",
+    "df_get_hdf_seq_len",
+    "DfHDFGetSeqLen",
+    "DfResamplingFactor",
+    "DfHDFCreateWindows",
+    "DfApplyFuncSplit",
+    "DfFilterQuery",
+    "DfDropClmExcept",
+    "calc_shift_offsets",
+    "running_mean",
+    "downsample_mean",
+    "resample_interp",
+    "hdf_extract_sequence",
+    "Memoize",
+    "MemoizeMP",
+    "HDF2Sequence",
+    "hdf_attrs2scalars",
+    "HDF_Attrs2Scalars",
+    "hdf_ds2scalars",
+    "HDF_DS2Scalars",
+    "TensorSequences",
+    "TensorSequencesInput",
+    "TensorSequencesOutput",
+    "toTensorSequencesInput",
+    "toTensorSequencesOutput",
+    "TensorScalars",
+    "TensorScalarsInput",
+    "TensorScalarsOutput",
+    "toTensorScalarsInput",
+    "toTensorScalarsOutput",
+    "plot_sequence",
+    "plot_seqs_single_figure",
+    "plot_seqs_multi_figures",
+    "show_batch",
+    "show_results",
+]
 
 from fastai.data.all import *
 import h5py
 
-def obj_in_lst(lst,cls):
-    '''retrieve first object of type cls from a list'''
+
+def obj_in_lst(lst, cls):
+    """retrieve first object of type cls from a list"""
     return next(o for o in lst if type(o) is cls)
 
+
 def count_parameters(model):
-    '''retrieve number of trainable parameters of a model'''
+    """retrieve number of trainable parameters of a model"""
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-hdf_extensions = ['.hdf5', '.h5']
-def get_hdf_files(path,recurse=True, folders=None):
+
+hdf_extensions = [".hdf5", ".h5"]
+
+
+def get_hdf_files(path, recurse=True, folders=None):
     "Get hdf5 files in `path` recursively, only in `folders`, if specified."
     return get_files(path, extensions=hdf_extensions, recurse=recurse, folders=folders)
 
-def apply_df_tfms(src,pd_tfms = None):
-    '''Create Pandas Dataframe out of a list of items, with a list of df transforms applied'''
+
+def apply_df_tfms(src, pd_tfms=None):
+    """Create Pandas Dataframe out of a list of items, with a list of df transforms applied"""
     if type(src) is pd.DataFrame:
         df = src
     else:
-        df = pd.DataFrame(data=src.items,columns=['path'],dtype=str)
+        df = pd.DataFrame(data=src.items, columns=["path"], dtype=str)
     if pd_tfms is not None:
         for t in pd_tfms:
             df = t(df)
     return df
 
-def CreateDict(pd_tfms = None):
-    '''Create List of Dictionarys out of a list of items, with a list of df transforms applied'''
+
+def CreateDict(pd_tfms=None):
+    """Create List of Dictionarys out of a list of items, with a list of df transforms applied"""
+
     def _inner(src):
-        df = apply_df_tfms(src,pd_tfms)
-#         df_dict_list = df.to_dict(orient='records') native to_dict is slower than self written approach
+        df = apply_df_tfms(src, pd_tfms)
+        #         df_dict_list = df.to_dict(orient='records') native to_dict is slower than self written approach
         df_values = df.values
-        df_dict = {name:list(df_values[:,i]) for (i,name) in enumerate(df.columns)}
+        df_dict = {name: list(df_values[:, i]) for (i, name) in enumerate(df.columns)}
         df_dict_list = [{name: df_dict[name][i] for name in df_dict} for i in range(len(df))]
         return df_dict_list
+
     return _inner
+
 
 def ValidClmContains(lst_valid):
-    '''add validation column using a list of strings that are part of the validation frames'''
+    """add validation column using a list of strings that are part of the validation frames"""
+
     def _inner(df):
-        re_valid = '|'.join([re.escape(f) for f in lst_valid])
-        df['valid'] = df.path.str.contains(re_valid)
+        re_valid = "|".join([re.escape(f) for f in lst_valid])
+        df["valid"] = df.path.str.contains(re_valid)
         return df
 
     return _inner
+
 
 def ValidClmIs(lst_valid):
-    '''adds validation column using a list of validation filenames'''
+    """adds validation column using a list of validation filenames"""
+
     def _inner(df):
-        df['valid'] = df.path.isin([str(f) for f in lst_valid])
+        df["valid"] = df.path.isin([str(f) for f in lst_valid])
         return df
 
     return _inner
 
-def FilterClm(clm_name,func = lambda x:x):
-    '''adds validation column using a list of validation filenames'''
+
+def FilterClm(clm_name, func=lambda x: x):
+    """adds validation column using a list of validation filenames"""
+
     def _inner(df):
         return df[func(df[clm_name])]
 
     return _inner
 
-def get_hdf_seq_len(df,clm,ds=None):
-    '''extract the sequence length of the dataset with the 'clm' name and 'f_path' path  '''
-    with h5py.File(df['path'],'r') as f:
-        ds = f if 'dataset' not in df else f[df['dataset']]
-        f_len = max(ds[clm].shape)
-    return f_len 
 
-def df_get_hdf_seq_len(df,clm,ds=None):
-    '''extracts the sequence length of every file in advance to prepare repeated window extractions with 'DfHDFCreateWindows' '''
-#     df['seq_len'] = ([get_hdf_seq_len(row.path,clm) for (idx, row) in df.iterrows()])
-    df['seq_len'] = df.apply(lambda x: get_hdf_seq_len(x,clm),axis=1)
+def get_hdf_seq_len(df, clm, ds=None):
+    """extract the sequence length of the dataset with the 'clm' name and 'f_path' path"""
+    with h5py.File(df["path"], "r") as f:
+        ds = f if "dataset" not in df else f[df["dataset"]]
+        f_len = max(ds[clm].shape)
+    return f_len
+
+
+def df_get_hdf_seq_len(df, clm, ds=None):
+    """extracts the sequence length of every file in advance to prepare repeated window extractions with 'DfHDFCreateWindows'"""
+    #     df['seq_len'] = ([get_hdf_seq_len(row.path,clm) for (idx, row) in df.iterrows()])
+    df["seq_len"] = df.apply(lambda x: get_hdf_seq_len(x, clm), axis=1)
     return df
+
 
 def DfHDFGetSeqLen(clm):
     def _inner(df):
-        return df_get_hdf_seq_len(df,clm)
+        return df_get_hdf_seq_len(df, clm)
+
     return _inner
+
 
 import numbers
 
 
-def DfResamplingFactor(src_fs,lst_targ_fs):
-    if not isinstance(src_fs, numbers.Number) and type(src_fs) is not str: 
-        raise ValueError('src_fs has to be a column name or a fixed number')
-    
+def DfResamplingFactor(src_fs, lst_targ_fs):
+    if not isinstance(src_fs, numbers.Number) and type(src_fs) is not str:
+        raise ValueError("src_fs has to be a column name or a fixed number")
+
     def _inner(df):
         np_targ_fs = np.array(lst_targ_fs)
-        pd.options.mode.chained_assignment = None #every row is a reference so we need to suppress the warning messages while copying
+        pd.options.mode.chained_assignment = (
+            None  # every row is a reference so we need to suppress the warning messages while copying
+        )
 
-        #repeat entries for every target fs
-        res_df = df.iloc[np.repeat(np.arange(len(df)),len(np_targ_fs))] 
-        targ_fs = np.tile(np_targ_fs,len(df))
-        res_df['targ_fs'] = targ_fs
-        
+        # repeat entries for every target fs
+        res_df = df.iloc[np.repeat(np.arange(len(df)), len(np_targ_fs))]
+        targ_fs = np.tile(np_targ_fs, len(df))
+        res_df["targ_fs"] = targ_fs
+
         if isinstance(src_fs, numbers.Number):
-            #src_fs is a fixed number
-            res_df['resampling_factor'] = targ_fs/src_fs
+            # src_fs is a fixed number
+            res_df["resampling_factor"] = targ_fs / src_fs
         else:
-            #src_fs is a column name of the df
-            res_df['resampling_factor'] = targ_fs/res_df[src_fs]
+            # src_fs is a column name of the df
+            res_df["resampling_factor"] = targ_fs / res_df[src_fs]
 
-        pd.options.mode.chained_assignment = 'warn'
-        
+        pd.options.mode.chained_assignment = "warn"
+
         return res_df
+
     return _inner
 
-def DfHDFCreateWindows(win_sz,stp_sz, clm, fixed_start = False, fixed_end = False):
-    '''create windows of sequences, splits sequence into multiple items'''
+
+def DfHDFCreateWindows(win_sz, stp_sz, clm, fixed_start=False, fixed_end=False):
+    """create windows of sequences, splits sequence into multiple items"""
+
     def _inner(df):
-        if fixed_start and fixed_end: 
+        if fixed_start and fixed_end:
             raise Exception
-        
-        if 'seq_len' in df:
+
+        if "seq_len" in df:
             np_f_len = df.seq_len.values
         else:
-            np_f_len = np.array([get_hdf_seq_len(row,clm) for (idx, row) in df.iterrows()])
-            
-        if 'resampling_factor' in df: 
-            np_f_len =(np_f_len*df.resampling_factor.values).astype(int)
-            
-        n_win = ((np_f_len-win_sz)//stp_sz)+1
-        #cast array n_win to int and clip negative values to 0
+            np_f_len = np.array([get_hdf_seq_len(row, clm) for (idx, row) in df.iterrows()])
+
+        if "resampling_factor" in df:
+            np_f_len = (np_f_len * df.resampling_factor.values).astype(int)
+
+        n_win = ((np_f_len - win_sz) // stp_sz) + 1
+        # cast array n_win to int and clip negative values to 0
         n_win = n_win.astype(int)
-        n_win = np.clip(n_win,a_min=0,a_max=None) #remove negative values at instances where the winsize is smaller than the seq_len
+        n_win = np.clip(
+            n_win, a_min=0, a_max=None
+        )  # remove negative values at instances where the winsize is smaller than the seq_len
         lst_idx = np.arange(len(np_f_len))
-        
-        pd.options.mode.chained_assignment = None #every row is a reference so we need to suppress the warning messages while copying
-        
-        res_df = df.iloc[np.repeat(lst_idx,n_win)]
-#         res_df = df.loc[np.repeat(lst_idx,n_win)] #the loc variant as a little bit slower because it creates copies and returns wrong values with redundant indexes, but is more robust
+
+        pd.options.mode.chained_assignment = (
+            None  # every row is a reference so we need to suppress the warning messages while copying
+        )
+
+        res_df = df.iloc[np.repeat(lst_idx, n_win)]
+        #         res_df = df.loc[np.repeat(lst_idx,n_win)] #the loc variant as a little bit slower because it creates copies and returns wrong values with redundant indexes, but is more robust
 
         step_idx = np.concatenate([np.arange(x) for x in n_win])
-    
-        
-        res_df['l_slc'] = step_idx*stp_sz if not fixed_start else None
-        res_df['r_slc'] = step_idx*stp_sz + win_sz if not fixed_end else None
-            
-        pd.options.mode.chained_assignment = 'warn'
-            
+
+        res_df["l_slc"] = step_idx * stp_sz if not fixed_start else None
+        res_df["r_slc"] = step_idx * stp_sz + win_sz if not fixed_end else None
+
+        pd.options.mode.chained_assignment = "warn"
+
         return res_df
-    
+
     return _inner
 
-def DfApplyFuncSplit(split_func,func1,func2):
-    '''apply two different functions on the dataframe, func1 on the first indices of split_func, func2 on the second indices.
-        Split_func is a Training, Validation split function'''
+
+def DfApplyFuncSplit(split_func, func1, func2):
+    """apply two different functions on the dataframe, func1 on the first indices of split_func, func2 on the second indices.
+    Split_func is a Training, Validation split function"""
+
     def _inner(df):
-        (idxs1,idxs2) = split_func(df.path)
-        df1= func1(df.iloc[idxs1])
-        df2= func2(df.iloc[idxs2])
-        return pd.concat((df1,df2))
+        (idxs1, idxs2) = split_func(df.path)
+        df1 = func1(df.iloc[idxs1])
+        df2 = func2(df.iloc[idxs2])
+        return pd.concat((df1, df2))
+
     return _inner
+
 
 def DfFilterQuery(query):
     def _inner(df):
         return df.query(query)
+
     return _inner
 
-def DfDropClmExcept(clms = ['path','l_slc','r_slc','p_sample','resampling_factor']):
-    '''drop unused dataframe columns as a last optional step to accelerate dictionary conversion'''
+
+def DfDropClmExcept(clms=["path", "l_slc", "r_slc", "p_sample", "resampling_factor"]):
+    """drop unused dataframe columns as a last optional step to accelerate dictionary conversion"""
+
     def _inner(df):
         return df[[c for c in clms if c in df]]
+
     return _inner
+
 
 def calc_shift_offsets(clm_shift):
     clm_shift = np.array(clm_shift)
-    l_offs = -min(clm_shift.min(),0)
-    r_offs = -max(clm_shift.max(),0)
-    l_shift = clm_shift+l_offs
-    r_shift = clm_shift+r_offs
-    dim_red = l_offs-r_offs
-    return l_shift,r_shift,dim_red
+    l_offs = -min(clm_shift.min(), 0)
+    r_offs = -max(clm_shift.max(), 0)
+    l_shift = clm_shift + l_offs
+    r_shift = clm_shift + r_offs
+    dim_red = l_offs - r_offs
+    return l_shift, r_shift, dim_red
+
 
 def running_mean(x, N):
-    cumsum = np.cumsum(np.insert(x, 0, 0,axis=0),axis=0) 
+    cumsum = np.cumsum(np.insert(x, 0, 0, axis=0), axis=0)
     return (cumsum[N:] - cumsum[:-N]) / float(N)
 
-def downsample_mean(x,N):
+
+def downsample_mean(x, N):
     trunc = -(x.shape[0] % N)
     trunc = trunc if trunc != 0 else None
-    return x[:trunc,:].reshape((-1,N,x.shape[-1])).mean(axis=1)
+    return x[:trunc, :].reshape((-1, N, x.shape[-1])).mean(axis=1)
+
 
 from scipy.signal import butter, lfilter, lfilter_zi
 
 
-def resample_interp(x,resampling_factor,sequence_first=True, lowpass_cut=1.0, upsample_cubic_cut = None):
-    '''signal resampling using linear or cubic interpolation
-    
+def resample_interp(x, resampling_factor, sequence_first=True, lowpass_cut=1.0, upsample_cubic_cut=None):
+    """signal resampling using linear or cubic interpolation
+
     x: signal to resample with shape: features x resampling_dimension or resampling_dimension x  features if sequence_first=True
     resampling_factor: Factor > 0 that scales the signal
     lowpass_cut: Upper boundary for resampling_factor that activates the lowpassfilter, low values exchange accuracy for performance, default is 0.7
-    upsample_cubic_cut: Lower boundary for resampling_factor that activates cubic interpolation at high upsampling values. 
+    upsample_cubic_cut: Lower boundary for resampling_factor that activates cubic interpolation at high upsampling values.
                         Improves signal dynamics in exchange of performance. None deactivates cubic interpolation
-    '''
-    
-    if sequence_first:
-        x = x.T
-    
-    fs_n = resampling_factor
-    #if downsampling rate is too high, lowpass filter before interpolation
-    if fs_n < lowpass_cut:
-        b,a = butter(2, fs_n)
-        zi = lfilter_zi(b,a)*x[:,:1] #initialize filter with steady state at first time step value
-        x,_ = lfilter(b,a,x,axis=-1,zi=zi)
+    """
 
-#         sos = butter(2, fs_n*1.2,output='sos')
-# #         sos = signal.cheby2(2,20, fs_n,output='sos')
-# #         import pdb;pdb.set_trace()
-#         zi = np.swapaxes(signal.sosfilt_zi(sos)[...,None]*x[:,0],1,2)
-#         x,_ = signal.sosfilt(sos, x,axis=-1,zi=zi)
-        
-    x_int = tensor(x)[None,...]
-    targ_size = int(x.shape[-1]*fs_n)
-    
-#     if upsampling rate is too high, switch from linear to cubic interpolation
-    if upsample_cubic_cut is None or fs_n <= upsample_cubic_cut:
-        x = nn.functional.interpolate(x_int, size=targ_size, mode='linear',align_corners=False)[0].numpy()
-    else:
-        x = nn.functional.interpolate(x_int[...,None], size=[targ_size,1], mode='bicubic',align_corners=False)[0,...,0].numpy()
-#     x = array(x_int)[0]
-    
     if sequence_first:
         x = x.T
-    
+
+    fs_n = resampling_factor
+    # if downsampling rate is too high, lowpass filter before interpolation
+    if fs_n < lowpass_cut:
+        b, a = butter(2, fs_n)
+        zi = lfilter_zi(b, a) * x[:, :1]  # initialize filter with steady state at first time step value
+        x, _ = lfilter(b, a, x, axis=-1, zi=zi)
+
+    #         sos = butter(2, fs_n*1.2,output='sos')
+    # #         sos = signal.cheby2(2,20, fs_n,output='sos')
+    # #         import pdb;pdb.set_trace()
+    #         zi = np.swapaxes(signal.sosfilt_zi(sos)[...,None]*x[:,0],1,2)
+    #         x,_ = signal.sosfilt(sos, x,axis=-1,zi=zi)
+
+    x_int = tensor(x)[None, ...]
+    targ_size = int(x.shape[-1] * fs_n)
+
+    #     if upsampling rate is too high, switch from linear to cubic interpolation
+    if upsample_cubic_cut is None or fs_n <= upsample_cubic_cut:
+        x = nn.functional.interpolate(x_int, size=targ_size, mode="linear", align_corners=False)[0].numpy()
+    else:
+        x = nn.functional.interpolate(x_int[..., None], size=[targ_size, 1], mode="bicubic", align_corners=False)[
+            0, ..., 0
+        ].numpy()
+    #     x = array(x_int)[0]
+
+    if sequence_first:
+        x = x.T
+
     return x
+
 
 from scipy.signal import resample
 
 
-def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, fs_idx =None,dt_idx =False,fast_resample=True):
-    '''
+def hdf_extract_sequence(
+    hdf_path,
+    clms,
+    dataset=None,
+    l_slc=None,
+    r_slc=None,
+    resampling_factor=None,
+    fs_idx=None,
+    dt_idx=False,
+    fast_resample=True,
+):
+    """
     extracts a sequence with the shape [seq_len x num_features]
-    
+
     hdf_path: file path of hdf file, may be a string or path type
     clms: list of dataset names of sequences in hdf file
     dataset: dataset root for clms. Useful for multiples sequences stored in one file.
@@ -253,37 +342,40 @@ def hdf_extract_sequence(hdf_path,clms,dataset = None, l_slc = None, r_slc= None
     fs_idx: clms list idx of fs entry in sequence. Will be scaled by resampling_factor after resampling
     dt_idx: clms list idx of dt entry in sequence. Will be scaled by resampling_factor after resampling
     fast_resample: if True, uses linear interpolation with anti-aliasing filter for faster resampling. Is less accurate than fft based resampling
-    '''
+    """
 
     if resampling_factor is not None:
-        seq_len = r_slc-l_slc if l_slc is not None and r_slc is not None else None #calculate seq_len for later slicing, necesary because of rounding errors in resampling
-        if l_slc is not None: 
-            l_slc= math.floor(l_slc/resampling_factor)
-        if r_slc is not None: 
-            r_slc= math.ceil(r_slc/resampling_factor)
+        seq_len = (
+            r_slc - l_slc if l_slc is not None and r_slc is not None else None
+        )  # calculate seq_len for later slicing, necesary because of rounding errors in resampling
+        if l_slc is not None:
+            l_slc = math.floor(l_slc / resampling_factor)
+        if r_slc is not None:
+            r_slc = math.ceil(r_slc / resampling_factor)
 
-    with h5py.File(hdf_path,'r') as f:
+    with h5py.File(hdf_path, "r") as f:
         ds = f if dataset is None else f[dataset]
         l_array = [(ds[n][l_slc:r_slc]) for n in clms]
-        seq = np.stack(l_array,axis=-1)
+        seq = np.stack(l_array, axis=-1)
 
     if resampling_factor is not None:
         if fast_resample:
-            res_seq = resample_interp(seq,resampling_factor)
+            res_seq = resample_interp(seq, resampling_factor)
         else:
-            res_seq = resample(seq,int(seq.shape[0]*resampling_factor),window=('kaiser', 14.0))
+            res_seq = resample(seq, int(seq.shape[0] * resampling_factor), window=("kaiser", 14.0))
 
-        if fs_idx is not None: 
-            res_seq[:,fs_idx] = seq[0,fs_idx] * resampling_factor
-        if dt_idx is not None: 
-            res_seq[:,dt_idx] = seq[0,dt_idx] / resampling_factor
+        if fs_idx is not None:
+            res_seq[:, fs_idx] = seq[0, fs_idx] * resampling_factor
+        if dt_idx is not None:
+            res_seq[:, dt_idx] = seq[0, dt_idx] / resampling_factor
 
         seq = res_seq
-        
-        if seq_len is not None: 
-            seq = seq[:seq_len] #cut the part of the sequence that is too long because of resampling rounding errors
-        
+
+        if seq_len is not None:
+            seq = seq[:seq_len]  # cut the part of the sequence that is too long because of resampling rounding errors
+
     return seq
+
 
 class Memoize:
     def __init__(self, fn):
@@ -296,12 +388,10 @@ class Memoize:
         return self.memo[args]
 
 
-
 from multiprocessing import Lock, Manager, shared_memory
 
 
 class MemoizeMP:
-    
     def __init__(self, fn):
         self.fn = fn
         self.manager = Manager()
@@ -309,14 +399,15 @@ class MemoizeMP:
         self.lock = Lock()  # Ensure atomic updates to the results_dict
         self.local_memo = {}  # Local cache for each process
         self.shared_memory_segments = []  # Track all shared memory segments
+
     def __call__(self, *args):
         if args in self.local_memo:
             return self.local_memo[args][0]
         with self.lock:
             if args in self.results_dict:
                 result_info = self.results_dict[args]
-                existing_shm = shared_memory.SharedMemory(name=result_info['name'])
-                result = np.ndarray(result_info['shape'], dtype=result_info['dtype'], buffer=existing_shm.buf)
+                existing_shm = shared_memory.SharedMemory(name=result_info["name"])
+                result = np.ndarray(result_info["shape"], dtype=result_info["dtype"], buffer=existing_shm.buf)
                 self.local_memo[args] = (result, existing_shm)
                 return result
         result = self.fn(*args)
@@ -325,16 +416,13 @@ class MemoizeMP:
                 result_shm = shared_memory.SharedMemory(create=True, size=result.nbytes)
                 shm_array = np.ndarray(result.shape, dtype=result.dtype, buffer=result_shm.buf)
                 shm_array[:] = result[:]
-              
-                self.results_dict[args] = {
-                    'name': result_shm.name,
-                    'shape': result.shape,
-                    'dtype': result.dtype.str
-                }
+
+                self.results_dict[args] = {"name": result_shm.name, "shape": result.shape, "dtype": result.dtype.str}
                 self.local_memo[args] = (result, result_shm)
                 # Track this shared memory segment for later cleanup
                 self.shared_memory_segments.append(result_shm)
         return result
+
     def cleanup_shared_memory(self):
         """Explicitly cleanup all tracked shared memory segments."""
         for shm in self.shared_memory_segments:
@@ -346,29 +434,50 @@ class MemoizeMP:
                 pass
         # Clear the list after cleanup
         self.shared_memory_segments.clear()
+
     def __del__(self):
         self.cleanup_shared_memory()
 
+
 class HDF2Sequence(Transform):
-    
-    def __init__(self, clm_names,clm_shift=None,truncate_sz=None,to_cls=noop,cached=True, fs_idx =None,dt_idx =None,fast_resample=True):
+    def __init__(
+        self,
+        clm_names,
+        clm_shift=None,
+        truncate_sz=None,
+        to_cls=noop,
+        cached=True,
+        fs_idx=None,
+        dt_idx=None,
+        fast_resample=True,
+    ):
         if clm_shift is not None:
-            assert len(clm_shift)==len(clm_names) and all(isinstance(n, int) for n in clm_shift)
-            self.l_shift,self.r_shift,_ = calc_shift_offsets(clm_shift)
-        
+            assert len(clm_shift) == len(clm_names) and all(isinstance(n, int) for n in clm_shift)
+            self.l_shift, self.r_shift, _ = calc_shift_offsets(clm_shift)
+
         if not cached:
-            self._exseq = self._hdf_extract_sequence 
-        elif cached == 'local':
-            self._exseq = Memoize(self._hdf_extract_sequence) 
-        else :
-            self._exseq = Memoize(self._hdf_extract_sequence) 
-            #self._exseq = MemoizeMP(self._hdf_extract_sequence)
+            self._exseq = self._hdf_extract_sequence
+        elif cached == "local":
+            self._exseq = Memoize(self._hdf_extract_sequence)
+        else:
+            self._exseq = Memoize(self._hdf_extract_sequence)
+            # self._exseq = MemoizeMP(self._hdf_extract_sequence)
 
         self.cached = cached is not None
-        store_attr('clm_names,clm_shift,truncate_sz,to_cls,fs_idx,dt_idx,fast_resample')
-        
-    def _hdf_extract_sequence(self,hdf_path,dataset = None, l_slc = None, r_slc= None, resampling_factor=None, fs_idx =None,dt_idx =None,fast_resample=True):
-        '''
+        store_attr("clm_names,clm_shift,truncate_sz,to_cls,fs_idx,dt_idx,fast_resample")
+
+    def _hdf_extract_sequence(
+        self,
+        hdf_path,
+        dataset=None,
+        l_slc=None,
+        r_slc=None,
+        resampling_factor=None,
+        fs_idx=None,
+        dt_idx=None,
+        fast_resample=True,
+    ):
+        """
         extracts a sequence with the shape [seq_len x num_features]
 
         hdf_path: file path of hdf file, may be a string or path type
@@ -380,115 +489,123 @@ class HDF2Sequence(Transform):
         fs_idx: clms list idx of fs entry in sequence. Will be scaled by resampling_factor after resampling
         dt_idx: clms list idx of dt entry in sequence. Will be scaled by resampling_factor after resampling
         fast_resample: if True, uses linear interpolation with anti-aliasing filter for faster resampling. Is less accurate than fft based resampling
-        '''
+        """
 
         if resampling_factor is not None:
-            seq_len = r_slc-l_slc if l_slc is not None and r_slc is not None else None #calculate seq_len for later slicing, necesary because of rounding errors in resampling
-            if l_slc is not None: 
-                l_slc= math.floor(l_slc/resampling_factor)
-            if r_slc is not None: 
-                r_slc= math.ceil(r_slc/resampling_factor)
+            seq_len = (
+                r_slc - l_slc if l_slc is not None and r_slc is not None else None
+            )  # calculate seq_len for later slicing, necesary because of rounding errors in resampling
+            if l_slc is not None:
+                l_slc = math.floor(l_slc / resampling_factor)
+            if r_slc is not None:
+                r_slc = math.ceil(r_slc / resampling_factor)
 
-        with h5py.File(hdf_path,'r') as f:
+        with h5py.File(hdf_path, "r") as f:
             ds = f if dataset is None else f[dataset]
             l_array = [(ds[n][l_slc:r_slc]) for n in self.clm_names]
-            seq = np.stack(l_array,axis=-1)
+            seq = np.stack(l_array, axis=-1)
 
         if resampling_factor is not None:
             if fast_resample:
-                res_seq = resample_interp(seq,resampling_factor)
+                res_seq = resample_interp(seq, resampling_factor)
             else:
-                res_seq = resample(seq,int(seq.shape[0]*resampling_factor),window=('kaiser', 14.0))
-            
-            if fs_idx is not None: 
-                res_seq[:,fs_idx] = seq[0,fs_idx] * resampling_factor
-            if dt_idx is not None: 
-                res_seq[:,dt_idx] = seq[0,dt_idx] / resampling_factor
+                res_seq = resample(seq, int(seq.shape[0] * resampling_factor), window=("kaiser", 14.0))
+
+            if fs_idx is not None:
+                res_seq[:, fs_idx] = seq[0, fs_idx] * resampling_factor
+            if dt_idx is not None:
+                res_seq[:, dt_idx] = seq[0, dt_idx] / resampling_factor
             seq = res_seq
 
-            if seq_len is not None: 
-                seq = seq[:seq_len] #cut the part of the sequence that is too long because of resampling rounding errors
+            if seq_len is not None:
+                seq = seq[
+                    :seq_len
+                ]  # cut the part of the sequence that is too long because of resampling rounding errors
 
         return seq
-    
-    def _extract_dict_sequence(self,item):
-        if hasattr(item,'keys'):
-            path = item['path']
-            dataset = item['dataset'] if 'dataset' in item else None
-            l_slc = item['l_slc'] if 'l_slc' in item else None
-            r_slc = item['r_slc'] if 'r_slc' in item else None
-            resampling_factor = item['resampling_factor'] if 'resampling_factor' in item else None
+
+    def _extract_dict_sequence(self, item):
+        if hasattr(item, "keys"):
+            path = item["path"]
+            dataset = item["dataset"] if "dataset" in item else None
+            l_slc = item["l_slc"] if "l_slc" in item else None
+            r_slc = item["r_slc"] if "r_slc" in item else None
+            resampling_factor = item["resampling_factor"] if "resampling_factor" in item else None
 
             if self.cached:
-                seq = self._exseq(path,dataset,None,None,resampling_factor,self.fs_idx,self.dt_idx,self.fast_resample)[l_slc:r_slc]
+                seq = self._exseq(
+                    path, dataset, None, None, resampling_factor, self.fs_idx, self.dt_idx, self.fast_resample
+                )[l_slc:r_slc]
             else:
-                seq = self._exseq(path,dataset,l_slc,r_slc,resampling_factor,self.fs_idx,self.dt_idx,self.fast_resample)
+                seq = self._exseq(
+                    path, dataset, l_slc, r_slc, resampling_factor, self.fs_idx, self.dt_idx, self.fast_resample
+                )
         else:
-            seq = self._exseq(str(item),None,None,None,None,None)
+            seq = self._exseq(str(item), None, None, None, None, None)
 
-        #shift clms of result by given value 
+        # shift clms of result by given value
         if self.clm_shift is not None:
             l_seq = seq.shape[0]
-            seq = np.stack([seq[self.l_shift[i]:l_seq+self.r_shift[i],i] for i in range(seq.shape[1])],axis=-1)
-            
+            seq = np.stack([seq[self.l_shift[i] : l_seq + self.r_shift[i], i] for i in range(seq.shape[1])], axis=-1)
+
         if self.truncate_sz is not None:
-            seq = seq[self.truncate_sz:]
-        
-        #it is important to slice first and then do the class conversion
-#         return self.to_cls(seq.astype('f8'))#workaround for random bug, that mitigates convergence if the numpy array is an f4 array. Seems to make no sense because the result does not change. 
+            seq = seq[self.truncate_sz :]
+
+        # it is important to slice first and then do the class conversion
+        #         return self.to_cls(seq.astype('f8'))#workaround for random bug, that mitigates convergence if the numpy array is an f4 array. Seems to make no sense because the result does not change.
         return self.to_cls(seq)
 
-    def encodes(self, item)->None: 
+    def encodes(self, item) -> None:
         return self._extract_dict_sequence(item)
 
-def hdf_attrs2scalars(hdf_path:str,
-                c_names:list[str],
-                dataset:str|None = None,
-                dtype:np.dtype = np.float32):
-    with h5py.File(hdf_path,'r') as f:
+
+def hdf_attrs2scalars(hdf_path: str, c_names: list[str], dataset: str | None = None, dtype: np.dtype = np.float32):
+    with h5py.File(hdf_path, "r") as f:
         ds = f if dataset is None else f[dataset]
         l_array = [dtype(ds.attrs[n]).item() for n in c_names]
-        scalars = np.stack(l_array,axis=-1)
+        scalars = np.stack(l_array, axis=-1)
         return scalars
 
+
 class HDF_Attrs2Scalars(Transform):
-    
-    def __init__(self, clm_names:list[str],to_cls:Callable=noop):
-        store_attr('clm_names,to_cls')
-    
-    def _extract_dict_scalars(self,
-                              item:dict|str|Path):
+    def __init__(self, clm_names: list[str], to_cls: Callable = noop):
+        store_attr("clm_names,to_cls")
+
+    def _extract_dict_scalars(self, item: dict | str | Path):
         match item:
             case dict():
-                path = item['path']
-                dataset = item['dataset'] if 'dataset' in item else None
+                path = item["path"]
+                dataset = item["dataset"] if "dataset" in item else None
 
-                seq = hdf_attrs2scalars(path,self.clm_names,dataset)
+                seq = hdf_attrs2scalars(path, self.clm_names, dataset)
             case str() | Path():
-                seq = hdf_attrs2scalars(str(item),self.clm_names)
+                seq = hdf_attrs2scalars(str(item), self.clm_names)
             case _:
                 raise ValueError(f"Invalid item type: {type(item)}")
         return self.to_cls(seq)
 
-    def encodes(self, item:dict|str|Path): 
+    def encodes(self, item: dict | str | Path):
         return self._extract_dict_scalars(item)
 
-def hdf_ds2scalars(hdf_path:str, # path to hdf5 file
-                   clm_names:list[str], # list of dataset column names to extract
-                   dataset:str|None = None, # dataset root for columns
-                   l_slc:int|None = None, # left boundary for sequence window
-                   r_slc:int|None = None, # right boundary for sequence window
-                   resampling_factor:float|None = None, # scaling factor for sequence length
-                   fs_idx:int|None = None, # index of frequency column for resampling
-                   dt_idx:int|None = None, # index of time column for resampling
-                   fast_resample:bool = True, # use linear interpolation vs fft resampling
-                   index:int|Callable|None = None, # specific index to extract or aggregation function
-                   agg_func:Callable|None = None, # aggregation function to apply
-                   dtype:np.dtype = np.float32 # output data type for result array
-                   ): # array of scalar values, one per column
-    '''extract scalar values from hdf datasets using indexing or aggregation'''
-    seq = hdf_extract_sequence(hdf_path, clm_names, dataset, l_slc, r_slc,
-                              resampling_factor, fs_idx, dt_idx, fast_resample)
+
+def hdf_ds2scalars(
+    hdf_path: str,  # path to hdf5 file
+    clm_names: list[str],  # list of dataset column names to extract
+    dataset: str | None = None,  # dataset root for columns
+    l_slc: int | None = None,  # left boundary for sequence window
+    r_slc: int | None = None,  # right boundary for sequence window
+    resampling_factor: float | None = None,  # scaling factor for sequence length
+    fs_idx: int | None = None,  # index of frequency column for resampling
+    dt_idx: int | None = None,  # index of time column for resampling
+    fast_resample: bool = True,  # use linear interpolation vs fft resampling
+    index: int | Callable | None = None,  # specific index to extract or aggregation function
+    agg_func: Callable | None = None,  # aggregation function to apply
+    dtype: np.dtype = np.float32,  # output data type for result array
+):  # array of scalar values, one per column
+    """extract scalar values from hdf datasets using indexing or aggregation"""
+    seq = hdf_extract_sequence(
+        hdf_path, clm_names, dataset, l_slc, r_slc, resampling_factor, fs_idx, dt_idx, fast_resample
+    )
     if agg_func is not None and index is not None:
         raise ValueError("Cannot specify both agg_func and index. Choose one.")
     elif agg_func is not None:
@@ -502,84 +619,101 @@ def hdf_ds2scalars(hdf_path:str, # path to hdf5 file
         result = seq[-1]
     return result.astype(dtype)
 
+
 class HDF_DS2Scalars(Transform):
-    '''extract scalar values from hdf datasets using indexing or aggregation'''
-    
-    def __init__(self, 
-                 clm_names:list[str], # list of dataset column names to extract
-                 index:int|Callable|None = None, # specific index to extract or aggregation function
-                 agg_func:Callable|None = None, # aggregation function to apply
-                 to_cls:Callable = noop, # transform to apply to final result
-                 **extract_kwargs): # additional arguments passed to hdf_ds2scalars
-        store_attr('clm_names,index,agg_func,to_cls')
+    """extract scalar values from hdf datasets using indexing or aggregation"""
+
+    def __init__(
+        self,
+        clm_names: list[str],  # list of dataset column names to extract
+        index: int | Callable | None = None,  # specific index to extract or aggregation function
+        agg_func: Callable | None = None,  # aggregation function to apply
+        to_cls: Callable = noop,  # transform to apply to final result
+        **extract_kwargs,
+    ):  # additional arguments passed to hdf_ds2scalars
+        store_attr("clm_names,index,agg_func,to_cls")
         self.extract_kwargs = extract_kwargs
-    
-    def _extract_dict_scalars(self, item:dict|str|Path):
+
+    def _extract_dict_scalars(self, item: dict | str | Path):
         match item:
             case dict():
-                path = item['path']
-                dataset = item.get('dataset', self.extract_kwargs.get('dataset'))
-                l_slc = item.get('l_slc')
-                r_slc = item.get('r_slc')
-                resampling_factor = item.get('resampling_factor')
+                path = item["path"]
+                dataset = item.get("dataset", self.extract_kwargs.get("dataset"))
+                l_slc = item.get("l_slc")
+                r_slc = item.get("r_slc")
+                resampling_factor = item.get("resampling_factor")
                 kwargs = {**self.extract_kwargs}
-                if dataset is not None: kwargs['dataset'] = dataset
-                if l_slc is not None: kwargs['l_slc'] = l_slc
-                if r_slc is not None: kwargs['r_slc'] = r_slc
-                if resampling_factor is not None: kwargs['resampling_factor'] = resampling_factor
-                result = hdf_ds2scalars(path, self.clm_names, index=self.index, 
-                                       agg_func=self.agg_func, **kwargs)
+                if dataset is not None:
+                    kwargs["dataset"] = dataset
+                if l_slc is not None:
+                    kwargs["l_slc"] = l_slc
+                if r_slc is not None:
+                    kwargs["r_slc"] = r_slc
+                if resampling_factor is not None:
+                    kwargs["resampling_factor"] = resampling_factor
+                result = hdf_ds2scalars(path, self.clm_names, index=self.index, agg_func=self.agg_func, **kwargs)
             case str() | Path():
-                result = hdf_ds2scalars(str(item), self.clm_names, index=self.index,
-                                       agg_func=self.agg_func, **self.extract_kwargs)
+                result = hdf_ds2scalars(
+                    str(item), self.clm_names, index=self.index, agg_func=self.agg_func, **self.extract_kwargs
+                )
             case _:
                 raise ValueError(f"Invalid item type: {type(item)}")
         return self.to_cls(result)
 
-    def encodes(self, item:dict|str|Path): 
+    def encodes(self, item: dict | str | Path):
         return self._extract_dict_scalars(item)
 
-class TensorSequences(TensorBase):#TensorBase
-#     def __init__(self,x,c_names=None, **kwargs):
-#         super().__init__()
-#         self.c_names = c_names
-    
+
+class TensorSequences(TensorBase):  # TensorBase
+    #     def __init__(self,x,c_names=None, **kwargs):
+    #         super().__init__()
+    #         self.c_names = c_names
+
     def show(self, ctx=None, **kwargs):
         # Get the figure and axis
         if ctx is None:
-            fig, ax = plt.subplots(figsize=kwargs.get('figsize', (8, 4)))
+            fig, ax = plt.subplots(figsize=kwargs.get("figsize", (8, 4)))
         else:
             ax = ctx
-            
+
         # Plot the sequence as a line
         ax.plot(self.cpu().numpy(), **kwargs)
         ax.grid(True, alpha=0.3)
-        
+
         if ctx is None:
             plt.tight_layout()
         return ax
 
     @classmethod
     @delegates(HDF2Sequence, keep=True)
-    def from_hdf(cls,clm_names,**kwargs):
-        return HDF2Sequence(clm_names,**kwargs)
-    
-class TensorSequencesInput(TensorSequences): 
+    def from_hdf(cls, clm_names, **kwargs):
+        return HDF2Sequence(clm_names, **kwargs)
+
+
+class TensorSequencesInput(TensorSequences):
     pass
 
-class TensorSequencesOutput(TensorSequences): 
+
+class TensorSequencesOutput(TensorSequences):
     pass
 
+
 @Transform
-def toTensorSequencesInput(o): return TensorSequencesInput(o)
+def toTensorSequencesInput(o):
+    return TensorSequencesInput(o)
+
+
 @Transform
-def toTensorSequencesOutput(o): return TensorSequencesOutput(o)
+def toTensorSequencesOutput(o):
+    return TensorSequencesOutput(o)
+
 
 class TensorScalars(TensorBase):
-    def __format__(self, 
-                   format_spec:str # format specification string for numeric formatting
-                   ) -> str: # formatted string representation of scalars
-        '''format tensor scalars using standard format specifications'''
+    def __format__(
+        self,
+        format_spec: str,  # format specification string for numeric formatting
+    ) -> str:  # formatted string representation of scalars
+        """format tensor scalars using standard format specifications"""
         if self.ndim == 0:
             # 0-dimensional tensor (single scalar)
             return format(self.item(), format_spec)
@@ -590,144 +724,173 @@ class TensorScalars(TensorBase):
                 return f"[{', '.join(formatted_values)}]"
             else:
                 return str(self.cpu().numpy())
-            
 
-    def show(self, 
-             ctx:plt.Axes|None = None, # matplotlib axes to draw on
-             labels:list[str]|None = None, # labels for each scalar value
-             title_prefix:str = '', # prefix for plot title
-             format_spec:str = '.3g', # format specification for values
-             **kwargs # additional arguments for subplots or set_title
-             ) -> plt.Axes: # axes object with scalars as title
-        '''show scalar values as plot title with optional labels'''
+    def show(
+        self,
+        ctx: plt.Axes | None = None,  # matplotlib axes to draw on
+        labels: list[str] | None = None,  # labels for each scalar value
+        title_prefix: str = "",  # prefix for plot title
+        format_spec: str = ".3g",  # format specification for values
+        **kwargs,  # additional arguments for subplots or set_title
+    ) -> plt.Axes:  # axes object with scalars as title
+        """show scalar values as plot title with optional labels"""
         if ctx is None:
-            figsize = kwargs.pop('figsize', None)
+            figsize = kwargs.pop("figsize", None)
             ctx = plt.subplots(figsize=figsize)[1]
-            ctx.axis('off')
-        
+            ctx.axis("off")
+
         values = [self] if self.ndim == 0 else list(self)
         formatted_parts = []
-        
+
         for i, val in enumerate(values):
             val_str = format(val.item(), format_spec)
             label = labels[i] if labels and i < len(labels) else None
             formatted_parts.append(f"{label}: {val_str}" if label else val_str)
-        
+
         title = ", ".join(formatted_parts)
         if title_prefix:
             title = f"{title_prefix}: {title}"
-            
+
         ctx.set_title(title, **kwargs)
         return ctx
 
     @classmethod
     @delegates(HDF_Attrs2Scalars, keep=True)
-    def from_hdf_attrs(cls,clm_names, # column names to extract from attributes
-                      **kwargs, # additional arguments for transform
-                      )-> HDF_Attrs2Scalars: # transform for hdf attributes
-        return HDF_Attrs2Scalars(clm_names,**kwargs)
-    
+    def from_hdf_attrs(
+        cls,
+        clm_names,  # column names to extract from attributes
+        **kwargs,  # additional arguments for transform
+    ) -> HDF_Attrs2Scalars:  # transform for hdf attributes
+        return HDF_Attrs2Scalars(clm_names, **kwargs)
+
     @classmethod
     @delegates(HDF_DS2Scalars, keep=True)
-    def from_hdf_ds(cls,clm_names, # column names to extract from datasets
-                   **kwargs, # additional arguments for transform
-                   )-> HDF_DS2Scalars: # transform for hdf datasets
-        return HDF_DS2Scalars(clm_names,**kwargs)
-    
-    
-class TensorScalarsInput(TensorScalars): 
+    def from_hdf_ds(
+        cls,
+        clm_names,  # column names to extract from datasets
+        **kwargs,  # additional arguments for transform
+    ) -> HDF_DS2Scalars:  # transform for hdf datasets
+        return HDF_DS2Scalars(clm_names, **kwargs)
+
+
+class TensorScalarsInput(TensorScalars):
     pass
 
-class TensorScalarsOutput(TensorScalars): 
+
+class TensorScalarsOutput(TensorScalars):
     pass
 
 
 @Transform
-def toTensorScalarsInput(o): return TensorScalarsInput(o)
+def toTensorScalarsInput(o):
+    return TensorScalarsInput(o)
+
+
 @Transform
-def toTensorScalarsOutput(o): return TensorScalarsOutput(o)
+def toTensorScalarsOutput(o):
+    return TensorScalarsOutput(o)
 
-for f in torch.nn.functional.mse_loss,torch.nn.functional.huber_loss, Tensor.__getitem__, Tensor.__ne__,Tensor.__eq__,Tensor.add,Tensor.sub,Tensor.mul,Tensor.div,Tensor.__rsub__,Tensor.__radd__,Tensor.matmul,Tensor.bmm:
-    TensorBase.register_func(f,TensorSequences)
-    TensorBase.register_func(f,TensorScalars)
 
-def plot_sequence(axs,in_sig,targ_sig,out_sig=None,**kwargs):
+for f in (
+    torch.nn.functional.mse_loss,
+    torch.nn.functional.huber_loss,
+    Tensor.__getitem__,
+    Tensor.__ne__,
+    Tensor.__eq__,
+    Tensor.add,
+    Tensor.sub,
+    Tensor.mul,
+    Tensor.div,
+    Tensor.__rsub__,
+    Tensor.__radd__,
+    Tensor.matmul,
+    Tensor.bmm,
+):
+    TensorBase.register_func(f, TensorSequences)
+    TensorBase.register_func(f, TensorScalars)
+
+
+def plot_sequence(axs, in_sig, targ_sig, out_sig=None, **kwargs):
     n_targ = targ_sig.shape[1]  # Number of supervised outputs
     n_out = out_sig.shape[1] if out_sig is not None else n_targ  # Total model outputs
     n_ax = len(axs) - 1  # Axes available for outputs (last one for input)
-    
+
     # Plot all output channels (supervised + auxiliary)
     for j in range(min(n_ax, max(n_targ, n_out))):
         ax = axs[j]
         # Plot target if available (only for supervised channels)
         if j < n_targ:
-            ax.plot(targ_sig[:,j], label='y', alpha=0.7)
+            ax.plot(targ_sig[:, j], label="y", alpha=0.7)
         # Plot prediction if available
         if out_sig is not None and j < n_out:
-            label = 'ŷ' if j < n_targ else 'ŷ (aux)'
-            ax.plot(out_sig[:,j], label=label, alpha=0.7)
+            label = "ŷ" if j < n_targ else "ŷ (aux)"
+            ax.plot(out_sig[:, j], label=label, alpha=0.7)
         # Plot reference if provided
-        if 'ref' in kwargs and j < kwargs['ref'].shape[1]:
-            ax.plot(kwargs['ref'][:,j], label='ref', alpha=0.5)
+        if "ref" in kwargs and j < kwargs["ref"].shape[1]:
+            ax.plot(kwargs["ref"][:, j], label="ref", alpha=0.5)
         # Mark auxiliary channels
         if j >= n_targ:
-            ax.set_title(f'Channel {j} (auxiliary)', fontsize=10)
+            ax.set_title(f"Channel {j} (auxiliary)", fontsize=10)
         ax.legend(fontsize=8)
         ax.label_outer()
     axs[-1].plot(in_sig)
 
-def plot_seqs_single_figure(n_samples,n_targ,samples,plot_func,outs=None,**kwargs):
-    rows=max(1,((n_samples-1) // 3)+1)
-    cols=min(3,n_samples)
-    fig = plt.figure(figsize=(9,2*cols))
+
+def plot_seqs_single_figure(n_samples, n_targ, samples, plot_func, outs=None, **kwargs):
+    rows = max(1, ((n_samples - 1) // 3) + 1)
+    cols = min(3, n_samples)
+    fig = plt.figure(figsize=(9, 2 * cols))
     outer_grid = fig.add_gridspec(rows, cols)
-#     import pdb; pdb.set_trace()
+    #     import pdb; pdb.set_trace()
     for i in range(n_samples):
         in_sig = samples[i][0]
         targ_sig = samples[i][1]
-        if outs is not None: 
+        if outs is not None:
             out_sig = outs[i][0]
-        inner_grid = outer_grid[i].subgridspec(n_targ+1, 1)
-        axs = [fig.add_subplot(inner_grid[j]) for j in range(n_targ+1)]
-        plot_func(axs,in_sig,targ_sig,out_sig=out_sig if outs is not None else None,**kwargs)
+        inner_grid = outer_grid[i].subgridspec(n_targ + 1, 1)
+        axs = [fig.add_subplot(inner_grid[j]) for j in range(n_targ + 1)]
+        plot_func(axs, in_sig, targ_sig, out_sig=out_sig if outs is not None else None, **kwargs)
     plt.tight_layout()
 
-def plot_seqs_multi_figures(n_samples,n_targ,samples,plot_func,outs=None,**kwargs):
+
+def plot_seqs_multi_figures(n_samples, n_targ, samples, plot_func, outs=None, **kwargs):
     for i in range(n_samples):
-        fig = plt.figure(figsize=(9,3))
-        axs = fig.subplots(nrows=n_targ+1,sharex=True)
+        fig = plt.figure(figsize=(9, 3))
+        axs = fig.subplots(nrows=n_targ + 1, sharex=True)
         in_sig = samples[i][0]
         targ_sig = samples[i][1]
-        if outs is not None:  
+        if outs is not None:
             out_sig = outs[i][0]
-            
-        plot_func(axs,in_sig,targ_sig,out_sig=out_sig if outs is not None else None,**kwargs)
-        
+
+        plot_func(axs, in_sig, targ_sig, out_sig=out_sig if outs is not None else None, **kwargs)
+
         plt.tight_layout()
+
 
 from plum import dispatch
 
 
 @dispatch
-def show_batch(x:TensorSequences, y:TensorSequences, samples, ctxs=None, max_n=6, **kwargs):
+def show_batch(x: TensorSequences, y: TensorSequences, samples, ctxs=None, max_n=6, **kwargs):
     n_samples = min(len(samples), max_n)
     n_targ = samples[0][1].shape[1]
     if n_samples > 3:
-        #if there are more then 3 samples to plot then put them in a single figure
-        plot_seqs_single_figure(n_samples,n_targ,samples,plot_sequence, **kwargs)
+        # if there are more then 3 samples to plot then put them in a single figure
+        plot_seqs_single_figure(n_samples, n_targ, samples, plot_sequence, **kwargs)
     else:
-        #if there are less then 3 samples to plot then put each in its own figure
-        plot_seqs_multi_figures(n_samples,n_targ,samples,plot_sequence, **kwargs)
+        # if there are less then 3 samples to plot then put each in its own figure
+        plot_seqs_multi_figures(n_samples, n_targ, samples, plot_sequence, **kwargs)
     return ctxs
 
+
 @dispatch
-def show_results(x:TensorSequences, y:TensorSequences, samples, outs, ctxs=None, max_n=2, **kwargs):
+def show_results(x: TensorSequences, y: TensorSequences, samples, outs, ctxs=None, max_n=2, **kwargs):
     n_samples = min(len(samples), max_n)
     n_targ = samples[0][1].shape[1]
     if n_samples > 3:
-        #if there are more then 3 samples to plot then put them in a single figure
-        plot_seqs_single_figure(n_samples,n_targ,samples,plot_sequence,outs, **kwargs)
+        # if there are more then 3 samples to plot then put them in a single figure
+        plot_seqs_single_figure(n_samples, n_targ, samples, plot_sequence, outs, **kwargs)
     else:
-        #if there are less then 3 samples to plot then put each in its own figure
-        plot_seqs_multi_figures(n_samples,n_targ,samples,plot_sequence,outs, **kwargs)
+        # if there are less then 3 samples to plot then put each in its own figure
+        plot_seqs_multi_figures(n_samples, n_targ, samples, plot_sequence, outs, **kwargs)
     return ctxs

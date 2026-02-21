@@ -1,6 +1,12 @@
-
-__all__ = ['log_uniform', 'LearnerTrainable', 'stop_shared_memory_managers', 'learner_optimize', 'sample_config', 'CBRayReporter',
-           'HPOptimizer']
+__all__ = [
+    "log_uniform",
+    "LearnerTrainable",
+    "stop_shared_memory_managers",
+    "learner_optimize",
+    "sample_config",
+    "CBRayReporter",
+    "HPOptimizer",
+]
 
 from .data import *
 from .models import *
@@ -15,28 +21,30 @@ from ray.tune.schedulers import *
 from ray.tune.experiment.trial import ExportFormat
 from ray.tune import Checkpoint
 
+
 def log_uniform(min_bound, max_bound, base=10):
-    '''uniform sampling in an exponential range'''
+    """uniform sampling in an exponential range"""
     logmin = np.log(min_bound) / np.log(base)
     logmax = np.log(max_bound) / np.log(base)
+
     def _sample():
-        return base**(np.random.uniform(logmin, logmax))
+        return base ** (np.random.uniform(logmin, logmax))
+
     return _sample
 
+
 class LearnerTrainable(tune.Trainable):
-
     def setup(self, config):
-        self.create_lrn = ray.get(config['create_lrn'])
-        self.dls = ray.get(config['dls'])
+        self.create_lrn = ray.get(config["create_lrn"])
+        self.dls = ray.get(config["dls"])
 
-        self.lrn = self.create_lrn(self.dls,config)
+        self.lrn = self.create_lrn(self.dls, config)
 
     def step(self):
-        with self.lrn.no_bar(): self.lrn.fit(1)
-        train_loss,valid_loss,rmse = self.lrn.recorder.values[-1]
-        result = {'train_loss': train_loss,
-                'valid_loss': valid_loss,
-                'mean_loss': rmse}
+        with self.lrn.no_bar():
+            self.lrn.fit(1)
+        train_loss, valid_loss, rmse = self.lrn.recorder.values[-1]
+        result = {"train_loss": train_loss, "valid_loss": valid_loss, "mean_loss": rmse}
         return result
 
     def save_checkpoint(self, tmp_checkpoint_dir):
@@ -59,11 +67,14 @@ class LearnerTrainable(tune.Trainable):
     # the learner class will be recreated with every perturbation, saving the model
     # that way the new hyperparameter will be applied
     def reset_config(self, new_config):
-        self.lrn = self.create_lrn(self.dls,new_config)
+        self.lrn = self.create_lrn(self.dls, new_config)
         self.config = new_config
         return True
 
+
 from multiprocessing.managers import SharedMemoryManager
+
+
 def stop_shared_memory_managers(obj):
     """
     Iteratively finds and stops all SharedMemoryManager instances contained within the provided object.
@@ -90,49 +101,55 @@ def stop_shared_memory_managers(obj):
             stack.extend(current_obj.values())
         elif isinstance(current_obj, (list, set, tuple)):
             stack.extend(current_obj)
-        elif hasattr(current_obj, '__dict__'):  # Check for custom objects with attributes
+        elif hasattr(current_obj, "__dict__"):  # Check for custom objects with attributes
             stack.extend(vars(current_obj).values())
 
+
 import gc
+
+
 def learner_optimize(config):
     try:
-        create_lrn = ray.get(config['create_lrn'])
-        dls = ray.get(config['dls'])
-        
-        #Scheduling Parameters for training the Model
-        lrn_kwargs = {'n_epoch':100,'pct_start':0.5}
-        for attr in ['n_epoch','pct_start']:
-            if attr in config: lrn_kwargs[attr] = config[attr]
-    
-        lrn = create_lrn(dls,config)
-        
+        create_lrn = ray.get(config["create_lrn"])
+        dls = ray.get(config["dls"])
+
+        # Scheduling Parameters for training the Model
+        lrn_kwargs = {"n_epoch": 100, "pct_start": 0.5}
+        for attr in ["n_epoch", "pct_start"]:
+            if attr in config:
+                lrn_kwargs[attr] = config[attr]
+
+        lrn = create_lrn(dls, config)
+
         # load checkpoint data if provided
         checkpoint: tune.Checkpoint = tune.get_checkpoint()
         if checkpoint:
             with checkpoint.as_directory() as checkpoint_dir:
-                lrn.model.load_state_dict(torch.load(checkpoint_dir + 'model.pth'))
-        
-        lrn.lr = config['lr'] if 'lr' in config else 3e-3
-        lrn.add_cb(CBRayReporter() if 'reporter' not in config else ray.get(config['reporter'])())
-        with lrn.no_bar(): 
-            ray.get(config['fit_method'])(lrn,**lrn_kwargs)
+                lrn.model.load_state_dict(torch.load(checkpoint_dir + "model.pth"))
+
+        lrn.lr = config["lr"] if "lr" in config else 3e-3
+        lrn.add_cb(CBRayReporter() if "reporter" not in config else ray.get(config["reporter"])())
+        with lrn.no_bar():
+            ray.get(config["fit_method"])(lrn, **lrn_kwargs)
     finally:
-        #cleanup shared memory even when earlystopping occurs
-        if 'lrn' in locals():
+        # cleanup shared memory even when earlystopping occurs
+        if "lrn" in locals():
             stop_shared_memory_managers(lrn)
             del lrn
             gc.collect()
 
+
 def sample_config(config):
     ret_conf = config.copy()
     for k in ret_conf:
-        ret_conf[k]=ret_conf[k]()
+        ret_conf[k] = ret_conf[k]()
     return ret_conf
+
 
 class CBRayReporter(Callback):
     "`Callback` reports progress after every epoch to the ray tune logger"
-    
-    order=70 #order has to be >50, to be executed after the recorder callback
+
+    order = 70  # order has to be >50, to be executed after the recorder callback
 
     def after_epoch(self):
         # train_loss,valid_loss,rmse = self.learn.recorder.values[-1]
@@ -142,77 +159,76 @@ class CBRayReporter(Callback):
         #     'mean_loss': rmse,
         # }
         scores = self.learn.recorder.values[-1]
-        metrics = {
-            'train_loss': scores[0],
-            'valid_loss': scores[1]
-        }
-        for metric,value in zip(self.learn.metrics,scores[2:]):
-            m_name = metric.name if hasattr(metric,'name') else str(metric)
+        metrics = {"train_loss": scores[0], "valid_loss": scores[1]}
+        for metric, value in zip(self.learn.metrics, scores[2:]):
+            m_name = metric.name if hasattr(metric, "name") else str(metric)
             metrics[m_name] = value
 
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-            file = os.path.join(temp_checkpoint_dir,'model.pth')
-            #the model has to be saved to the checkpoint directory on creation
-            #that is why a seperate callback for model saving is not trivial
-            save_model(file, self.learn.model,opt=None) 
+            file = os.path.join(temp_checkpoint_dir, "model.pth")
+            # the model has to be saved to the checkpoint directory on creation
+            # that is why a seperate callback for model saving is not trivial
+            save_model(file, self.learn.model, opt=None)
             ray.tune.report(metrics, checkpoint=Checkpoint.from_directory(temp_checkpoint_dir))
 
-class HPOptimizer():
-    def __init__(self,create_lrn,dls):
+
+class HPOptimizer:
+    def __init__(self, create_lrn, dls):
         self.create_lrn = create_lrn
         self.dls = dls
         self.analysis = None
-    
+
     @delegates(ray.init)
-    def start_ray(self,**kwargs):
+    def start_ray(self, **kwargs):
         ray.shutdown()
         ray.init(**kwargs)
-        
+
     def stop_ray(self):
         ray.shutdown()
-        
-    
-        
 
     @delegates(tune.run, keep=True)
-    def optimize(self,config,optimize_func=learner_optimize,resources_per_trial={"gpu": 1.0},verbose=1,**kwargs):
-        config['create_lrn'] = ray.put(self.create_lrn)
-        #dls are large objects, letting ray handle the copying process makes it much faster
-        config['dls'] = ray.put(self.dls) 
-        if 'fit_method' not in config: config['fit_method'] = ray.put(Learner.fit_flat_cos)
+    def optimize(self, config, optimize_func=learner_optimize, resources_per_trial={"gpu": 1.0}, verbose=1, **kwargs):
+        config["create_lrn"] = ray.put(self.create_lrn)
+        # dls are large objects, letting ray handle the copying process makes it much faster
+        config["dls"] = ray.put(self.dls)
+        if "fit_method" not in config:
+            config["fit_method"] = ray.put(Learner.fit_flat_cos)
 
         self.analysis = tune.run(
-            optimize_func,
-            config=config,
-            resources_per_trial=resources_per_trial,
-            verbose=verbose,
-            **kwargs)
+            optimize_func, config=config, resources_per_trial=resources_per_trial, verbose=verbose, **kwargs
+        )
         return self.analysis
-        
-    @delegates(tune.run, keep=True)
-    def optimize_pbt(self,opt_name,num_samples,config,mut_conf,perturbation_interval=2,
-                 stop={"training_iteration": 40 },
-                 resources_per_trial={"gpu": 1 },
-                 resample_probability=0.25,
-                 quantile_fraction=0.25,
-                 **kwargs):
-        self.mut_conf = mut_conf
-        
-        config['create_lrn'] = ray.put(self.create_lrn)
-        #dls are large objects, letting ray handle the copying process makes it much faster
-        config['dls'] = ray.put(self.dls) 
-        
 
-        
+    @delegates(tune.run, keep=True)
+    def optimize_pbt(
+        self,
+        opt_name,
+        num_samples,
+        config,
+        mut_conf,
+        perturbation_interval=2,
+        stop={"training_iteration": 40},
+        resources_per_trial={"gpu": 1},
+        resample_probability=0.25,
+        quantile_fraction=0.25,
+        **kwargs,
+    ):
+        self.mut_conf = mut_conf
+
+        config["create_lrn"] = ray.put(self.create_lrn)
+        # dls are large objects, letting ray handle the copying process makes it much faster
+        config["dls"] = ray.put(self.dls)
+
         scheduler = PopulationBasedTraining(
-        time_attr="training_iteration",
-        metric="mean_loss",
-        mode="min",
-        perturbation_interval=perturbation_interval,
-        resample_probability=resample_probability,
-        quantile_fraction=quantile_fraction,
-        hyperparam_mutations=mut_conf)
-        
+            time_attr="training_iteration",
+            metric="mean_loss",
+            mode="min",
+            perturbation_interval=perturbation_interval,
+            resample_probability=resample_probability,
+            quantile_fraction=quantile_fraction,
+            hyperparam_mutations=mut_conf,
+        )
+
         self.analysis = tune.run(
             LearnerTrainable,
             name=opt_name,
@@ -224,12 +240,14 @@ class HPOptimizer():
             num_samples=num_samples,
             resources_per_trial=resources_per_trial,
             config=config,
-            **kwargs)
+            **kwargs,
+        )
         return self.analysis
-    
+
     def best_model(self):
-        if self.analysis is None: raise Exception
-        model = self.create_lrn(self.dls,sample_config(self.mut_conf)).model
-        f_path = ray.get(self.analysis.get_best_trial('mean_loss',mode='min').checkpoint.value)
+        if self.analysis is None:
+            raise Exception
+        model = self.create_lrn(self.dls, sample_config(self.mut_conf)).model
+        f_path = ray.get(self.analysis.get_best_trial("mean_loss", mode="min").checkpoint.value)
         model.load_state_dict(torch.load(f_path))
         return model
