@@ -113,9 +113,9 @@ class TestSeperateModels:
         assert out.shape == batch[1].shape
 
     @pytest.mark.slow
-    def test_ar_tcn_learner_fit(self, dls_prediction):
+    def test_ar_tcn_learner_fit(self, dls_simulation):
         from tsfast.models.cnn import AR_TCNLearner
-        lrn = AR_TCNLearner(dls_prediction, hl_depth=2, hl_width=10)
+        lrn = AR_TCNLearner(dls_simulation, hl_depth=2, hl_width=10)
         lrn.fit(1, 1e-4)
         final_valid_loss = lrn.recorder.values[-1][1]
         assert not math.isnan(final_valid_loss)

@@ -261,8 +261,8 @@ class TestDDPUnwrap:
 
 class TestARRNN:
     @pytest.mark.slow
-    def test_ar_rnn_learner_fit(self, dls_prediction):
+    def test_ar_rnn_learner_fit(self, dls_simulation):
         from tsfast.models.rnn import AR_RNNLearner
-        lrn = AR_RNNLearner(dls_prediction)
+        lrn = AR_RNNLearner(dls_simulation)
         lrn.fit(1)
         assert not math.isnan(lrn.recorder.values[-1][1])

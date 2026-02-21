@@ -288,8 +288,9 @@ class FranSysCallback(HookCallback):
     ):
         super().__init__(modules=modules, detach=detach, **kwargs)
         store_attr(
-            "p_state_sync,p_diag_loss,p_osp_sync,p_osp_loss,p_tar_loss,sync_type,targ_loss_func,osp_n_skip,model"
+            "p_state_sync,p_diag_loss,p_osp_sync,p_osp_loss,p_tar_loss,sync_type,targ_loss_func,osp_n_skip"
         )
+        self.inner_model = model
         self.clear()
 
     def before_fit(self):
@@ -297,10 +298,10 @@ class FranSysCallback(HookCallback):
 
         wrapper = _unwrap_ddp(self.learn.model)
         self._output_norm = wrapper.output_norm if isinstance(wrapper, NormalizedModel) else None
-        if self.model is None:
+        if self.inner_model is None:
             from ..models.layers import unwrap_model
 
-            self.model = unwrap_model(self.learn.model)
+            self.inner_model = unwrap_model(self.learn.model)
         super().before_fit()
 
     def clear(self):
@@ -327,7 +328,7 @@ class FranSysCallback(HookCallback):
         diag = self._out_diag
         prog = self._out_prog
         self.clear()
-        model = self.model
+        model = self.inner_model
         win_reg = self.osp_n_skip if self.osp_n_skip is not None else model.init_sz
 
         diag_trunc = diag
@@ -418,22 +419,22 @@ class FranSysCallback_variable_init(Callback):
         self.init_sz_valid = None
         self.init_sz_min = init_sz_min
         self.init_sz_max = init_sz_max
-        self.model = model
+        self.inner_model = model
 
     def before_fit(self):
-        if self.model is None:
+        if self.inner_model is None:
             from ..models.layers import unwrap_model
 
-            self.model = unwrap_model(self.learn.model)
+            self.inner_model = unwrap_model(self.learn.model)
 
     def before_batch(self):
-        if hasattr(self.model, "init_sz"):
+        if hasattr(self.inner_model, "init_sz"):
             if self.init_sz_valid is None:
-                self.init_sz_valid = self.model.init_sz
+                self.init_sz_valid = self.inner_model.init_sz
             if self.training:
-                self.model.init_sz = np.random.randint(self.init_sz_min, self.init_sz_max + 1)
+                self.inner_model.init_sz = np.random.randint(self.init_sz_min, self.init_sz_max + 1)
             else:
-                self.model.init_sz = self.init_sz_valid
+                self.inner_model.init_sz = self.init_sz_valid
 
 
 from .core import PredictionCallback

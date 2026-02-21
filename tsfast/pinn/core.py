@@ -645,6 +645,19 @@ class PhysicsLossCallback(Callback):
         self.learn.loss_grad = self.learn.loss_grad + self.weight * physics_total
 
 
+class _CollocationDataset(torch.utils.data.IterableDataset):
+    "Module-level dataset for collocation point generation (picklable for spawn multiprocessing)"
+
+    def __init__(self, gen_fn, bs, seq_len):
+        self.gen_fn = gen_fn
+        self.bs = bs
+        self.seq_len = seq_len
+
+    def __iter__(self):
+        while True:
+            yield self.gen_fn(self.bs, self.seq_len, "cpu")
+
+
 class CollocationPointsCB(Callback):
     "`Callback` that adds physics-informed loss using collocation points with user-defined physics"
 
@@ -672,32 +685,21 @@ class CollocationPointsCB(Callback):
         self.output_ranges = output_ranges
         self.hidden_std = hidden_std
         self.n_skip = n_skip
-        self.model = model
+        self.inner_model = model
 
     def before_fit(self):
-        if self.model is None:
+        if self.inner_model is None:
             from ..models.layers import unwrap_model
 
-            self.model = unwrap_model(self.learn.model)
+            self.inner_model = unwrap_model(self.learn.model)
 
     def _prepare_loader(
         self,
         u_real,  # Sample tensor to infer batch_size and seq_length
     ):  # DataLoader with parallel workers
         "Create DataLoader with worker processes that continuously generate collocation points"
-
-        class _Dataset(torch.utils.data.IterableDataset):
-            def __init__(self, gen_fn, bs, seq_len):
-                self.gen_fn = gen_fn
-                self.bs = bs
-                self.seq_len = seq_len
-
-            def __iter__(self):
-                while True:
-                    yield self.gen_fn(self.bs, self.seq_len, "cpu")
-
         loader = torch.utils.data.DataLoader(
-            _Dataset(self.generate_pinn_input, u_real.shape[0], u_real.shape[1]),
+            _CollocationDataset(self.generate_pinn_input, u_real.shape[0], u_real.shape[1]),
             batch_size=None,
             num_workers=self.num_workers,
             prefetch_factor=2,
@@ -714,7 +716,11 @@ class CollocationPointsCB(Callback):
         batch_size = u_real.shape[0]
 
         if self.loader_iter is None:
-            self.loader_iter = iter(self._prepare_loader(u_real))
+            import warnings
+
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message=".*fork.*deadlock.*", category=DeprecationWarning)
+                self.loader_iter = iter(self._prepare_loader(u_real))
 
         u_coloc = next(self.loader_iter).to(device)
 
@@ -727,7 +733,7 @@ class CollocationPointsCB(Callback):
             n_outputs = len(self.output_ranges)
             physical_states = generate_random_states(batch_size, n_outputs, self.output_ranges, device)
 
-            if hasattr(self.model, "encode_single_state"):
+            if hasattr(self.inner_model, "encode_single_state"):
                 with torch.enable_grad():
                     y_pred = self.learn.model(u_coloc, init_state=physical_states, encoder_mode="state")
                 y_ref = physical_states.unsqueeze(1).expand(-1, u_coloc.shape[1], -1)
@@ -735,9 +741,9 @@ class CollocationPointsCB(Callback):
                 raise ValueError("Model must have encode_single_state method for init_mode='state_encoder'")
 
         elif self.init_mode == "random_hidden":
-            if hasattr(self.model, "rnn_prognosis"):
-                hidden_size = self.model.hidden_size
-                rnn_layer = self.model.rnn_layer
+            if hasattr(self.inner_model, "rnn_prognosis"):
+                hidden_size = self.inner_model.hidden_size
+                rnn_layer = self.inner_model.rnn_layer
                 init_hidden = [
                     torch.randn(1, batch_size, hidden_size, device=device) * self.hidden_std for _ in range(rnn_layer)
                 ]
@@ -788,18 +794,18 @@ class ConsistencyCallback(HookCallback):
         self.weight = weight
         self.match_at_timestep = match_at_timestep
         self._diag_out = None
-        self.model = model
+        self.inner_model = model
 
     def before_fit(self):
         """Set up hooks for diagnosis RNN if model supports it"""
-        if self.model is None:
+        if self.inner_model is None:
             from ..models.layers import unwrap_model
 
-            self.model = unwrap_model(self.learn.model)
-        if hasattr(self.model, "rnn_diagnosis") and hasattr(self.model, "encode_single_state"):
-            self.modules = [self.model.rnn_diagnosis]
-        else:
-            self.modules = []
+            self.inner_model = unwrap_model(self.learn.model)
+        self.modules.clear()
+        if hasattr(self.inner_model, "rnn_diagnosis") and hasattr(self.inner_model, "encode_single_state"):
+            self.modules.append(self.inner_model.rnn_diagnosis)
+        super().before_fit()
 
     def hook(self, m, i, o):
         """Capture diagnosis RNN output"""
@@ -815,14 +821,14 @@ class ConsistencyCallback(HookCallback):
             return
 
         timestep = self.match_at_timestep
-        if timestep is None and hasattr(self.model, "init_sz"):
-            timestep = self.model.init_sz - 1
+        if timestep is None and hasattr(self.inner_model, "init_sz"):
+            timestep = self.inner_model.init_sz - 1
         elif timestep is None:
             timestep = -1
 
-        h_sequence = self.model.rnn_diagnosis.output_to_hidden(self._diag_out, timestep)
+        h_sequence = self.inner_model.rnn_diagnosis.output_to_hidden(self._diag_out, timestep)
         physical_state = self.yb[0][:, timestep, :]
-        h_state = self.model.encode_single_state(physical_state)
+        h_state = self.inner_model.encode_single_state(physical_state)
 
         consistency_loss = 0.0
         for h_seq, h_st in zip(h_sequence, h_state):
@@ -844,27 +850,27 @@ class AlternatingEncoderCB(Callback):
     ):
         """Alternate encoder modes to train state encoder on real data"""
         self.p_state = p_state
-        self.model = model
+        self.inner_model = model
 
     def before_fit(self):
         """Resolve inner model reference"""
-        if self.model is None:
+        if self.inner_model is None:
             from ..models.layers import unwrap_model
 
-            self.model = unwrap_model(self.learn.model)
+            self.inner_model = unwrap_model(self.learn.model)
 
     def before_batch(self):
         """Switch encoder mode randomly before each training batch"""
         if not self.training:
             return
-        if not hasattr(self.model, "default_encoder_mode"):
+        if not hasattr(self.inner_model, "default_encoder_mode"):
             return
-        self.model.default_encoder_mode = "state" if np.random.rand() < self.p_state else "sequence"
+        self.inner_model.default_encoder_mode = "state" if np.random.rand() < self.p_state else "sequence"
 
     def after_fit(self):
         """Reset to sequence encoder after training"""
-        if hasattr(self.model, "default_encoder_mode"):
-            self.model.default_encoder_mode = "sequence"
+        if hasattr(self.inner_model, "default_encoder_mode"):
+            self.inner_model.default_encoder_mode = "sequence"
 
 
 class TransitionSmoothnessCallback(Callback):

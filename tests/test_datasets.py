@@ -302,11 +302,12 @@ class TestTbpttDataLoader:
 
     def test_batch_limit_factory(self, wh_path):
         from tsfast.datasets.core import create_dls
-        dls = create_dls(
-            u=["u"], y=["y"], dataset=wh_path,
-            win_sz=100, stp_sz=100, num_workers=0,
-            n_batches_train=None, max_batches_training=3,
-        )
+        with pytest.warns(DeprecationWarning, match="max_batches_training"):
+            dls = create_dls(
+                u=["u"], y=["y"], dataset=wh_path,
+                win_sz=100, stp_sz=100, num_workers=0,
+                n_batches_train=None, max_batches_training=3,
+            )
         assert len(dls.train) <= 3
 
 
