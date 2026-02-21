@@ -343,12 +343,17 @@ class NormalizedModel(nn.Module):
         return cls(model, input_norm, output_norm)
 
     @classmethod
-    def from_dls(cls, model, dls, scaler_cls=None):
+    def from_dls(cls, model, dls, prediction=False, scaler_cls=None):
         "Create from DataLoaders norm_stats."
         from ..datasets.core import extract_mean_std_from_dls
 
-        norm_u, _, norm_y = extract_mean_std_from_dls(dls)
-        return cls.from_stats(model, norm_u, norm_y, scaler_cls=scaler_cls)
+        norm_u, norm_x, norm_y = extract_mean_std_from_dls(dls)
+        if prediction:
+            parts = [norm_u] + ([norm_x] if norm_x else []) + [norm_y]
+            input_stats = sum(parts[1:], parts[0])
+        else:
+            input_stats = norm_u
+        return cls.from_stats(model, input_stats, norm_y, scaler_cls=scaler_cls)
 
     def forward(self, xb, **kwargs):
         xb = self.input_norm.normalize(xb)
