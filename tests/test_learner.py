@@ -118,6 +118,21 @@ class TestCallbacks:
         assert not math.isnan(final_valid_loss)
 
     @pytest.mark.slow
+    def test_gradient_batch_filtering_triggers(self, dls_simulation):
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.learner.callbacks import GradientBatchFiltering
+        from fastai.basics import Learner
+        model = SimpleRNN(1, 1)
+        # Very low threshold: every batch should be filtered
+        params_before = [p.clone() for p in model.parameters()]
+        lrn = Learner(dls_simulation, model, loss_func=nn.MSELoss(),
+                      cbs=GradientBatchFiltering(filter_val=1e-10))
+        lrn.fit(1)
+        # Model params should be unchanged since all gradients were zeroed
+        for p_before, p_after in zip(params_before, model.parameters()):
+            assert torch.allclose(p_before, p_after.data)
+
+    @pytest.mark.slow
     def test_time_series_regularizer(self, dls_simulation):
         from tsfast.models.rnn import SimpleRNN
         from tsfast.learner.callbacks import TimeSeriesRegularizer

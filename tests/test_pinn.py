@@ -38,6 +38,46 @@ class TestExcitationSignals:
 
 
 @pytest.mark.pinn
+class TestExcitationSignalTypes:
+    @pytest.mark.parametrize("sig_type", [
+        "sine", "multisine", "step", "ramp", "chirp",
+        "noise", "prbs", "square", "doublet",
+    ])
+    def test_signal_type_shape_and_finite(self, sig_type):
+        from tsfast.pinn.core import generate_excitation_signals
+        u = generate_excitation_signals(
+            4, 200, n_inputs=2, signal_types=[sig_type], seed=42,
+        )
+        assert u.shape == (4, 200, 2)
+        assert torch.isfinite(u).all()
+
+    def test_synchronized_inputs(self):
+        from tsfast.pinn.core import generate_excitation_signals
+        u = generate_excitation_signals(
+            4, 200, n_inputs=3, synchronized_inputs=True, seed=42,
+        )
+        assert u.shape == (4, 200, 3)
+        assert torch.isfinite(u).all()
+
+    def test_noise_and_bias(self):
+        from tsfast.pinn.core import generate_excitation_signals
+        clean = generate_excitation_signals(4, 200, n_inputs=1, seed=42)
+        noisy = generate_excitation_signals(
+            4, 200, n_inputs=1, seed=42,
+            noise_probability=1.0, noise_std_range=(0.5, 1.0),
+            bias_probability=1.0, bias_range=(-2.0, 2.0),
+        )
+        assert noisy.shape == clean.shape
+        assert not torch.allclose(clean, noisy)
+
+    def test_seed_determinism(self):
+        from tsfast.pinn.core import generate_excitation_signals
+        u1 = generate_excitation_signals(4, 200, n_inputs=2, seed=123)
+        u2 = generate_excitation_signals(4, 200, n_inputs=2, seed=123)
+        assert torch.allclose(u1, u2)
+
+
+@pytest.mark.pinn
 class TestPhysicsCallbacks:
     @pytest.mark.slow
     def test_physics_loss_callback(self, dls_simulation):
@@ -171,3 +211,12 @@ class TestPINNCallbacks:
         lrn.add_cb(AlternatingEncoderCB(p_state=0.3))
         lrn.fit(1, 3e-3)
         assert lrn.model.default_encoder_mode == 'sequence'
+
+    @pytest.mark.slow
+    def test_consistency_callback(self, dls_pinn_prediction):
+        from tsfast.pinn.pirnn import PIRNNLearner
+        from tsfast.pinn.core import ConsistencyCallback
+        lrn = PIRNNLearner(dls_pinn_prediction, init_sz=20, hidden_size=20, rnn_layer=1)
+        lrn.add_cb(ConsistencyCallback(weight=0.1))
+        lrn.fit(1, 3e-3)
+        assert not math.isnan(lrn.recorder.values[-1][1])
