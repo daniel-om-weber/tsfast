@@ -376,7 +376,7 @@ class QuaternionRegularizer(HookCallback):
 
     def __init__(self, reg_unit=0.0, detach=False, **kwargs):
         super().__init__(detach=detach, **kwargs)
-        store_attr("reg_unit")
+        self.reg_unit = reg_unit
 
     def hook(self, m, i, o):
         if type(o) is torch.Tensor:

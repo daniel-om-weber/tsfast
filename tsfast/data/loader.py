@@ -23,7 +23,8 @@ _loaders = (_MultiProcessingDataLoaderIter, _SingleProcessDataLoaderIter)
 class TbpttDl(TfmdDL):
     def __init__(self, dataset, sub_seq_len=None, seq_len=None, shuffle=True, num_workers=2, **kwargs):
         #         assert sub_seq_len is not None
-        store_attr("sub_seq_len,seq_len")
+        self.sub_seq_len = sub_seq_len
+        self.seq_len = seq_len
         self.rnn_reset = False
         super().__init__(dataset=dataset, shuffle=shuffle, num_workers=num_workers, **kwargs)
         # check for divisibility

@@ -10,7 +10,10 @@ class ARProg(nn.Module):
     @delegates(RNN, keep=True)
     def __init__(self, n_u, n_x, n_y, init_sz, **kwargs):
         super().__init__()
-        store_attr()
+        self.n_u = n_u
+        self.n_x = n_x
+        self.n_y = n_y
+        self.init_sz = init_sz
 
         # the output is n_x+n_y even if we output only n_y, because we need the output external states back into the model
         self.rnn_model = AR_Model(

@@ -76,7 +76,12 @@ class DiagLSTM(nn.Module):
     @delegates(nn.LSTM, keep=True)
     def __init__(self, input_size, output_size, output_layer=1, hidden_size=100, rnn_layer=1, linear_layer=1, **kwargs):
         super().__init__()
-        store_attr()
+        self.input_size = input_size
+        self.output_size = output_size
+        self.output_layer = output_layer
+        self.hidden_size = hidden_size
+        self.rnn_layer = rnn_layer
+        self.linear_layer = linear_layer
 
         self.rnn = nn.LSTM(input_size, hidden_size, rnn_layer, batch_first=True, **kwargs)
         self.final = SeqLinear(hidden_size, int(output_size * output_layer * 2), hidden_layer=linear_layer - 1)
@@ -144,7 +149,15 @@ class ARProg_Init(nn.Module):
         **kwargs,
     ):
         super().__init__()
-        store_attr()
+        self.n_u = n_u
+        self.n_y = n_y
+        self.init_sz = init_sz
+        self.n_x = n_x
+        self.hidden_size = hidden_size
+        self.rnn_layer = rnn_layer
+        self.diag_model = diag_model
+        self.linear_layer = linear_layer
+        self.final_layer = final_layer
 
         rnn_kwargs = dict(hidden_size=hidden_size, num_layers=rnn_layer)
         rnn_kwargs = dict(rnn_kwargs, **kwargs)
@@ -203,7 +216,11 @@ class FranSys(nn.Module):
         **kwargs,
     ):
         super().__init__()
-        store_attr("n_u,n_y,n_x,init_sz,init_diag_only")
+        self.n_u = n_u
+        self.n_y = n_y
+        self.n_x = n_x
+        self.init_sz = init_sz
+        self.init_diag_only = init_diag_only
 
         rnn_kwargs = dict(hidden_size=hidden_size, num_layers=rnn_layer, ret_full_hidden=True)
         rnn_kwargs = dict(rnn_kwargs, **kwargs)
@@ -287,9 +304,14 @@ class FranSysCallback(HookCallback):
         **kwargs,
     ):
         super().__init__(modules=modules, detach=detach, **kwargs)
-        store_attr(
-            "p_state_sync,p_diag_loss,p_osp_sync,p_osp_loss,p_tar_loss,sync_type,targ_loss_func,osp_n_skip"
-        )
+        self.p_state_sync = p_state_sync
+        self.p_diag_loss = p_diag_loss
+        self.p_osp_sync = p_osp_sync
+        self.p_osp_loss = p_osp_loss
+        self.p_tar_loss = p_tar_loss
+        self.sync_type = sync_type
+        self.targ_loss_func = targ_loss_func
+        self.osp_n_skip = osp_n_skip
         self.inner_model = model
         self.clear()
 

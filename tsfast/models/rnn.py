@@ -40,7 +40,16 @@ class RNN(nn.Module):
         **kwargs,
     ):
         super().__init__()
-        store_attr()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.hidden_p = hidden_p
+        self.input_p = input_p
+        self.weight_p = weight_p
+        self.rnn_type = rnn_type
+        self.ret_full_hidden = ret_full_hidden
+        self.stateful = stateful
+        self.normalization = normalization
         self.bs = 1
 
         self.rnns = nn.ModuleList(

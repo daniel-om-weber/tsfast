@@ -280,7 +280,12 @@ class AR_Model(nn.Module):
 
     def __init__(self, model, ar=True, stateful=False, model_has_state=False, return_state=False, out_sz=None):
         super().__init__()
-        store_attr()
+        self.model = model
+        self.ar = ar
+        self.stateful = stateful
+        self.model_has_state = model_has_state
+        self.return_state = return_state
+        self.out_sz = out_sz
         if return_state and not model_has_state:
             raise ValueError("return_state=True requires model_has_state=True")
         self.y_init = None

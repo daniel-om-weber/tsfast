@@ -40,5 +40,4 @@ Use `uv sync --extra dev` to install dependencies — it creates/manages the `.v
 - Inline type hints: `param:type = default` with modern union syntax (`str|None`)
 - Parameter descriptions as inline comments: `param:type, # description`
 - Single-line docstrings under 80 chars; no parameter docs in docstrings
-- Use `store_attr()` in constructors
 - Use pattern matching (`match/case`) for type checking
