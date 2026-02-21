@@ -4,6 +4,7 @@ __all__ = ['Conv1D', 'CNN', 'CausalConv1d', 'CConv1D', 'TCN_Block', 'TCN', 'TCNL
 
 from ..data import *
 from .layers import *
+from .layers import _resolve_norm
 from .rnn import *
 from ..learner.callbacks import *
 from ..learner.losses import *
@@ -127,16 +128,26 @@ from ..data.loader import get_inp_out_size
 
 
 @delegates(TCN, keep=True)
-def TCNLearner(dls,num_layers=3,hidden_size=100,loss_func=nn.L1Loss(),metrics=[fun_rmse],n_skip=None,opt_func=Adam,cbs=None,**kwargs):
+def TCNLearner(dls,num_layers=3,hidden_size=100,loss_func=nn.L1Loss(),metrics=[fun_rmse],n_skip=None,opt_func=Adam,cbs=None,
+               input_norm='standard', output_norm=False, **kwargs):
     inp,out = get_inp_out_size(dls)
     n_skip = 2**num_layers if n_skip is None else n_skip
     model = TCN(inp,out,num_layers,hidden_size,**kwargs)
-  
+
+    # Wrap model with input normalization and optional output denormalization
+    in_method = _resolve_norm(input_norm)
+    out_method = _resolve_norm(output_norm)
+    if in_method:
+        norm_u, _, norm_y = dls.norm_stats
+        in_scaler = Scaler.from_stats(norm_u, in_method)
+        out_scaler = Scaler.from_stats(norm_y, out_method) if out_method else None
+        model = NormalizedModel(model, in_scaler, out_scaler)
+
     skip = partial(SkipNLoss,n_skip=n_skip)
-        
+
     metrics= [skip(f) for f in metrics]
     loss_func = skip(loss_func)
-        
+
     lrn = Learner(dls,model,loss_func=loss_func,opt_func=opt_func,metrics=metrics,cbs=cbs,lr=3e-3)
     return lrn
 
@@ -194,33 +205,48 @@ class CRNN(nn.Module):
     
 
 @delegates(CRNN, keep=True)
-def CRNNLearner(dls,loss_func=nn.L1Loss(),metrics=[fun_rmse],n_skip=0,opt_func=Adam,cbs=None,**kwargs):
+def CRNNLearner(dls,loss_func=nn.L1Loss(),metrics=[fun_rmse],n_skip=0,opt_func=Adam,cbs=None,
+                input_norm='standard', output_norm=False, **kwargs):
     inp,out = get_inp_out_size(dls)
     model = CRNN(inp,out,**kwargs)
-  
+
+    # Wrap model with input normalization and optional output denormalization
+    in_method = _resolve_norm(input_norm)
+    out_method = _resolve_norm(output_norm)
+    if in_method:
+        norm_u, _, norm_y = dls.norm_stats
+        in_scaler = Scaler.from_stats(norm_u, in_method)
+        out_scaler = Scaler.from_stats(norm_y, out_method) if out_method else None
+        model = NormalizedModel(model, in_scaler, out_scaler)
+
     skip = partial(SkipNLoss,n_skip=n_skip)
-        
+
     metrics= [skip(f) for f in metrics]
     loss_func = skip(loss_func)
-        
+
     lrn = Learner(dls,model,loss_func=loss_func,opt_func=opt_func,metrics=metrics,cbs=cbs,lr=3e-3)
     return lrn
 
 
 @delegates(TCN, keep=True)
-def AR_TCNLearner(dls,hl_depth=3,alpha=1,beta=1,early_stop=0,metrics=None,n_skip=None,opt_func=Adam,**kwargs):
+def AR_TCNLearner(dls,hl_depth=3,alpha=1,beta=1,early_stop=0,metrics=None,n_skip=None,opt_func=Adam,input_norm='standard',**kwargs):
     n_skip = 2**hl_depth if n_skip is None else n_skip
 
     inp,out = get_inp_out_size(dls)
     model = AR_Model(TCN(inp+out,out,hl_depth,**kwargs),ar=False)
-    model.init_normalize(dls.one_batch())
-    
+
+    # Set normalization on the AR model
+    method = _resolve_norm(input_norm)
+    if method:
+        norm_u, _, norm_y = dls.norm_stats
+        model.set_normalization(norm_u, norm_y, method=method)
+
     cbs=[ARInitCB(),TimeSeriesRegularizer(alpha=alpha,beta=beta,modules=[model.model.conv_layers[-1]])]#SaveModelCallback()
     if early_stop > 0:
         cbs += [EarlyStoppingCallback(patience=early_stop)]
-        
+
     if metrics is None: metrics=SkipNLoss(fun_rmse,n_skip)
-        
+
     lrn = Learner(dls,model,loss_func=nn.L1Loss(),opt_func=opt_func,metrics=metrics,cbs=cbs,lr=3e-3)
     return lrn
 

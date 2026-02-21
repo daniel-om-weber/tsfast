@@ -1,4 +1,5 @@
 """Tests for tsfast.data module."""
+import math
 import pytest
 import torch
 import numpy as np
@@ -153,11 +154,12 @@ class TestDataTransforms:
         dls = create_dls(
             u=["u"], y=["y"], dataset=wh_path,
             win_sz=100, stp_sz=100, num_workers=0,
-            n_batches_train=5,
+            n_batches_train=2,
         )
         dls.add_tfms([SeqNoiseInjection(std=0.05)], 'after_batch')
         lrn = RNNLearner(dls, rnn_type="gru", num_layers=1, hidden_size=10)
         lrn.fit(1, 1e-4)
+        assert not math.isnan(lrn.recorder.values[-1][1])
 
 
 class TestDataSplitting:

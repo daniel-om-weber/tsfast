@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from ..prediction.fransys import Diag_RNN
 from ..models.rnn import RNN
-from ..models.layers import SeqLinear
+from ..models.layers import SeqLinear, Scaler, NormalizedModel, _resolve_norm
 from ..learner.callbacks import CB_TruncateSequence
 from ..learner.losses import SkipNLoss
 from fastai.basics import *
@@ -169,30 +169,47 @@ def PIRNNLearner(
     opt_func = Adam, # Optimizer
     lr:float = 3e-3, # Learning rate
     cbs = None, # Additional callbacks
+    input_norm = 'standard', # Input normalization method
+    output_norm = False, # Output denormalization method
     **kwargs # Additional arguments for PIRNN
 ):
     '''Create PIRNN learner with appropriate configuration'''
     from tsfast.prediction.core import PredictionCallback
     from tsfast.learner.losses import fun_rmse
-    
+
     cbs = [] if cbs is None else list(cbs)
     metrics = [fun_rmse] if metrics is None else list(metrics) if is_iter(metrics) else [metrics]
-    
+
     _batch = dls.one_batch()
     inp = _batch[0].shape[-1]
     out = _batch[1].shape[-1]  # Supervised outputs from dataset
     n_y_total = out + n_aux_outputs  # Total outputs (supervised + auxiliary)
+
+    norm_u, norm_x, norm_y = dls.norm_stats
 
     if attach_output:
         model = PIRNN(inp, n_y_total, init_sz, n_y_supervised=out, **kwargs)
 
         # Add PredictionCallback if not present
         if not any(isinstance(cb, PredictionCallback) for cb in cbs):
-            pred_callback = PredictionCallback(0)
-            pred_callback.init_normalize(_batch)
-            cbs.append(pred_callback)
+            cbs.append(PredictionCallback(0))
+
+        # Input will be [u, y] after PredictionCallback concatenation
+        combined_input_stats = norm_u + norm_y
     else:
         model = PIRNN(inp-out, n_y_total, init_sz, n_y_supervised=out, **kwargs)
+
+        # Input is [u, x?, y] from prediction-mode dls
+        parts = [norm_u] + ([norm_x] if norm_x else []) + [norm_y]
+        combined_input_stats = sum(parts[1:], parts[0])
+
+    # Wrap model with input normalization and optional output denormalization
+    in_method = _resolve_norm(input_norm)
+    out_method = _resolve_norm(output_norm)
+    if in_method:
+        in_scaler = Scaler.from_stats(combined_input_stats, in_method)
+        out_scaler = Scaler.from_stats(norm_y, out_method) if out_method else None
+        model = NormalizedModel(model, in_scaler, out_scaler)
 
     # For long sequences, add truncation callback
     seq_len = _batch[0].shape[1]
@@ -201,17 +218,17 @@ def PIRNNLearner(
         if not any(isinstance(cb, CB_TruncateSequence) for cb in cbs):
             INITIAL_SEQ_LEN = 100
             cbs.append(CB_TruncateSequence(init_sz + INITIAL_SEQ_LEN))
-  
+
     # Wrap loss and metrics to only use supervised outputs when auxiliary outputs present
     if n_aux_outputs > 0:
         loss_func = AuxiliaryOutputLoss(loss_func, out)
         metrics = [AuxiliaryOutputLoss(m, out) for m in metrics]
-    
+
     # Skip initial timesteps in loss/metrics
     skip = partial(SkipNLoss, n_skip=init_sz)
     metrics = [skip(f) for f in metrics]
     loss_func = skip(loss_func)
-        
+
     lrn = Learner(dls, model, loss_func=loss_func, metrics=metrics, cbs=cbs, opt_func=opt_func, lr=lr)
     return lrn
 

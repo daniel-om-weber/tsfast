@@ -36,3 +36,4 @@ class TestInferenceWrapper:
         model = InferenceWrapper(lrn)
         result = model(np.random.randn(100, 1), np.random.randn(100, 1))
         assert result.shape == (100, 1)
+        assert np.all(np.isfinite(result))

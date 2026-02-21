@@ -466,17 +466,14 @@ def diff3_central(signal: torch.Tensor, dt: float) -> torch.Tensor:
 
 class PhysicsLossCallback(Callback):
     "`Callback` that adds physics-informed loss using actual training data"
-    def __init__(self, 
-                 norm_input, # Normalizer with `.mean` and `.std` for denormalization
+    def __init__(self,
                  physics_loss_func, # Function(u, y_pred, y_ref) -> dict of losses or single loss tensor
                  weight: float = 1.0, # Global scaling factor for physics loss contribution
                  loss_weights: dict = None, # Per-component weights like {'physics': 1.0, 'derivative': 0.1}
                  n_inputs: int = None, # Number of input channels (if using concatenated inputs like FranSysLearner)
                  n_skip: int = 0, # Number of initial timesteps to skip before computing physics loss
                 ):
-        '''Apply physics-informed loss to training batches after denormalizing inputs'''
-        self.mean = norm_input.mean
-        self.std = norm_input.std
+        '''Apply physics-informed loss to training batches using raw inputs'''
         self.weight = weight
         self.loss_weights = loss_weights or {}
         self.physics_loss_func = physics_loss_func
@@ -486,50 +483,44 @@ class PhysicsLossCallback(Callback):
     def after_loss(self):
         '''Compute physics-informed loss on training data and add to total loss'''
         if not self.training: return
-        
-        x_norm = self.xb[0]
-        device = x_norm.device
-        
+
+        x = self.xb[0]
+
         # Extract input part (if n_inputs specified, split concatenated input)
         if self.n_inputs is not None:
-            u_norm = x_norm[:, :, :self.n_inputs]
+            u = x[:, :, :self.n_inputs]
         else:
-            u_norm = x_norm
-        
-        # Denormalize input to physical space
-        mean, std = self.mean.to(device), self.std.to(device)
-        u = u_norm * std + mean
-        
-        # Get predictions and ground truth
+            u = x
+
+        # Get predictions and ground truth (already in raw physical space)
         y_pred = self.pred
         y_ref = self.yb[0]
-        
+
         # Skip initial timesteps (e.g., init window for state encoder)
         if self.n_skip > 0:
             u = u[:, self.n_skip:]
             y_pred = y_pred[:, self.n_skip:]
             y_ref = y_ref[:, self.n_skip:]
-        
+
         # Compute physics losses (system-specific)
         loss_dict = self.physics_loss_func(u, y_pred, y_ref)
-        
+
         # Handle both dict and single tensor returns
         if isinstance(loss_dict, dict):
             physics_total = sum(
-                self.loss_weights.get(k, 1.0) * v 
+                self.loss_weights.get(k, 1.0) * v
                 for k, v in loss_dict.items()
             )
         else:
             physics_total = loss_dict
-        
+
         # Add weighted physics loss to main loss
         self.learn.loss = self.learn.loss + self.weight * physics_total
         self.learn.loss_grad = self.learn.loss_grad + self.weight * physics_total
 
 class CollocationPointsCB(Callback):
     "`Callback` that adds physics-informed loss using collocation points with user-defined physics"
-    def __init__(self, 
-                 norm_input, # Normalizer with `.mean` and `.std` attributes for input scaling
+    def __init__(self,
                  generate_pinn_input, # Function(batch_size, seq_len, device) -> tensor of collocation points
                  physics_loss_func, # Function(u, y_pred, y_ref) -> dict of losses or single loss tensor
                  weight:float = 1.0, # Global scaling factor for physics loss contribution
@@ -540,9 +531,7 @@ class CollocationPointsCB(Callback):
                  hidden_std:float = 0.1, # Std for random hidden state initialization
                  n_skip:int = 0, # Number of initial timesteps to skip before computing physics loss
                 ):
-        '''Initialize callback with normalization, collocation generator, physics equations, and init mode'''
-        self.mean = norm_input.mean
-        self.std = norm_input.std
+        '''Initialize callback with collocation generator, physics equations, and init mode'''
         self.weight = weight
         self.loss_weights = loss_weights or {}
         self.generate_pinn_input = generate_pinn_input
@@ -588,40 +577,37 @@ class CollocationPointsCB(Callback):
             self.loader_iter = iter(self._prepare_loader(u_real))
         
         u_coloc = next(self.loader_iter).to(device)
-        mean, std = self.mean.to(device), self.std.to(device)
-        u_norm = (u_coloc - mean) / std
-        
+
         y_ref = None
-        
+
         if self.init_mode == 'state_encoder':
             if self.output_ranges is None:
                 raise ValueError("output_ranges must be provided when init_mode='state_encoder'")
-            
+
             n_outputs = len(self.output_ranges)
             physical_states = generate_random_states(batch_size, n_outputs, self.output_ranges, device)
-            
+
             if hasattr(self.learn.model, 'encode_single_state'):
-                # Pass physical states directly - model will auto-detect and encode
                 with torch.enable_grad():
-                    y_pred = self.learn.model(u_norm, init_state=physical_states, encoder_mode='state')
+                    y_pred = self.learn.model(u_coloc, init_state=physical_states, encoder_mode='state')
                 y_ref = physical_states.unsqueeze(1).expand(-1, u_coloc.shape[1], -1)
             else:
                 raise ValueError("Model must have encode_single_state method for init_mode='state_encoder'")
-                
+
         elif self.init_mode == 'random_hidden':
             if hasattr(self.learn.model, 'rnn_prognosis'):
                 hidden_size = self.learn.model.hidden_size
                 rnn_layer = self.learn.model.rnn_layer
                 init_hidden = [torch.randn(1, batch_size, hidden_size, device=device) * self.hidden_std for _ in range(rnn_layer)]
                 with torch.enable_grad():
-                    y_pred = self.learn.model(u_norm, init_state=init_hidden, encoder_mode='none')
+                    y_pred = self.learn.model(u_coloc, init_state=init_hidden, encoder_mode='none')
                 y_ref = None
             else:
                 raise ValueError("Model structure not compatible with init_mode='random_hidden'")
-                
+
         else:
             with torch.enable_grad():
-                y_pred = self.learn.model(u_norm)
+                y_pred = self.learn.model(u_coloc)
             y_ref = None
         
         # Skip initial timesteps (e.g., init window for state encoder)

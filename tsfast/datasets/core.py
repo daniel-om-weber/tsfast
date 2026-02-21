@@ -1,7 +1,8 @@
 
 __all__ = ['create_dls_test', 'extract_mean_std_from_dls', 'dict_file_save', 'dict_file_load', 'extract_mean_std_from_hdffiles',
            'extract_mean_std_from_dataset', 'is_dataset_directory', 'create_dls', 'get_default_dataset_path',
-           'get_dataset_path', 'clean_default_dataset_path', 'create_dls_downl']
+           'get_dataset_path', 'clean_default_dataset_path', 'create_dls_downl', 'estimate_norm_stats',
+           'NormPair', 'NormStats']
 
 from fastai.data.all import *
 from ..data import *
@@ -11,12 +12,37 @@ import h5py
 from pathlib import Path as _Path
 from shutil import rmtree
 import warnings
+from dataclasses import dataclass
+
+@dataclass
+class NormPair:
+    'Per-signal normalization statistics (mean, std, min, max as 1-D numpy arrays).'
+    mean: np.ndarray
+    std: np.ndarray
+    min: np.ndarray
+    max: np.ndarray
+
+    def __add__(self, other):
+        'Concatenate two NormPairs feature-wise (e.g. norm_u + norm_y).'
+        return NormPair(*(np.hstack([a, b]) for a, b in zip(self, other)))
+
+    def __iter__(self):
+        return iter((self.mean, self.std, self.min, self.max))
+
+    def __getitem__(self, idx):
+        return (self.mean, self.std, self.min, self.max)[idx]
+
+from typing import NamedTuple
+
+class NormStats(NamedTuple):
+    u: NormPair
+    x: NormPair | None
+    y: NormPair
 
 def extract_mean_std_from_dls(dls):
-    normalize = first(dls.after_batch,f=lambda x: type(x) is Normalize)
-    norm_mean = normalize.mean.detach().cpu()
-    norm_std = normalize.std.detach().cpu()
-    return norm_mean,norm_std
+    'Extract normalization statistics stored on the DataLoaders object.'
+    if not hasattr(dls, 'norm_stats'): raise AttributeError("DataLoaders missing norm_stats. Use create_dls to create them.")
+    return dls.norm_stats
 
 def dict_file_save(key,value,f_path='dls_normalize.p'):
     'save value to a dictionary file, appends if it already exists'
@@ -83,6 +109,25 @@ def extract_mean_std_from_dataset(lst_files,u,x,y):
     norm_y = extract_mean_std_from_hdffiles(train_files,y)
     return (norm_u,norm_x,norm_y)
 
+def estimate_norm_stats(dls, n_batches:int=10):
+    'Estimate per-feature mean/std/min/max from training batches. Returns tuple of NormPair, one per batch element.'
+    acc = None
+    for i, batch in enumerate(dls.train):
+        if i >= n_batches: break
+        if acc is None: acc = [[t] for t in batch]
+        else:
+            for j, t in enumerate(batch): acc[j].append(t)
+
+    stats = []
+    for tensors in acc:
+        t = torch.cat(tensors).flatten(0, -2)  # [total_samples, features]
+        stats.append(NormPair(
+            mean=t.mean(0).numpy().astype(np.float32),
+            std=t.std(0).numpy().astype(np.float32),
+            min=t.min(0).values.numpy().astype(np.float32),
+            max=t.max(0).values.numpy().astype(np.float32)))
+    return tuple(stats)
+
 def is_dataset_directory(ds_path):
     """
     Checks if the given directory path is a dataset with hdf5 files.
@@ -122,7 +167,6 @@ def create_dls(
         n_batches_valid:int|None = None, #exact number of validation batches per epoch
         max_batches_training:int|None = None, #DEPRECATED: limits the number of training batches in a single epoch
         max_batches_valid:int|None = None, #DEPRECATED: limits the number of validation batches in a single epoch
-        dls_id:str = None #identifier for the dataloader to cache the normalization values, does not cache when not provided
     ):
     if valid_stp_sz is None: valid_stp_sz = win_sz
 
@@ -134,17 +178,6 @@ def create_dls(
     else:
         raise ValueError(f'dataset has to be a Path or filelist. {type(dataset)} was given.')
     
-    #extract the normalization parameters for input, state and output
-    if dls_id is not None:
-        norm = dict_file_load(dls_id)
-        if norm is None: 
-            norm = extract_mean_std_from_dataset(hdf_files,u,x,y)
-            dict_file_save(dls_id,norm)
-        (norm_u,norm_x,norm_y) = norm
-    else:
-        #use all provided training data for deterministic results, in case caching is not activated
-        (norm_u,norm_x,norm_y) = extract_mean_std_from_dataset(hdf_files,u,x,y)
-    
     #choose input and output signal blocks
     if prediction:
         if input_delay: #if true, the input is delayed by one step
@@ -153,13 +186,9 @@ def create_dls(
         else:
             blocks = (SequenceBlock.from_hdf(u+x+y,TensorSequencesInput,clm_shift=([0]*len(u)+[-1]*len(x+y)),cached=cached),
                         SequenceBlock.from_hdf(y,TensorSequencesOutput,clm_shift=[1]*len(y),cached=cached))
-        tup_norm = (norm_u,norm_y) if len(x) == 0 else (norm_u,norm_x,norm_y)
-        norm_mean = np.hstack([n[0] for n in tup_norm])
-        norm_std = np.hstack([n[1] for n in tup_norm])
     else:
         blocks = (SequenceBlock.from_hdf(u,TensorSequencesInput,cached=cached),
                 SequenceBlock.from_hdf(y,TensorSequencesOutput,cached=cached))
-        norm_mean,norm_std = norm_u
 
 
     seq = DataBlock(blocks=blocks,
@@ -168,7 +197,6 @@ def create_dls(
                             DfHDFCreateWindows(win_sz=win_sz,stp_sz=stp_sz,clm=u[0]),
                             DfHDFCreateWindows(win_sz=win_sz,stp_sz=valid_stp_sz,clm=u[0])
                         )]),
-                     batch_tfms=Normalize(mean=torch.from_numpy(norm_mean[None,None,:]),std=torch.from_numpy(norm_std[None,None,:]),axes=(0, 1)),
                      splitter=ParentSplitter())
     
     # Determine which factory to use based on parameters
@@ -217,7 +245,15 @@ def create_dls(
     dls = seq.dataloaders(hdf_files,bs=bs,num_workers=num_workers,
                           dl_type=dl_type,dl_kwargs=dl_kwargs)
 
-    
+    #estimate normalization stats from training batches
+    input_stats, output_stats = estimate_norm_stats(dls)
+    n_u, n_x = len(u), len(x)
+    norm_u = NormPair(input_stats.mean[:n_u], input_stats.std[:n_u],
+                      input_stats.min[:n_u], input_stats.max[:n_u])
+    norm_x = NormPair(input_stats.mean[n_u:n_u+n_x], input_stats.std[n_u:n_u+n_x],
+                      input_stats.min[n_u:n_u+n_x], input_stats.max[n_u:n_u+n_x]) if n_x > 0 else None
+    norm_y = output_stats
+    dls.norm_stats = NormStats(norm_u, norm_x, norm_y)
 
     #add the test dataloader
     test_hdf_files =  hdf_files.filter(lambda o:Path(o).parent.name == 'test')

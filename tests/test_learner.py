@@ -1,4 +1,5 @@
 """Tests for tsfast.learner module."""
+import math
 import pytest
 import torch
 from torch import nn
@@ -95,70 +96,26 @@ class TestLosses:
 
 class TestCallbacks:
     @pytest.mark.slow
-    def test_gradient_clipping(self, dls_simulation):
+    @pytest.mark.parametrize("make_cb", [
+        pytest.param(lambda m: __import__('tsfast.learner.callbacks', fromlist=['GradientClipping']).GradientClipping(10), id="gradient_clipping"),
+        pytest.param(lambda m: __import__('tsfast.learner.callbacks', fromlist=['WeightClipping']).WeightClipping(m, clip_limit=1), id="weight_clipping"),
+        pytest.param(lambda m: __import__('tsfast.learner.callbacks', fromlist=['VarySeqLen']).VarySeqLen(10), id="vary_seq_len"),
+        pytest.param(lambda m: __import__('tsfast.learner.callbacks', fromlist=['SkipFirstNCallback']).SkipFirstNCallback(10), id="skip_first_n"),
+        pytest.param(lambda m: __import__('tsfast.learner.callbacks', fromlist=['SkipNaNCallback']).SkipNaNCallback(), id="skip_nan"),
+        pytest.param(lambda m: __import__('tsfast.learner.callbacks', fromlist=['CB_TruncateSequence']).CB_TruncateSequence(30), id="truncate_sequence"),
+        pytest.param(lambda m: __import__('tsfast.learner.callbacks', fromlist=['CB_AddLoss']).CB_AddLoss(nn.L1Loss(), alpha=0.5), id="add_loss"),
+        pytest.param(lambda m: __import__('tsfast.learner.callbacks', fromlist=['BatchLossFilter']).BatchLossFilter(loss_perc=0.5), id="batch_loss_filter"),
+        pytest.param(lambda m: __import__('tsfast.learner.callbacks', fromlist=['GradientBatchFiltering']).GradientBatchFiltering(filter_val=100), id="gradient_batch_filtering"),
+    ])
+    def test_callback_smoke(self, dls_simulation, make_cb):
         from tsfast.models.rnn import SimpleRNN
-        from tsfast.learner.callbacks import GradientClipping
         from fastai.basics import Learner
         model = SimpleRNN(1, 1)
-        Learner(dls_simulation, model, loss_func=nn.MSELoss(), cbs=GradientClipping(10)).fit(1)
-
-    @pytest.mark.slow
-    def test_weight_clipping(self, dls_simulation):
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.learner.callbacks import WeightClipping
-        from fastai.basics import Learner
-        model = SimpleRNN(1, 1)
-        Learner(dls_simulation, model, loss_func=nn.MSELoss(), cbs=WeightClipping(model, clip_limit=1)).fit(1)
-
-    @pytest.mark.slow
-    def test_vary_seq_len(self, dls_simulation):
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.learner.callbacks import VarySeqLen
-        from fastai.basics import Learner
-        model = SimpleRNN(1, 1)
-        Learner(dls_simulation, model, loss_func=nn.MSELoss(), cbs=VarySeqLen(10)).fit(1)
-
-    @pytest.mark.slow
-    def test_skip_first_n_callback(self, dls_simulation):
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.learner.callbacks import SkipFirstNCallback
-        from fastai.basics import Learner
-        model = SimpleRNN(1, 1)
-        Learner(dls_simulation, model, loss_func=nn.MSELoss(), cbs=SkipFirstNCallback(10)).fit(1)
-
-    @pytest.mark.slow
-    def test_skip_nan_callback(self, dls_simulation):
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.learner.callbacks import SkipNaNCallback
-        from fastai.basics import Learner
-        model = SimpleRNN(1, 1)
-        Learner(dls_simulation, model, loss_func=nn.MSELoss(), cbs=SkipNaNCallback()).fit(1)
-
-    @pytest.mark.slow
-    def test_cb_truncate_sequence(self, dls_simulation):
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.learner.callbacks import CB_TruncateSequence
-        from fastai.basics import Learner
-        model = SimpleRNN(1, 1)
-        Learner(dls_simulation, model, loss_func=nn.MSELoss(), cbs=CB_TruncateSequence(30)).fit(1)
-
-    @pytest.mark.slow
-    def test_cb_add_loss(self, dls_simulation):
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.learner.callbacks import CB_AddLoss
-        from fastai.basics import Learner
-        model = SimpleRNN(1, 1)
-        Learner(dls_simulation, model, loss_func=nn.MSELoss(),
-                cbs=CB_AddLoss(nn.L1Loss(), alpha=0.5)).fit(1)
-
-    @pytest.mark.slow
-    def test_batch_loss_filter(self, dls_simulation):
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.learner.callbacks import BatchLossFilter
-        from fastai.basics import Learner
-        model = SimpleRNN(1, 1)
-        Learner(dls_simulation, model, loss_func=nn.MSELoss(),
-                cbs=BatchLossFilter(loss_perc=0.5)).fit(1)
+        lrn = Learner(dls_simulation, model, loss_func=nn.MSELoss(), cbs=make_cb(model))
+        lrn.fit(1)
+        final_valid_loss = lrn.recorder.values[-1][1]
+        assert final_valid_loss < float('inf')
+        assert not math.isnan(final_valid_loss)
 
     @pytest.mark.slow
     def test_time_series_regularizer(self, dls_simulation):
@@ -166,14 +123,9 @@ class TestCallbacks:
         from tsfast.learner.callbacks import TimeSeriesRegularizer
         from fastai.basics import Learner
         model = SimpleRNN(1, 1, hidden_size=20)
-        Learner(dls_simulation, model, loss_func=nn.MSELoss(),
-                cbs=TimeSeriesRegularizer(alpha=0.1, beta=0.1, modules=[model.rnn])).fit(1)
-
-    @pytest.mark.slow
-    def test_gradient_batch_filtering(self, dls_simulation):
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.learner.callbacks import GradientBatchFiltering
-        from fastai.basics import Learner
-        model = SimpleRNN(1, 1)
-        Learner(dls_simulation, model, loss_func=nn.MSELoss(),
-                cbs=GradientBatchFiltering(filter_val=100)).fit(1)
+        lrn = Learner(dls_simulation, model, loss_func=nn.MSELoss(),
+                cbs=TimeSeriesRegularizer(alpha=0.1, beta=0.1, modules=[model.rnn]))
+        lrn.fit(1)
+        final_valid_loss = lrn.recorder.values[-1][1]
+        assert final_valid_loss < float('inf')
+        assert not math.isnan(final_valid_loss)

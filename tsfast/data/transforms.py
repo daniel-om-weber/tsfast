@@ -1,6 +1,5 @@
 
-__all__ = ['SeqSlice', 'SeqNoiseInjection', 'SeqNoiseInjection_Varying', 'SeqNoiseInjection_Grouped', 'SeqBiasInjection',
-           'encodes', 'decodes']
+__all__ = ['SeqSlice', 'SeqNoiseInjection', 'SeqNoiseInjection_Varying', 'SeqNoiseInjection_Grouped', 'SeqBiasInjection']
 
 from fastai.basics import *
 from .core import TensorSequencesInput
@@ -79,16 +78,3 @@ class SeqBiasInjection(RandTransform):
         n = torch.normal(mean=mean, std=std).expand_as(o)
         return o+n
 
-@Normalize
-def encodes(self, x:TensorSequencesInput): 
-    if x.device != self.mean.device:
-        self.mean = self.mean.to(x.device)
-        self.std = self.std.to(x.device)
-    return (x-self.mean) / self.std
-
-@Normalize
-def decodes(self, x:TensorSequencesInput):
-    if x.device != self.mean.device:
-        self.mean = self.mean.to(x.device)
-        self.std = self.std.to(x.device)
-    return (x*self.std + self.mean)

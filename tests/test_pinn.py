@@ -1,4 +1,5 @@
 """Tests for tsfast.pinn module."""
+import math
 import pytest
 import torch
 import numpy as np
@@ -39,28 +40,21 @@ class TestExcitationSignals:
 @pytest.mark.pinn
 class TestPhysicsCallbacks:
     @pytest.mark.slow
-    def test_physics_loss_callback(self, wh_path):
-        from tsfast.datasets.core import create_dls
+    def test_physics_loss_callback(self, dls_simulation):
         from tsfast.models.rnn import RNNLearner
         from tsfast.pinn.core import PhysicsLossCallback, diff1_forward
-
-        dls = create_dls(
-            u=["u"], y=["y"], dataset=wh_path,
-            win_sz=100, stp_sz=100, num_workers=0,
-            n_batches_train=5,
-        )
 
         def simple_physics(u, y_pred, y_ref):
             dy = diff1_forward(y_pred, 0.01)
             return {"physics": (dy ** 2).mean()}
 
-        lrn = RNNLearner(dls, rnn_type="gru", num_layers=1, hidden_size=10)
+        lrn = RNNLearner(dls_simulation, rnn_type="gru", num_layers=1, hidden_size=10)
         lrn.add_cb(PhysicsLossCallback(
-            norm_input=dls.train.after_batch[0],
             physics_loss_func=simple_physics,
             weight=0.1,
         ))
         lrn.fit(1, 3e-3)
+        assert not math.isnan(lrn.recorder.values[-1][1])
 
 
 @pytest.mark.pinn
@@ -123,12 +117,14 @@ class TestPIRNN:
         from tsfast.pinn.pirnn import PIRNNLearner
         lrn = PIRNNLearner(dls_pinn_prediction, init_sz=20, hidden_size=20, rnn_layer=1)
         lrn.fit(1, 3e-3)
+        assert not math.isnan(lrn.recorder.values[-1][1])
 
     @pytest.mark.slow
     def test_pirnn_learner_attach_output(self, dls_pinn):
         from tsfast.pinn.pirnn import PIRNNLearner
         lrn = PIRNNLearner(dls_pinn, init_sz=20, attach_output=True, hidden_size=20, rnn_layer=1)
         lrn.fit(1, 3e-3)
+        assert not math.isnan(lrn.recorder.values[-1][1])
 
 
 @pytest.mark.pinn
@@ -147,13 +143,13 @@ class TestCollocationPointsCB:
 
         lrn = RNNLearner(dls_pinn, rnn_type="gru", num_layers=1, hidden_size=10)
         lrn.add_cb(CollocationPointsCB(
-            norm_input=dls_pinn.train.after_batch[0],
             generate_pinn_input=gen_fn,
             physics_loss_func=simple_physics,
             weight=0.1,
             num_workers=1,
         ))
         lrn.fit(1, 3e-3)
+        assert not math.isnan(lrn.recorder.values[-1][1])
 
 
 @pytest.mark.pinn
@@ -165,6 +161,7 @@ class TestPINNCallbacks:
         lrn = FranSysLearner(dls_pinn_prediction, init_sz=20, hidden_size=10, rnn_layer=1)
         lrn.add_cb(TransitionSmoothnessCallback(init_sz=20, weight=0.1))
         lrn.fit(1, 3e-3)
+        assert not math.isnan(lrn.recorder.values[-1][1])
 
     @pytest.mark.slow
     def test_alternating_encoder(self, dls_pinn_prediction):
