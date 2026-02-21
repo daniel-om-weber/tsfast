@@ -2,7 +2,7 @@
 __all__ = ['create_dls_test', 'extract_mean_std_from_dls', 'dict_file_save', 'dict_file_load', 'extract_mean_std_from_hdffiles',
            'extract_mean_std_from_dataset', 'is_dataset_directory', 'create_dls', 'get_default_dataset_path',
            'get_dataset_path', 'clean_default_dataset_path', 'create_dls_downl', 'estimate_norm_stats',
-           'NormPair', 'NormStats']
+           'NormPair', 'NormStats', 'split_by_parent']
 
 from fastai.data.all import *
 from ..data import *
@@ -128,6 +128,28 @@ def estimate_norm_stats(dls, n_batches:int=10):
             max=t.max(0).values.numpy().astype(np.float32)))
     return tuple(stats)
 
+def _FileListSplitter(train_set, valid_set):
+    'Split items by membership in train/valid file path sets.'
+    def _inner(o, **kwargs):
+        if len(o) > 0 and isinstance(o.iloc[0] if hasattr(o, 'iloc') else o[0], dict):
+            o = [d['path'] for d in o]
+        train_idxs = mask2idxs(str(p) in train_set for p in o)
+        valid_idxs = mask2idxs(str(p) in valid_set for p in o)
+        return train_idxs, valid_idxs
+    return _inner
+
+def split_by_parent(files_or_path, train_name='train', valid_name='valid', test_name='test'):
+    'Collect HDF files and group into train/valid/test dict by parent directory name.'
+    if isinstance(files_or_path, (Path, str)):
+        files = get_hdf_files(files_or_path)
+    else:
+        files = L(files_or_path)
+    return {
+        'train': files.filter(lambda f: Path(f).parent.name == train_name),
+        'valid': files.filter(lambda f: Path(f).parent.name == valid_name),
+        'test':  files.filter(lambda f: Path(f).parent.name == test_name),
+    }
+
 def is_dataset_directory(ds_path):
     """
     Checks if the given directory path is a dataset with hdf5 files.
@@ -152,11 +174,11 @@ def is_dataset_directory(ds_path):
 def create_dls(
         u, #list of input signal names
         y, #list of output signal names
-        dataset:Path|list, #path to dataset with train,valid and test folders, or list of filepaths
+        dataset:Path|list|dict, #path to dataset, list of filepaths, or {'train':[], 'valid':[], 'test':[]} dict
         win_sz:int = 100, #initial window size
         x:list =[], #optional list of state signal names
         stp_sz:int = 1, #step size between consecutive windows
-        sub_seq_len:int = None, #if provided uses truncated backpropagation throug time with this sub sequence length 
+        sub_seq_len:int = None, #if provided uses truncated backpropagation throug time with this sub sequence length
         bs:int = 64, #batch size
         prediction:bool = False, #if true, the output is concatenated to the input, mainly for prediction tasks
         input_delay:bool = False, #if true, the input is delayed by one step
@@ -170,14 +192,26 @@ def create_dls(
     ):
     if valid_stp_sz is None: valid_stp_sz = win_sz
 
-    #extract list of dataset files
-    if isinstance(dataset, (Path,str)):
+    #resolve dataset into hdf_files, splitter, and test_files
+    if isinstance(dataset, dict):
+        train_files = L(dataset.get('train', []))
+        valid_files = L(dataset.get('valid', []))
+        test_files = L(dataset.get('test', []))
+        if len(train_files) == 0: raise ValueError("dataset dict must contain 'train' files")
+        if len(valid_files) == 0: raise ValueError("dataset dict must contain 'valid' files")
+        hdf_files = train_files + valid_files + test_files
+        splitter = _FileListSplitter({str(f) for f in train_files}, {str(f) for f in valid_files})
+    elif isinstance(dataset, (Path,str)):
         hdf_files = get_hdf_files(dataset)
+        splitter = ParentSplitter()
+        test_files = None
     elif isinstance(dataset,(list,tuple,L)):
         hdf_files = dataset
+        splitter = ParentSplitter()
+        test_files = None
     else:
-        raise ValueError(f'dataset has to be a Path or filelist. {type(dataset)} was given.')
-    
+        raise ValueError(f'dataset must be a Path, list, or dict. {type(dataset)} was given.')
+
     #choose input and output signal blocks
     if prediction:
         if input_delay: #if true, the input is delayed by one step
@@ -193,11 +227,11 @@ def create_dls(
 
     seq = DataBlock(blocks=blocks,
                      get_items=CreateDict([DfApplyFuncSplit(
-                            ParentSplitter(),
+                            splitter,
                             DfHDFCreateWindows(win_sz=win_sz,stp_sz=stp_sz,clm=u[0]),
                             DfHDFCreateWindows(win_sz=win_sz,stp_sz=valid_stp_sz,clm=u[0])
                         )]),
-                     splitter=ParentSplitter())
+                     splitter=splitter)
     
     # Determine which factory to use based on parameters
     use_old_factory = False
@@ -256,16 +290,17 @@ def create_dls(
     dls.norm_stats = NormStats(norm_u, norm_x, norm_y)
 
     #add the test dataloader
-    test_hdf_files =  hdf_files.filter(lambda o:Path(o).parent.name == 'test')
-    if prediction:
-        items = CreateDict([DfHDFCreateWindows(win_sz=win_sz,stp_sz=win_sz,clm=u[0])])(test_hdf_files)
-        test_dl = dls.test_dl(items,bs=min(bs,len(items)), with_labels=True)
-    else:
-        items = CreateDict()(test_hdf_files)
-        test_dl = dls.test_dl(items,bs=1, with_labels=True)
+    if test_files is None:
+        test_files = hdf_files.filter(lambda o:Path(o).parent.name == 'test')
+    if len(test_files) > 0:
+        if prediction:
+            items = CreateDict([DfHDFCreateWindows(win_sz=win_sz,stp_sz=win_sz,clm=u[0])])(test_files)
+            test_dl = dls.test_dl(items,bs=min(bs,len(items)), with_labels=True)
+        else:
+            items = CreateDict()(test_files)
+            test_dl = dls.test_dl(items,bs=1, with_labels=True)
+        dls.loaders.append(test_dl)
 
-    dls.loaders.append(test_dl)
-    
     return dls
 
 def _get_project_root():
