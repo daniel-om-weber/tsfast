@@ -90,6 +90,62 @@ class TestNormalization:
         mean, std, mn, mx = stats.u
         assert np.array_equal(mean, stats.u.mean)
 
+    def test_extract_norm_from_hdffiles(self, hdf_files):
+        from tsfast.datasets.core import extract_norm_from_hdffiles, NormPair
+        from pathlib import Path
+        train_files = [f for f in hdf_files if Path(f).parent.name == 'train']
+        result = extract_norm_from_hdffiles(train_files, ["u", "y"])
+        assert isinstance(result, NormPair)
+        assert result.mean.shape == (2,)
+        assert result.std.shape == (2,)
+        assert result.min.shape == (2,)
+        assert result.max.shape == (2,)
+        assert all(result.std > 0)
+        assert all(result.min <= result.mean)
+        assert all(result.max >= result.mean)
+
+    def test_extract_norm_from_hdffiles_empty(self):
+        from tsfast.datasets.core import extract_norm_from_hdffiles
+        assert extract_norm_from_hdffiles([], []) is None
+
+    def test_dls_id_caching(self, wh_path, tmp_path, monkeypatch):
+        from tsfast.datasets import core as ds_core
+        from tsfast.datasets.core import create_dls, NormStats, NormPair
+        monkeypatch.setattr(ds_core, '_cache_path', lambda dls_id: tmp_path / f'{dls_id}.pkl')
+        dls = create_dls(
+            u=["u"], y=["y"], dataset=wh_path,
+            win_sz=100, stp_sz=100, num_workers=0,
+            n_batches_train=2, dls_id="test_cache",
+        )
+        assert (tmp_path / 'test_cache.pkl').exists()
+        stats1 = dls.norm_stats
+        assert isinstance(stats1, NormStats)
+        assert isinstance(stats1.u, NormPair)
+        # Second call loads from cache
+        dls2 = create_dls(
+            u=["u"], y=["y"], dataset=wh_path,
+            win_sz=100, stp_sz=100, num_workers=0,
+            n_batches_train=2, dls_id="test_cache",
+        )
+        np.testing.assert_array_equal(dls2.norm_stats.u.mean, stats1.u.mean)
+        np.testing.assert_array_equal(dls2.norm_stats.u.std, stats1.u.std)
+        np.testing.assert_array_equal(dls2.norm_stats.y.mean, stats1.y.mean)
+
+    def test_dls_id_produces_normpair_stats(self, wh_path, tmp_path, monkeypatch):
+        from tsfast.datasets import core as ds_core
+        from tsfast.datasets.core import create_dls, NormPair
+        monkeypatch.setattr(ds_core, '_cache_path', lambda dls_id: tmp_path / f'{dls_id}.pkl')
+        dls = create_dls(
+            u=["u"], y=["y"], dataset=wh_path,
+            win_sz=100, stp_sz=100, num_workers=0,
+            n_batches_train=2, dls_id="test_full",
+        )
+        assert isinstance(dls.norm_stats.u, NormPair)
+        assert isinstance(dls.norm_stats.y, NormPair)
+        assert dls.norm_stats.u.mean.shape == (1,)
+        assert dls.norm_stats.u.min.shape == (1,)
+        assert dls.norm_stats.y.mean.shape == (1,)
+
     def test_is_dataset_directory(self, wh_path):
         from tsfast.datasets.core import is_dataset_directory
         assert is_dataset_directory(wh_path) is True

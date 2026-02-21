@@ -1,8 +1,8 @@
 
 __all__ = ['create_dls_test', 'extract_mean_std_from_dls', 'dict_file_save', 'dict_file_load', 'extract_mean_std_from_hdffiles',
-           'extract_mean_std_from_dataset', 'is_dataset_directory', 'create_dls', 'get_default_dataset_path',
-           'get_dataset_path', 'clean_default_dataset_path', 'create_dls_downl', 'estimate_norm_stats',
-           'NormPair', 'NormStats', 'split_by_parent']
+           'extract_mean_std_from_dataset', 'extract_norm_from_hdffiles', 'is_dataset_directory', 'create_dls',
+           'get_default_dataset_path', 'get_dataset_path', 'clean_default_dataset_path', 'create_dls_downl',
+           'estimate_norm_stats', 'NormPair', 'NormStats', 'split_by_parent']
 
 from fastai.data.all import *
 from ..data import *
@@ -73,6 +73,18 @@ def dict_file_load(key,f_path='dls_normalize.p'):
         print(f'{f_path} not found')
     return None
 
+def _cache_path(dls_id): return Path(f'.tsfast_cache/{dls_id}.pkl')
+
+def _save_norm_stats(dls_id, norm_stats):
+    p = _cache_path(dls_id)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, 'wb') as f: pickle.dump(norm_stats, f)
+
+def _load_norm_stats(dls_id):
+    p = _cache_path(dls_id)
+    if not p.exists(): return None
+    with open(p, 'rb') as f: return pickle.load(f)
+
 def extract_mean_std_from_hdffiles(
         lst_files, #List of paths to HDF5 files
         lst_signals #List of signal names, each a dataset within the HDF5 files
@@ -108,6 +120,29 @@ def extract_mean_std_from_dataset(lst_files,u,x,y):
     norm_x = extract_mean_std_from_hdffiles(train_files,x)
     norm_y = extract_mean_std_from_hdffiles(train_files,y)
     return (norm_u,norm_x,norm_y)
+
+def extract_norm_from_hdffiles(lst_files, lst_signals):
+    'Compute NormPair (mean, std, min, max) from all samples in HDF5 files.'
+    if len(lst_signals) == 0: return None
+    sums = np.zeros(len(lst_signals))
+    squares = np.zeros(len(lst_signals))
+    mins = np.full(len(lst_signals), np.inf)
+    maxs = np.full(len(lst_signals), -np.inf)
+    counts = 0
+    for file in lst_files:
+        with h5py.File(file, 'r') as f:
+            for i, signal in enumerate(lst_signals):
+                data = f[signal][:]
+                if data.ndim > 1: raise ValueError(f'Each dataset in a file has to be 1d. {signal} is {data.ndim}.')
+                sums[i] += np.sum(data)
+                squares[i] += np.sum(data ** 2)
+                mins[i] = min(mins[i], np.min(data))
+                maxs[i] = max(maxs[i], np.max(data))
+            counts += data.size
+    means = sums / counts
+    stds = np.sqrt((squares / counts) - (means ** 2))
+    return NormPair(means.astype(np.float32), stds.astype(np.float32),
+                    mins.astype(np.float32), maxs.astype(np.float32))
 
 def estimate_norm_stats(dls, n_batches:int=10):
     'Estimate per-feature mean/std/min/max from training batches. Returns tuple of NormPair, one per batch element.'
@@ -189,6 +224,7 @@ def create_dls(
         n_batches_valid:int|None = None, #exact number of validation batches per epoch
         max_batches_training:int|None = None, #DEPRECATED: limits the number of training batches in a single epoch
         max_batches_valid:int|None = None, #DEPRECATED: limits the number of validation batches in a single epoch
+        dls_id:str = None, #cache id: when provided, computes exact stats from full training set and caches to disk
     ):
     if valid_stp_sz is None: valid_stp_sz = win_sz
 
@@ -204,10 +240,12 @@ def create_dls(
     elif isinstance(dataset, (Path,str)):
         hdf_files = get_hdf_files(dataset)
         splitter = ParentSplitter()
+        train_files = hdf_files[splitter(hdf_files)[0]]
         test_files = None
     elif isinstance(dataset,(list,tuple,L)):
         hdf_files = dataset
         splitter = ParentSplitter()
+        train_files = hdf_files[splitter(hdf_files)[0]]
         test_files = None
     else:
         raise ValueError(f'dataset must be a Path, list, or dict. {type(dataset)} was given.')
@@ -279,15 +317,27 @@ def create_dls(
     dls = seq.dataloaders(hdf_files,bs=bs,num_workers=num_workers,
                           dl_type=dl_type,dl_kwargs=dl_kwargs)
 
-    #estimate normalization stats from training batches
-    input_stats, output_stats = estimate_norm_stats(dls)
-    n_u, n_x = len(u), len(x)
-    norm_u = NormPair(input_stats.mean[:n_u], input_stats.std[:n_u],
-                      input_stats.min[:n_u], input_stats.max[:n_u])
-    norm_x = NormPair(input_stats.mean[n_u:n_u+n_x], input_stats.std[n_u:n_u+n_x],
-                      input_stats.min[n_u:n_u+n_x], input_stats.max[n_u:n_u+n_x]) if n_x > 0 else None
-    norm_y = output_stats
-    dls.norm_stats = NormStats(norm_u, norm_x, norm_y)
+    #compute normalization stats
+    if dls_id is not None:
+        #exact stats from full training set, with file caching
+        norm_stats = _load_norm_stats(dls_id)
+        if norm_stats is None:
+            norm_u = extract_norm_from_hdffiles(train_files, u)
+            norm_x = extract_norm_from_hdffiles(train_files, x) if len(x) > 0 else None
+            norm_y = extract_norm_from_hdffiles(train_files, y)
+            norm_stats = NormStats(norm_u, norm_x, norm_y)
+            _save_norm_stats(dls_id, norm_stats)
+        dls.norm_stats = norm_stats
+    else:
+        #estimate from training batches
+        input_stats, output_stats = estimate_norm_stats(dls)
+        n_u, n_x = len(u), len(x)
+        norm_u = NormPair(input_stats.mean[:n_u], input_stats.std[:n_u],
+                          input_stats.min[:n_u], input_stats.max[:n_u])
+        norm_x = NormPair(input_stats.mean[n_u:n_u+n_x], input_stats.std[n_u:n_u+n_x],
+                          input_stats.min[n_u:n_u+n_x], input_stats.max[n_u:n_u+n_x]) if n_x > 0 else None
+        norm_y = output_stats
+        dls.norm_stats = NormStats(norm_u, norm_x, norm_y)
 
     #add the test dataloader
     if test_files is None:
