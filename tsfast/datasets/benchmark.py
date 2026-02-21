@@ -100,68 +100,38 @@ def create_dls_from_spec(
     return create_dls_downl(**dl_kwargs)
 
 
-create_dls_wh = partial(create_dls_from_spec, spec=idb.BenchmarkWH_Simulation, win_sz=200)
+create_dls_wh = partial(create_dls_from_spec, spec=idb.BenchmarkWH_Simulation)
 create_dls_wh_prediction = partial(create_dls_from_spec, spec=idb.BenchmarkWH_Prediction)
 
-create_dls_silverbox = partial(create_dls_from_spec, spec=idb.BenchmarkSilverbox_Simulation, win_sz=200)
+create_dls_silverbox = partial(create_dls_from_spec, spec=idb.BenchmarkSilverbox_Simulation)
 create_dls_silverbox_prediction = partial(create_dls_from_spec, spec=idb.BenchmarkSilverbox_Prediction)
 
-create_dls_cascaded_tanks = partial(
-    create_dls_from_spec,
-    spec=idb.BenchmarkCascadedTanks_Simulation,
-    win_sz=150,
-    bs=16,
-)
-create_dls_cascaded_tanks_prediction = partial(create_dls_from_spec, spec=idb.BenchmarkCascadedTanks_Prediction, bs=16)
+create_dls_cascaded_tanks = partial(create_dls_from_spec, spec=idb.BenchmarkCascadedTanks_Simulation)
+create_dls_cascaded_tanks_prediction = partial(create_dls_from_spec, spec=idb.BenchmarkCascadedTanks_Prediction)
 
-create_dls_emps = partial(create_dls_from_spec, spec=idb.BenchmarkEMPS_Simulation, win_sz=1000)
+create_dls_emps = partial(create_dls_from_spec, spec=idb.BenchmarkEMPS_Simulation)
 create_dls_emps_prediction = partial(create_dls_from_spec, spec=idb.BenchmarkEMPS_Prediction)
 
-create_dls_ced = partial(create_dls_from_spec, spec=idb.BenchmarkCED_Simulation, win_sz=100, bs=16)
-create_dls_ced_prediction = partial(create_dls_from_spec, spec=idb.BenchmarkCED_Prediction, bs=16)
+create_dls_ced = partial(create_dls_from_spec, spec=idb.BenchmarkCED_Simulation)
+create_dls_ced_prediction = partial(create_dls_from_spec, spec=idb.BenchmarkCED_Prediction)
 
-create_dls_noisy_wh = partial(create_dls_from_spec, spec=idb.BenchmarkNoisyWH_Simulation, win_sz=100, stp_sz=50)
-create_dls_noisy_wh_prediction = partial(create_dls_from_spec, spec=idb.BenchmarkNoisyWH_Prediction, stp_sz=50)
+create_dls_noisy_wh = partial(create_dls_from_spec, spec=idb.BenchmarkNoisyWH_Simulation)
+create_dls_noisy_wh_prediction = partial(create_dls_from_spec, spec=idb.BenchmarkNoisyWH_Prediction)
 
+create_dls_robot_forward = partial(create_dls_from_spec, spec=idb.BenchmarkRobotForward_Simulation)
+create_dls_robot_forward_prediction = partial(create_dls_from_spec, spec=idb.BenchmarkRobotForward_Prediction)
 
-create_dls_robot_forward = partial(
-    create_dls_from_spec, spec=idb.BenchmarkRobotForward_Simulation, win_sz=300, valid_stp_sz=4
-)
-create_dls_robot_forward_prediction = partial(
-    create_dls_from_spec, spec=idb.BenchmarkRobotForward_Prediction, valid_stp_sz=4
-)
+create_dls_robot_inverse = partial(create_dls_from_spec, spec=idb.BenchmarkRobotInverse_Simulation)
+create_dls_robot_inverse_prediction = partial(create_dls_from_spec, spec=idb.BenchmarkRobotInverse_Prediction)
 
-create_dls_robot_inverse = partial(
-    create_dls_from_spec, spec=idb.BenchmarkRobotInverse_Simulation, win_sz=300, valid_stp_sz=4
-)
-create_dls_robot_inverse_prediction = partial(
-    create_dls_from_spec, spec=idb.BenchmarkRobotInverse_Prediction, valid_stp_sz=4
-)
+create_dls_ship = partial(create_dls_from_spec, spec=idb.BenchmarkShip_Simulation)
+create_dls_ship_prediction = partial(create_dls_from_spec, spec=idb.BenchmarkShip_Prediction)
 
-create_dls_ship = partial(
-    create_dls_from_spec,
-    spec=idb.BenchmarkShip_Simulation,
-    win_sz=100,
-)
-create_dls_ship_prediction = partial(
-    create_dls_from_spec,
-    spec=idb.BenchmarkShip_Prediction,
-)
+create_dls_quad_pelican = partial(create_dls_from_spec, spec=idb.BenchmarkQuadPelican_Simulation)
+create_dls_quad_pelican_prediction = partial(create_dls_from_spec, spec=idb.BenchmarkQuadPelican_Prediction)
 
-create_dls_quad_pelican = partial(
-    create_dls_from_spec, spec=idb.BenchmarkQuadPelican_Simulation, win_sz=300, valid_stp_sz=40
-)
-create_dls_quad_pelican_prediction = partial(
-    create_dls_from_spec, spec=idb.BenchmarkQuadPelican_Prediction, valid_stp_sz=40
-)
-
-create_dls_quad_pi = partial(
-    create_dls_from_spec,
-    spec=idb.BenchmarkQuadPi_Simulation,
-    win_sz=200,
-    valid_stp_sz=20,
-)
-create_dls_quad_pi_prediction = partial(create_dls_from_spec, spec=idb.BenchmarkQuadPi_Prediction, valid_stp_sz=20)
+create_dls_quad_pi = partial(create_dls_from_spec, spec=idb.BenchmarkQuadPi_Simulation)
+create_dls_quad_pi_prediction = partial(create_dls_from_spec, spec=idb.BenchmarkQuadPi_Prediction)
 
 broad_u_imu_acc = [f"imu_acc{i}" for i in range(3)]
 broad_u_imu_gyr = [f"imu_gyr{i}" for i in range(3)]
