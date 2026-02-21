@@ -5,7 +5,6 @@ __all__ = ['Diag_RNN', 'Diag_RNN_raw', 'DiagLSTM', 'Diag_TCN', 'ARProg_Init', 'F
 from ..data import *
 from ..datasets.core import *
 from ..models import *
-from ..models.layers import _resolve_norm
 from ..learner import *
 
 from fastai.basics import *
@@ -338,7 +337,7 @@ from .core import PredictionCallback
 
 @delegates(FranSys, keep=True)
 def FranSysLearner(dls,init_sz,attach_output=False,loss_func=nn.L1Loss(),metrics=fun_rmse,opt_func=Adam,lr=3e-3,cbs=None,
-                   input_norm='standard', output_norm=False, **kwargs):
+                   input_norm=StandardScaler1D, output_norm=None, **kwargs):
     cbs = [] if cbs is None else list(cbs)
     metrics = list(metrics) if is_iter(metrics) else [metrics]
 
@@ -365,11 +364,9 @@ def FranSysLearner(dls,init_sz,attach_output=False,loss_func=nn.L1Loss(),metrics
         combined_input_stats = sum(parts[1:], parts[0])
 
     # Wrap model with input normalization and optional output denormalization
-    in_method = _resolve_norm(input_norm)
-    out_method = _resolve_norm(output_norm)
-    if in_method:
-        in_scaler = Scaler.from_stats(combined_input_stats, in_method)
-        out_scaler = Scaler.from_stats(norm_y, out_method) if out_method else None
+    if input_norm is not None:
+        in_scaler = input_norm.from_stats(combined_input_stats)
+        out_scaler = output_norm.from_stats(norm_y) if output_norm is not None else None
         model = NormalizedModel(model, in_scaler, out_scaler)
 
     #for long sequences, add a TruncateSequenceCallback
