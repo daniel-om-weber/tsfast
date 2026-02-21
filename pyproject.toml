@@ -32,6 +32,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+onnx = [
+    "onnx>=1.14",
+    "onnxruntime>=1.16",
+]
 dev = [
     "pytest",
     "pytest-cov",
