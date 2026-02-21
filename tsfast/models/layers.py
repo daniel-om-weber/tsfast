@@ -1,6 +1,6 @@
 
 __all__ = ['BatchNorm_1D_Stateful', 'SeqLinear', 'Scaler', 'StandardScaler1D', 'MinMaxScaler1D', 'MaxAbsScaler1D',
-           'Normalizer1D', 'AR_Model', 'NormalizedModel', 'SeqAggregation']
+           'AR_Model', 'NormalizedModel', 'SeqAggregation']
 
 from ..data import *
 from fastai.basics import *
@@ -143,14 +143,10 @@ class Scaler(nn.Module):
     def denormalize(self, x): raise NotImplementedError
     def unnormalize(self, x): return self.denormalize(x)
 
-    @staticmethod
-    def from_stats(stats, method='standard'):
-        'Create a Scaler from a NormPair using the given method.'
-        match method:
-            case 'standard': return StandardScaler1D(stats.mean, stats.std)
-            case 'minmax':   return MinMaxScaler1D(stats.min, stats.max)
-            case 'maxabs':   return MaxAbsScaler1D(stats.min, stats.max)
-            case _: raise ValueError(f"Unknown scaling method: {method!r}. Use 'standard', 'minmax', or 'maxabs'.")
+    @classmethod
+    def from_stats(cls, stats):
+        'Create a Scaler from a NormPair. Override in subclasses.'
+        raise NotImplementedError(f"{cls.__name__} must implement from_stats")
 
 def _ensure_tensor(arr):
     'Convert numpy array or tensor to shape [1,1,features] float tensor.'
@@ -169,6 +165,8 @@ class StandardScaler1D(Scaler):
         self.register_buffer('std', _ensure_tensor(std) + self._epsilon)
     def normalize(self, x): return (x - self.mean) / self.std
     def denormalize(self, x): return x * self.std + self.mean
+    @classmethod
+    def from_stats(cls, stats): return cls(stats.mean, stats.std)
 
 class MinMaxScaler1D(Scaler):
     'Normalize by (x - min) / (max - min) to [0, 1].'
@@ -179,6 +177,8 @@ class MinMaxScaler1D(Scaler):
         self.register_buffer('range_val', _ensure_tensor(max_val) - _ensure_tensor(min_val) + self._epsilon)
     def normalize(self, x): return (x - self.min_val) / self.range_val
     def denormalize(self, x): return x * self.range_val + self.min_val
+    @classmethod
+    def from_stats(cls, stats): return cls(stats.min, stats.max)
 
 class MaxAbsScaler1D(Scaler):
     'Normalize by x / max(|min|, |max|).'
@@ -189,15 +189,8 @@ class MaxAbsScaler1D(Scaler):
                                                    torch.abs(_ensure_tensor(max_val))) + self._epsilon)
     def normalize(self, x): return x / self.max_abs
     def denormalize(self, x): return x * self.max_abs
-
-Normalizer1D = StandardScaler1D  # backward compat
-
-def _resolve_norm(method):
-    'Resolve input_norm/output_norm parameter to a method string or None.'
-    if method is True: return 'standard'
-    if method is False or method is None: return None
-    if isinstance(method, str): return method
-    raise ValueError(f"input_norm/output_norm must be str, bool, or None — got {type(method)}")
+    @classmethod
+    def from_stats(cls, stats): return cls(stats.min, stats.max)
 
 class AR_Model(nn.Module):
     '''
@@ -212,10 +205,11 @@ class AR_Model(nn.Module):
         self.output_norm = None
         self.y_init = None
 
-    def set_normalization(self, norm_u, norm_y, method='standard'):
+    def set_normalization(self, norm_u, norm_y, scaler_cls=None):
         'Set input and output normalization from NormPair stats.'
-        self.input_norm = Scaler.from_stats(norm_u, method)
-        self.output_norm = Scaler.from_stats(norm_y, method)
+        if scaler_cls is None: scaler_cls = StandardScaler1D
+        self.input_norm = scaler_cls.from_stats(norm_u)
+        self.output_norm = scaler_cls.from_stats(norm_y)
 
     def forward(self, u,y=None,h_init=None,ar=None):
         if ar is None: ar = self.ar
@@ -273,18 +267,19 @@ class NormalizedModel(nn.Module):
         self.output_norm = output_norm
 
     @classmethod
-    def from_stats(cls, model, input_stats, output_stats=None, method='standard'):
-        'Create from NormPair stats with the given scaling method.'
-        input_norm = Scaler.from_stats(input_stats, method)
-        output_norm = Scaler.from_stats(output_stats, method) if output_stats is not None else None
+    def from_stats(cls, model, input_stats, output_stats=None, scaler_cls=None):
+        'Create from NormPair stats with the given Scaler class.'
+        if scaler_cls is None: scaler_cls = StandardScaler1D
+        input_norm = scaler_cls.from_stats(input_stats)
+        output_norm = scaler_cls.from_stats(output_stats) if output_stats is not None else None
         return cls(model, input_norm, output_norm)
 
     @classmethod
-    def from_dls(cls, model, dls, method='standard'):
+    def from_dls(cls, model, dls, scaler_cls=None):
         'Create from DataLoaders norm_stats.'
         from ..datasets.core import extract_mean_std_from_dls
         norm_u, _, norm_y = extract_mean_std_from_dls(dls)
-        return cls.from_stats(model, norm_u, norm_y, method=method)
+        return cls.from_stats(model, norm_u, norm_y, scaler_cls=scaler_cls)
 
     def __getattr__(self, name):
         'Delegate attribute access to inner model for transparency'

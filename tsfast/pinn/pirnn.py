@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from ..prediction.fransys import Diag_RNN
 from ..models.rnn import RNN
-from ..models.layers import SeqLinear, Scaler, NormalizedModel, _resolve_norm
+from ..models.layers import SeqLinear, StandardScaler1D, NormalizedModel
 from ..learner.callbacks import CB_TruncateSequence
 from ..learner.losses import SkipNLoss
 from fastai.basics import *
@@ -169,8 +169,8 @@ def PIRNNLearner(
     opt_func = Adam, # Optimizer
     lr:float = 3e-3, # Learning rate
     cbs = None, # Additional callbacks
-    input_norm = 'standard', # Input normalization method
-    output_norm = False, # Output denormalization method
+    input_norm = StandardScaler1D, # Input normalization Scaler class
+    output_norm = None, # Output denormalization Scaler class
     **kwargs # Additional arguments for PIRNN
 ):
     '''Create PIRNN learner with appropriate configuration'''
@@ -204,11 +204,9 @@ def PIRNNLearner(
         combined_input_stats = sum(parts[1:], parts[0])
 
     # Wrap model with input normalization and optional output denormalization
-    in_method = _resolve_norm(input_norm)
-    out_method = _resolve_norm(output_norm)
-    if in_method:
-        in_scaler = Scaler.from_stats(combined_input_stats, in_method)
-        out_scaler = Scaler.from_stats(norm_y, out_method) if out_method else None
+    if input_norm is not None:
+        in_scaler = input_norm.from_stats(combined_input_stats)
+        out_scaler = output_norm.from_stats(norm_y) if output_norm is not None else None
         model = NormalizedModel(model, in_scaler, out_scaler)
 
     # For long sequences, add truncation callback

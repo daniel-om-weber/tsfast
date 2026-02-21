@@ -201,16 +201,11 @@ class TestScalers:
         out = scaler.denormalize(scaler.normalize(x))
         torch.testing.assert_close(out, x, atol=1e-5, rtol=1e-5)
 
-    def test_from_stats(self, norm_pair):
-        from tsfast.models.layers import Scaler, StandardScaler1D, MinMaxScaler1D, MaxAbsScaler1D
-        assert isinstance(Scaler.from_stats(norm_pair, 'standard'), StandardScaler1D)
-        assert isinstance(Scaler.from_stats(norm_pair, 'minmax'), MinMaxScaler1D)
-        assert isinstance(Scaler.from_stats(norm_pair, 'maxabs'), MaxAbsScaler1D)
-
-    def test_from_stats_invalid(self, norm_pair):
-        from tsfast.models.layers import Scaler
-        with pytest.raises(ValueError, match="Unknown"):
-            Scaler.from_stats(norm_pair, 'invalid')
+    def test_from_stats_classmethod(self, norm_pair):
+        from tsfast.models.layers import StandardScaler1D, MinMaxScaler1D, MaxAbsScaler1D
+        assert isinstance(StandardScaler1D.from_stats(norm_pair), StandardScaler1D)
+        assert isinstance(MinMaxScaler1D.from_stats(norm_pair), MinMaxScaler1D)
+        assert isinstance(MaxAbsScaler1D.from_stats(norm_pair), MaxAbsScaler1D)
 
     def test_unnormalize_alias(self, norm_pair):
         from tsfast.models.layers import StandardScaler1D
@@ -219,36 +214,32 @@ class TestScalers:
         norm = scaler.normalize(x)
         torch.testing.assert_close(scaler.unnormalize(norm), scaler.denormalize(norm))
 
-    def test_normalizer1d_alias(self):
-        from tsfast.models.layers import Normalizer1D, StandardScaler1D
-        assert Normalizer1D is StandardScaler1D
-
     def test_normalized_model_from_stats(self, dls_simulation):
         from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.layers import NormalizedModel
+        from tsfast.models.layers import NormalizedModel, MinMaxScaler1D
         batch = dls_simulation.one_batch()
         device = batch[0].device
         norm_u, _, norm_y = dls_simulation.norm_stats
-        model = NormalizedModel.from_stats(SimpleRNN(1, 1), norm_u, norm_y, method='minmax').to(device)
+        model = NormalizedModel.from_stats(SimpleRNN(1, 1), norm_u, norm_y, scaler_cls=MinMaxScaler1D).to(device)
         out = model(batch[0])
         assert out.shape == batch[1].shape
 
-    def test_rnn_learner_input_norm_false(self, dls_simulation):
+    def test_rnn_learner_input_norm_none(self, dls_simulation):
         from tsfast.models.rnn import RNNLearner
         from tsfast.models.layers import NormalizedModel
-        lrn = RNNLearner(dls_simulation, rnn_type="gru", input_norm=False)
+        lrn = RNNLearner(dls_simulation, rnn_type="gru", input_norm=None)
         assert not isinstance(lrn.model, NormalizedModel)
 
     def test_rnn_learner_input_norm_minmax(self, dls_simulation):
         from tsfast.models.rnn import RNNLearner
         from tsfast.models.layers import NormalizedModel, MinMaxScaler1D
-        lrn = RNNLearner(dls_simulation, rnn_type="gru", input_norm='minmax')
+        lrn = RNNLearner(dls_simulation, rnn_type="gru", input_norm=MinMaxScaler1D)
         assert isinstance(lrn.model, NormalizedModel)
         assert isinstance(lrn.model.input_norm, MinMaxScaler1D)
 
     def test_rnn_learner_output_norm(self, dls_simulation):
         from tsfast.models.rnn import RNNLearner
         from tsfast.models.layers import NormalizedModel, StandardScaler1D
-        lrn = RNNLearner(dls_simulation, rnn_type="gru", output_norm='standard')
+        lrn = RNNLearner(dls_simulation, rnn_type="gru", output_norm=StandardScaler1D)
         assert isinstance(lrn.model, NormalizedModel)
         assert isinstance(lrn.model.output_norm, StandardScaler1D)
