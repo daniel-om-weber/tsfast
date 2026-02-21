@@ -109,3 +109,83 @@ class TestQuaternionDataPipeline:
         block = QuaternionBlock.from_hdf(["opt_a", "opt_b", "opt_c", "opt_d"])
         assert block is not None
         assert hasattr(block, "type_tfms")
+
+
+class TestNumpyQuaternionMath:
+    def test_multiply_quat_np_identity(self):
+        from tsfast.quaternions import multiplyQuat_np
+        q = np.array([[0.5, 0.5, 0.5, 0.5]])
+        identity = np.array([[1.0, 0.0, 0.0, 0.0]])
+        result = multiplyQuat_np(q, identity)
+        np.testing.assert_allclose(result, q, atol=1e-10)
+
+    def test_relative_quat_np_same_is_identity(self):
+        from tsfast.quaternions import relativeQuat_np
+        q = np.array([[0.5, 0.5, 0.5, 0.5], [1.0, 0.0, 0.0, 0.0]])
+        result = relativeQuat_np(q, q)
+        np.testing.assert_allclose(np.abs(result[:, 0]), np.ones(2), atol=1e-10)
+        np.testing.assert_allclose(result[:, 1:], np.zeros((2, 3)), atol=1e-10)
+
+    def test_quat_from_angle_axis_np_zero_angle(self):
+        from tsfast.quaternions import quatFromAngleAxis_np
+        result = quatFromAngleAxis_np(0.0, np.array([1.0, 0.0, 0.0]))
+        np.testing.assert_allclose(result, np.array([1.0, 0.0, 0.0, 0.0]), atol=1e-10)
+
+    def test_quat_from_angle_axis_np_batch(self):
+        from tsfast.quaternions import quatFromAngleAxis_np
+        angles = np.array([0.0, np.pi / 2, np.pi])
+        axis = np.array([1.0, 0.0, 0.0])
+        result = quatFromAngleAxis_np(angles, axis)
+        assert result.shape == (3, 4)
+        # All output quaternions should have unit norm
+        norms = np.linalg.norm(result, axis=1)
+        np.testing.assert_allclose(norms, np.ones(3), atol=1e-10)
+
+    def test_quat_interp_np_integer_indices(self):
+        from tsfast.quaternions import quatInterp_np
+        quats = np.array([
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+        ])
+        result = quatInterp_np(quats, np.array([0.0, 1.0, 2.0]))
+        np.testing.assert_allclose(result, quats, atol=1e-10)
+
+    def test_quat_interp_np_midpoint(self):
+        from tsfast.quaternions import quatInterp_np, multiplyQuat_np
+        q0 = np.array([[1.0, 0.0, 0.0, 0.0]])
+        q1 = np.array([[0.0, 1.0, 0.0, 0.0]])  # 180 deg rotation
+        quats = np.vstack([q0, q1])
+        mid = quatInterp_np(quats, np.array([0.5]))
+        # Midpoint should be unit quaternion
+        assert np.linalg.norm(mid) == pytest.approx(1.0, abs=1e-10)
+        # Midpoint should be different from both endpoints
+        assert not np.allclose(mid, q0, atol=0.1)
+        assert not np.allclose(mid, q1, atol=0.1)
+
+    def test_quat_interp_np_extend_false(self):
+        from tsfast.quaternions import quatInterp_np
+        quats = np.array([
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+        ])
+        result = quatInterp_np(quats, np.array([-0.5, 0.5, 1.5]), extend=False)
+        assert np.all(np.isnan(result[0]))   # out of range
+        assert not np.any(np.isnan(result[1]))  # in range
+        assert np.all(np.isnan(result[2]))   # out of range
+
+    def test_np_torch_multiply_consistency(self):
+        from tsfast.quaternions import multiplyQuat, multiplyQuat_np
+        q1_np = np.array([[0.5, 0.5, 0.5, 0.5]])
+        q2_np = np.array([[0.7071, 0.7071, 0.0, 0.0]])
+        q1_t = torch.tensor(q1_np, dtype=torch.float64)
+        q2_t = torch.tensor(q2_np, dtype=torch.float64)
+        mul_np = multiplyQuat_np(q1_np, q2_np)
+        mul_t = multiplyQuat(q1_t, q2_t).numpy()
+        np.testing.assert_allclose(mul_np, mul_t, atol=1e-5)
+
+    def test_multiply_quat_np_non_commutative(self):
+        from tsfast.quaternions import multiplyQuat_np
+        q1 = np.array([[0.5, 0.5, 0.5, 0.5]])
+        q2 = np.array([[0.7071, 0.7071, 0.0, 0.0]])
+        assert not np.allclose(multiplyQuat_np(q1, q2), multiplyQuat_np(q2, q1))

@@ -282,6 +282,24 @@ class TestTbpttDataLoader:
         lrn.fit(1, 1e-4)
         assert not math.isnan(lrn.recorder.values[-1][1])
 
+    @pytest.mark.slow
+    def test_tbptt_multiworker_rnn_reset(self, wh_path):
+        from tsfast.datasets.core import create_dls
+        dls = create_dls(
+            u=["u"], y=["y"], dataset=wh_path,
+            win_sz=100, stp_sz=100, num_workers=2,
+            n_batches_train=4, sub_seq_len=50,
+        )
+        dl = dls.train
+        n_sub_seq = dl.n_sub_seq
+        resets = []
+        for batch in dl:
+            resets.append(dl.rnn_reset)
+        # rnn_reset should be True at sub-sequence boundaries (every n_sub_seq batches)
+        for i, r in enumerate(resets):
+            expected = (i % n_sub_seq) == 0
+            assert r == expected, f"batch {i}: rnn_reset={r}, expected={expected}"
+
     def test_batch_limit_factory(self, wh_path):
         from tsfast.datasets.core import create_dls
         dls = create_dls(
@@ -290,3 +308,45 @@ class TestTbpttDataLoader:
             n_batches_train=None, max_batches_training=3,
         )
         assert len(dls.train) <= 3
+
+
+class TestWeightedSampling:
+    def test_uniform_p_of_category(self):
+        import pandas as pd
+        from tsfast.data.loader import uniform_p_of_category
+        df = pd.DataFrame({
+            'category': ['A'] * 10 + ['B'] * 30 + ['C'] * 60,
+            'value': range(100),
+        })
+        result = df.pipe(uniform_p_of_category('category'))
+        assert result.p_sample.sum() == pytest.approx(1.0)
+        # Each category should have equal total weight (1/3)
+        for cat in ['A', 'B', 'C']:
+            cat_weight = result[result.category == cat].p_sample.sum()
+            assert cat_weight == pytest.approx(1 / 3, abs=1e-10)
+
+    def test_uniform_p_of_float(self):
+        import pandas as pd
+        from tsfast.data.loader import uniform_p_of_float
+        df = pd.DataFrame({'speed': np.linspace(0, 100, 200)})
+        result = df.pipe(uniform_p_of_float('speed', bins=5))
+        assert result.p_sample.sum() == pytest.approx(1.0)
+
+    def test_uniform_p_of_float_with_gaps(self):
+        import pandas as pd
+        from tsfast.data.loader import uniform_p_of_float_with_gaps
+        # Create data with gaps: cluster around 0-10 and 90-100
+        values = np.concatenate([np.random.uniform(0, 10, 80), np.random.uniform(90, 100, 20)])
+        df = pd.DataFrame({'altitude': values})
+        result = df.pipe(uniform_p_of_float_with_gaps('altitude', bins=10))
+        assert result.p_sample.sum() == pytest.approx(1.0)
+
+    def test_p_of_category_chaining(self):
+        import pandas as pd
+        from tsfast.data.loader import uniform_p_of_category
+        df = pd.DataFrame({
+            'color': ['red'] * 20 + ['blue'] * 80,
+            'size': ['S'] * 50 + ['L'] * 50,
+        })
+        result = df.pipe(uniform_p_of_category('color')).pipe(uniform_p_of_category('size'))
+        assert result.p_sample.sum() == pytest.approx(1.0)

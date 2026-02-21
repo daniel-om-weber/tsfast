@@ -51,6 +51,36 @@ class TestResampling:
         x = np.random.normal(size=(100000, 9))
         assert resample_interp(x, 0.3).shape[0] == 30000
 
+    def test_hdf_extract_sequence_resampling_upsample(self, tmp_path):
+        import h5py
+        from tsfast.data.core import hdf_extract_sequence
+        # Create a temp HDF5 file with a sine wave
+        hdf_path = tmp_path / "test_resample.hdf5"
+        n_samples = 100
+        t = np.linspace(0, 1, n_samples)
+        signal = np.sin(2 * np.pi * t)
+        with h5py.File(hdf_path, "w") as f:
+            f.create_dataset("u", data=signal)
+        # Upsample by 2x
+        result = hdf_extract_sequence(hdf_path, ["u"], resampling_factor=2.0,
+                                      l_slc=0, r_slc=200)
+        assert result.shape[0] == 200
+        assert not np.any(np.isnan(result))
+
+    def test_hdf_extract_sequence_resampling_downsample(self, tmp_path):
+        import h5py
+        from tsfast.data.core import hdf_extract_sequence
+        hdf_path = tmp_path / "test_resample_down.hdf5"
+        n_samples = 200
+        signal = np.sin(np.linspace(0, 4 * np.pi, n_samples))
+        with h5py.File(hdf_path, "w") as f:
+            f.create_dataset("u", data=signal)
+        # Downsample by 0.5
+        result = hdf_extract_sequence(hdf_path, ["u"], resampling_factor=0.5,
+                                      l_slc=0, r_slc=100)
+        assert result.shape[0] == 100
+        assert not np.any(np.isnan(result))
+
 
 class TestHDF2Sequence:
     def _valid_file(self, hdf_files):
