@@ -23,7 +23,7 @@ class PredictionCallback(Callback):
 
     def __init__(
         self,
-        t_offset=1,
+        t_offset: int = 1,
     ):
         super().__init__()
         self.t_offset = t_offset

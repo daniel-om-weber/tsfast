@@ -74,13 +74,14 @@ class TensorQuaternionAngle(TensorSequences):
 _pi = torch.Tensor([3.14159265358979323846])
 
 
-def rad2deg(t):
+def rad2deg(t: torch.Tensor) -> torch.Tensor:
+    """Convert radians to degrees."""
     return 180.0 * t / _pi.to(t.device).type(t.dtype)
 
 
 @torch.compile
-def multiplyQuat(q1, q2):
-    """quat1*quat2"""
+def multiplyQuat(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Multiply two quaternions element-wise."""
     o1 = q1[..., 0] * q2[..., 0] - q1[..., 1] * q2[..., 1] - q1[..., 2] * q2[..., 2] - q1[..., 3] * q2[..., 3]
     o2 = q1[..., 0] * q2[..., 1] + q1[..., 1] * q2[..., 0] + q1[..., 2] * q2[..., 3] - q1[..., 3] * q2[..., 2]
     o3 = q1[..., 0] * q2[..., 2] - q1[..., 1] * q2[..., 3] + q1[..., 2] * q2[..., 0] + q1[..., 3] * q2[..., 1]
@@ -88,18 +89,20 @@ def multiplyQuat(q1, q2):
     return torch.stack([o1, o2, o3, o4], dim=-1)
 
 
-def norm_quaternion(q):
+def norm_quaternion(q: torch.Tensor) -> torch.Tensor:
+    """Normalize quaternions to unit norm."""
     return q / q.norm(p=2, dim=-1)[..., None]
 
 
 _conjugate_quaternion = tensor([1, -1, -1, -1])
 
 
-def conjQuat(q):
+def conjQuat(q: torch.Tensor) -> torch.Tensor:
+    """Compute the conjugate of a quaternion."""
     return q * _conjugate_quaternion.to(q.device).type(q.dtype)
 
 
-def diffQuat(q1, q2, norm=True):
+def diffQuat(q1: torch.Tensor, q2: torch.Tensor, norm: bool = True) -> torch.Tensor:
     """Compute the difference quaternion between q1 and q2.
 
     Args:
@@ -121,8 +124,8 @@ def diffQuat(q1, q2, norm=True):
 
 
 @torch.compile
-def relativeQuat(q1, q2):
-    """quat1*inv(quat2)"""
+def relativeQuat(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Compute the relative quaternion as quat1*inv(quat2)."""
 
     o1 = q1[..., 0] * q2[..., 0] + q1[..., 1] * q2[..., 1] + q1[..., 2] * q2[..., 2] + q1[..., 3] * q2[..., 3]
     o2 = -q1[..., 0] * q2[..., 1] + q1[..., 1] * q2[..., 0] - q1[..., 2] * q2[..., 3] + q1[..., 3] * q2[..., 2]
@@ -132,14 +135,14 @@ def relativeQuat(q1, q2):
     return torch.stack([o1, o2, o3, o4], dim=-1)
 
 
-def safe_acos(t, eps=4e-8):
-    """numericaly stable variant of arcuscosine"""
+def safe_acos(t: torch.Tensor, eps: float = 4e-8) -> torch.Tensor:
+    """Numerically stable variant of arccosine."""
     #     eps = 4e-8 #minimum value for acos(1) != 0
     return t.clamp(-1.0 + eps, 1.0 - eps).acos()
 
 
-def safe_acos_double(t, eps=1e-16):
-    """numericaly stable variant of arcuscosine, uses 64bit floats for internal computation for increased accuracy and gradient propagation"""
+def safe_acos_double(t: torch.Tensor, eps: float = 1e-16) -> torch.Tensor:
+    """Numerically stable arccosine using float64 internally for accuracy."""
     try:
         # Try to use float64 for higher precision
         return t.type(torch.float64).clamp(-1.0 + eps, 1.0 - eps).acos().type(t.dtype)
@@ -151,18 +154,20 @@ def safe_acos_double(t, eps=1e-16):
         return t.clamp(-1.0 + 1e-6, 1.0 - 1e-6).acos()
 
 
-def inclinationAngle(q1, q2):
-
+def inclinationAngle(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Compute the inclination angle between two quaternions."""
     q = diffQuat(q1, q2)
     return 2 * safe_acos_double((q[..., 3] ** 2 + q[..., 0] ** 2).sqrt())
 
 
-def relativeAngle(q1, q2):
+def relativeAngle(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Compute the relative rotation angle between two quaternions."""
     q = diffQuat(q1, q2)
     return 2 * safe_acos_double((q[..., 0]).abs())
 
 
-def rollAngle(q1, q2):
+def rollAngle(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Compute the roll angle between two quaternions."""
     q = diffQuat(q1, q2)
     w, x, y, z = q[..., 0], q[..., 1], q[..., 2], q[..., 3]
     t0 = +2.0 * (w * x + y * z)
@@ -170,7 +175,8 @@ def rollAngle(q1, q2):
     return torch.atan2(t0, t1)
 
 
-def pitchAngle(q1, q2):
+def pitchAngle(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Compute the pitch angle between two quaternions."""
     q = diffQuat(q1, q2)
     w, x, y, z = q[..., 0], q[..., 1], q[..., 2], q[..., 3]
     t2 = +2.0 * (w * y - z * x)
@@ -181,18 +187,21 @@ def pitchAngle(q1, q2):
 _unit_quaternion = tensor([1.0, 0, 0, 0])
 
 
-def inclinationAngleAbs(q):
+def inclinationAngleAbs(q: torch.Tensor) -> torch.Tensor:
+    """Compute the absolute inclination angle relative to the identity quaternion."""
     q = diffQuat(q, _unit_quaternion[None, :])
     return 2 * ((q[..., 3] ** 2 + q[..., 0] ** 2).sqrt()).acos()
 
 
-def rand_quat():
+def rand_quat() -> torch.Tensor:
+    """Generate a random unit quaternion."""
     q = torch.rand((4)) * 2 - 1
     q /= q.norm()
     return q
 
 
-def rot_vec(v, q):
+def rot_vec(v: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
+    """Rotate a 3D vector by a quaternion."""
     v = F.pad(v, (1, 0), "constant", 0)
     return multiplyQuat(conjQuat(q), multiplyQuat(v, q))[..., 1:]
 
@@ -200,7 +209,7 @@ def rot_vec(v, q):
 #     return multiplyQuat(q,multiplyQuat(v,conjQuat(q)))[...,1:]
 
 
-def quatFromAngleAxis(angle, axis):
+def quatFromAngleAxis(angle: torch.Tensor, axis: torch.Tensor) -> torch.Tensor:
     """Create quaternions from angle-axis representation.
 
     Args:
@@ -222,7 +231,7 @@ def quatFromAngleAxis(angle, axis):
     return quat
 
 
-def quatInterp(quat, ind, extend=False):
+def quatInterp(quat: torch.Tensor, ind: torch.Tensor, extend: bool = False) -> torch.Tensor:
     """Interpolate quaternions at non-integer indices using Slerp.
 
     Sampling indices are in the range 0..N-1. For values outside this range,
@@ -280,76 +289,90 @@ def quatInterp(quat, ind, extend=False):
     return quat_out.type_as(quat)
 
 
-def inclination_loss(q1, q2):
+def inclination_loss(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Root mean squared inclination loss."""
     q = diffQuat(q1, q2)
     q_abs = (q[..., 3] ** 2 + q[..., 0] ** 2).sqrt() - 1
     return (q_abs**2).mean().sqrt()
 
 
-def inclination_loss_abs(q1, q2):
+def inclination_loss_abs(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Mean absolute inclination loss."""
     q = diffQuat(q1, q2)
     q_abs = (q[..., 3] ** 2 + q[..., 0] ** 2).sqrt() - 1
     return q_abs.abs().mean()
 
 
-def inclination_loss_squared(q1, q2):
+def inclination_loss_squared(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Mean squared inclination loss."""
     q = diffQuat(q1, q2)
     q_abs = (q[..., 3] ** 2 + q[..., 0] ** 2).sqrt() - 1
     return (q_abs**2).mean()
 
 
-def inclination_loss_smooth(q1, q2):
+def inclination_loss_smooth(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Smooth L1 inclination loss."""
     q = diffQuat(q1, q2)
     q_abs = (q[..., 3] ** 2 + q[..., 0] ** 2).sqrt() - 1
     return F.smooth_l1_loss(q_abs, torch.zeros_like(q_abs))
 
 
-def abs_inclination(q1, q2):
+def abs_inclination(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Mean absolute inclination angle metric."""
     inclination = inclinationAngle(q1, q2)
     return inclination.abs().mean()
 
 
-def ms_inclination(q1, q2):
+def ms_inclination(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Mean squared inclination angle metric."""
     inclination = inclinationAngle(q1, q2)
     return (inclination**2).mean()
 
 
-def rms_inclination(q1, q2):
+def rms_inclination(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Root mean squared inclination angle metric."""
     inclination = inclinationAngle(q1, q2)
     return (inclination**2).mean().sqrt()
 
 
-def smooth_inclination(q1, q2):
+def smooth_inclination(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Smooth L1 inclination angle metric."""
     inclination = inclinationAngle(q1, q2)
     return F.smooth_l1_loss(inclination, torch.zeros_like(inclination))
 
 
-def rms_inclination_deg(q1, q2):
+def rms_inclination_deg(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Root mean squared inclination angle in degrees."""
     inclination = inclinationAngle(q1, q2)
     return rad2deg((inclination**2).mean().sqrt())
 
 
-def rms_pitch_deg(q1, q2):
+def rms_pitch_deg(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Root mean squared pitch angle in degrees."""
     inclination = pitchAngle(q1, q2)
     return rad2deg((inclination**2).mean().sqrt())
 
 
-def rms_roll_deg(q1, q2):
+def rms_roll_deg(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Root mean squared roll angle in degrees."""
     inclination = rollAngle(q1, q2)
     return rad2deg((inclination**2).mean().sqrt())
 
 
-def mean_inclination_deg(q1, q2):
+def mean_inclination_deg(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Mean inclination angle in degrees."""
     inclination = inclinationAngle(q1, q2)
     return rad2deg(inclination.mean())
 
 
-def angle_loss(q1, q2):
+def angle_loss(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Mean absolute angle loss based on the w component of the difference quaternion."""
     q = diffQuat(q1, q2)
     return (q[..., 0] - 1).abs().mean()
 
 
-def angle_loss_opt(q1, q2):
+def angle_loss_opt(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Optimized angle loss avoiding full quaternion multiplication."""
     q1 = norm_quaternion(q1)
     q2 = norm_quaternion(q2)
 
@@ -358,27 +381,32 @@ def angle_loss_opt(q1, q2):
     return (q - 1).abs().mean()
 
 
-def ms_rel_angle(q1, q2):
+def ms_rel_angle(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Mean squared relative angle metric."""
     rel_angle = relativeAngle(q1, q2)
     return (rel_angle**2).mean()
 
 
-def abs_rel_angle(q1, q2):
+def abs_rel_angle(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Mean absolute relative angle metric."""
     rel_angle = relativeAngle(q1, q2)
     return rel_angle.abs().mean()
 
 
-def rms_rel_angle_deg(q1, q2):
+def rms_rel_angle_deg(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Root mean squared relative angle in degrees."""
     rel_angle = relativeAngle(q1, q2)
     return rad2deg((rel_angle**2).mean().sqrt())
 
 
-def mean_rel_angle_deg(q1, q2):
+def mean_rel_angle_deg(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Mean relative angle in degrees."""
     rel_angle = relativeAngle(q1, q2)
     return rad2deg(rel_angle.mean())
 
 
-def deg_rmse(inp, targ):
+def deg_rmse(inp: torch.Tensor, targ: torch.Tensor) -> torch.Tensor:
+    """RMSE metric converted to degrees."""
     return rad2deg(fun_rmse(inp, targ))
 
 
@@ -396,7 +424,7 @@ class QuaternionRegularizer(HookCallback):
 
     run_before = TrainEvalCallback
 
-    def __init__(self, reg_unit=0.0, detach=False, **kwargs):
+    def __init__(self, reg_unit: float = 0.0, detach: bool = False, **kwargs):
         super().__init__(detach=detach, **kwargs)
         self.reg_unit = reg_unit
 
@@ -417,7 +445,7 @@ class QuaternionRegularizer(HookCallback):
             self.learn.loss_grad += l_a
 
 
-def augmentation_groups(u_groups):
+def augmentation_groups(u_groups: list[int]) -> list[list[int]]:
     """Convert channel group sizes into start/end index pairs.
 
     Args:
@@ -440,7 +468,7 @@ class QuaternionAugmentation(Transform):
 
     split_idx = 0
 
-    def __init__(self, inp_groups, **kwargs):
+    def __init__(self, inp_groups: list[list[int]], **kwargs):
         super().__init__(**kwargs)
         self.inp_groups = inp_groups
         self.r_quat = None
@@ -488,7 +516,9 @@ class Quaternion_ResamplingModel(nn.Module):
             resampling instead of linear interpolation.
     """
 
-    def __init__(self, model, fs_targ, fs_mean=0, fs_std=1, quaternion_sampling=True):
+    def __init__(
+        self, model: nn.Module, fs_targ: float, fs_mean: float = 0, fs_std: float = 1, quaternion_sampling: bool = True
+    ):
         super().__init__()
         self.model = model
         self.fs_targ = fs_targ
@@ -519,8 +549,8 @@ class Quaternion_ResamplingModel(nn.Module):
         return res
 
 
-def relativeQuat_np(q1, q2):
-    """inv(quat1)*quat2"""
+def relativeQuat_np(q1: np.ndarray, q2: np.ndarray) -> np.ndarray:
+    """Compute the relative quaternion as inv(quat1)*quat2 (numpy)."""
     if isinstance(q1, np.ndarray) and q1.shape == (4,):
         q1 = q1[np.newaxis]  # convert to 1x4 matrix
         shape = q2.shape
@@ -542,7 +572,7 @@ def relativeQuat_np(q1, q2):
     return output
 
 
-def quatFromAngleAxis_np(angle, axis):
+def quatFromAngleAxis_np(angle: np.ndarray, axis: np.ndarray) -> np.ndarray:
     """Create quaternions from angle-axis representation (numpy).
 
     If angle is 0, the output will be an identity quaternion. If axis is a
@@ -600,8 +630,8 @@ def quatFromAngleAxis_np(angle, axis):
     return q
 
 
-def multiplyQuat_np(q1, q2):
-    """quat1*quat2"""
+def multiplyQuat_np(q1: np.ndarray, q2: np.ndarray) -> np.ndarray:
+    """Multiply two quaternions element-wise (numpy)."""
     if isinstance(q1, np.ndarray) and q1.shape == (4,):
         q1 = q1[np.newaxis]  # convert to 1x4 matrix
         shape = q2.shape
@@ -623,7 +653,7 @@ def multiplyQuat_np(q1, q2):
     return output
 
 
-def quatInterp_np(quat, ind, extend=True):
+def quatInterp_np(quat: np.ndarray, ind: np.ndarray, extend: bool = True) -> np.ndarray:
     """Interpolate quaternions at non-integer indices using Slerp (numpy).
 
     Sampling indices are in the range 0..N-1. For values outside this range,
@@ -734,7 +764,7 @@ class QuaternionBlock(TransformBlock):
         padding: whether to pad sequences of different lengths.
     """
 
-    def __init__(self, seq_extract, padding=False):
+    def __init__(self, seq_extract: Transform, padding: bool = False):
         return super().__init__(
             type_tfms=[seq_extract],
             batch_tfms=[Normalize(axes=[0, 1])],
@@ -743,7 +773,9 @@ class QuaternionBlock(TransformBlock):
 
     @classmethod
     @delegates(HDF2Quaternion, keep=True)
-    def from_hdf(cls, clm_names, seq_cls=TensorQuaternionInclination, padding=False, **kwargs):
+    def from_hdf(
+        cls, clm_names: list[str], seq_cls: type = TensorQuaternionInclination, padding: bool = False, **kwargs
+    ):
         """Create a QuaternionBlock from HDF5 files.
 
         Args:
@@ -781,7 +813,7 @@ class InclinationBlock(TransformBlock):
         padding: whether to pad sequences of different lengths.
     """
 
-    def __init__(self, seq_extract, padding=False):
+    def __init__(self, seq_extract: Transform, padding: bool = False):
         return super().__init__(
             type_tfms=[seq_extract],
             batch_tfms=[Normalize(axes=[0, 1])],
@@ -790,7 +822,7 @@ class InclinationBlock(TransformBlock):
 
     @classmethod
     @delegates(HDF2Inclination, keep=True)
-    def from_hdf(cls, clm_names, seq_cls=TensorInclination, padding=False, **kwargs):
+    def from_hdf(cls, clm_names: list[str], seq_cls: type = TensorInclination, padding: bool = False, **kwargs):
         """Create an InclinationBlock from HDF5 files.
 
         Args:
@@ -801,7 +833,9 @@ class InclinationBlock(TransformBlock):
         return cls(HDF2Inclination(clm_names, to_cls=seq_cls, **kwargs), padding)
 
 
-def plot_scalar_inclination(axs, in_sig, targ_sig, out_sig=None, **kwargs):
+def plot_scalar_inclination(
+    axs: list, in_sig: torch.Tensor, targ_sig: torch.Tensor, out_sig: torch.Tensor | None = None, **kwargs
+):
     """Plot scalar inclination target, prediction, and error.
 
     Args:
@@ -824,7 +858,9 @@ def plot_scalar_inclination(axs, in_sig, targ_sig, out_sig=None, **kwargs):
     axs[-1].plot(in_sig)
 
 
-def plot_quaternion_inclination(axs, in_sig, targ_sig, out_sig=None, **kwargs):
+def plot_quaternion_inclination(
+    axs: list, in_sig: torch.Tensor, targ_sig: torch.Tensor, out_sig: torch.Tensor | None = None, **kwargs
+):
     """Plot quaternion inclination target, prediction, and error.
 
     Args:
@@ -853,7 +889,9 @@ def plot_quaternion_inclination(axs, in_sig, targ_sig, out_sig=None, **kwargs):
     axs[-1].plot(in_sig)
 
 
-def plot_quaternion_rel_angle(axs, in_sig, targ_sig, out_sig=None, **kwargs):
+def plot_quaternion_rel_angle(
+    axs: list, in_sig: torch.Tensor, targ_sig: torch.Tensor, out_sig: torch.Tensor | None = None, **kwargs
+):
     """Plot relative quaternion angle target, prediction, and error.
 
     Args:

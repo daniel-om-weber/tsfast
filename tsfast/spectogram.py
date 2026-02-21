@@ -16,7 +16,7 @@ from fastai.basics import *
 class TensorSpectrogram(TensorBase):
     """Base tensor type for spectrogram data with plotting support."""
 
-    def show(self, ctx=None, ax=None, title="", **kwargs):
+    def show(self, ctx=None, ax=None, title: str = "", **kwargs):
         ax = ifnone(ax, ctx)
         if ax is None:
             _, ax = plt.subplots()
@@ -56,7 +56,7 @@ def spectrogram(
     n_fft: int,
     hop_length: int,
     win_length: int,
-    power: Optional[float],
+    power: float | None,
     normalized: bool,
 ) -> Tensor:
     """Compute a spectrogram from an audio/signal waveform.
@@ -120,13 +120,13 @@ class Spectrogram(torch.nn.Module):
     def __init__(
         self,
         n_fft: int = 400,
-        win_length: Optional[int] = None,
-        hop_length: Optional[int] = None,
+        win_length: int | None = None,
+        hop_length: int | None = None,
         pad: int = 0,
         window_fn: Callable[..., Tensor] = torch.hann_window,
-        power: Optional[float] = 2.0,
+        power: float | None = 2.0,
         normalized: bool = False,
-        wkwargs: Optional[dict] = None,
+        wkwargs: dict | None = None,
     ) -> None:
         super(Spectrogram, self).__init__()
         self.n_fft = n_fft
@@ -160,7 +160,7 @@ class Sequence2Spectrogram(Transform):
         scaling: amplitude scaling mode ('log' for log10).
     """
 
-    def __init__(self, scaling="log", **kwargs):
+    def __init__(self, scaling: str = "log", **kwargs):
         self.scaling = scaling
         self.tfm = Spectrogram(**kwargs)
 
@@ -185,7 +185,14 @@ class SpectrogramBlock(TransformBlock):
         normalized: whether to normalize the STFT output.
     """
 
-    def __init__(self, seq_extract, padding=False, n_fft=100, hop_length=None, normalized=False):
+    def __init__(
+        self,
+        seq_extract: Transform,
+        padding: bool = False,
+        n_fft: int = 100,
+        hop_length: int | None = None,
+        normalized: bool = False,
+    ):
         return super().__init__(
             type_tfms=[seq_extract],
             batch_tfms=[Sequence2Spectrogram(n_fft=n_fft, hop_length=hop_length, normalized=normalized)],
@@ -196,12 +203,12 @@ class SpectrogramBlock(TransformBlock):
     @delegates(HDF2Sequence, keep=True)
     def from_hdf(
         cls,
-        clm_names,
-        seq_cls=TensorSpectrogramInput,
-        padding=False,
-        n_fft=100,
-        hop_length=None,
-        normalized=False,
+        clm_names: list[str],
+        seq_cls: type = TensorSpectrogramInput,
+        padding: bool = False,
+        n_fft: int = 100,
+        hop_length: int | None = None,
+        normalized: bool = False,
         **kwargs,
     ):
         """Create a SpectrogramBlock from HDF5 files.

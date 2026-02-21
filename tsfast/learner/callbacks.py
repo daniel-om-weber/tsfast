@@ -22,6 +22,7 @@ __all__ = [
 
 from ..data import *
 from fastai.basics import *
+from collections.abc import Callable
 
 
 class GradientClipping(Callback):
@@ -31,7 +32,7 @@ class GradientClipping(Callback):
         clip_val: maximum gradient norm threshold
     """
 
-    def __init__(self, clip_val=10):
+    def __init__(self, clip_val: float = 10):
         self.clip_val = clip_val
 
     def after_backward(self):
@@ -56,7 +57,7 @@ class GradientBatchFiltering(Callback):
         filter_val: maximum gradient norm before the batch is skipped
     """
 
-    def __init__(self, filter_val=10):
+    def __init__(self, filter_val: float = 10):
         self.filter_val = filter_val
 
     def before_step(self):
@@ -77,7 +78,7 @@ class WeightClipping(Callback):
         clip_limit: symmetric clamp boundary for the weights
     """
 
-    def __init__(self, module, clip_limit=1):
+    def __init__(self, module: nn.Module, clip_limit: float = 1):
         self.module = module
         self.clip_limit = clip_limit
 
@@ -94,7 +95,7 @@ class SkipFirstNCallback(Callback):
         n_skip: number of initial time steps to discard
     """
 
-    def __init__(self, n_skip=0):
+    def __init__(self, n_skip: int = 0):
         self.n_skip = n_skip
 
     def after_pred(self):
@@ -137,7 +138,7 @@ class VarySeqLen(Callback):
         min_len: minimum sequence length to keep
     """
 
-    def __init__(self, min_len=50):
+    def __init__(self, min_len: int = 50):
         self.min_len = min_len
 
     def before_batch(self):
@@ -154,7 +155,7 @@ class VarySeqLen(Callback):
                 self.learn.yb = tuple([y[:, :lim] for y in self.yb])
 
 
-def sched_lin_p(start, end, pos, p=0.75):
+def sched_lin_p(start: float, end: float, pos: float, p: float = 0.75) -> float:
     """Linear schedule that reaches the end value at position p.
 
     Args:
@@ -166,7 +167,7 @@ def sched_lin_p(start, end, pos, p=0.75):
     return end if pos >= p else start + pos / p * (end - start)
 
 
-def sched_ramp(start, end, pos, p_left=0.2, p_right=0.6):
+def sched_ramp(start: float, end: float, pos: float, p_left: float = 0.2, p_right: float = 0.6) -> float:
     """Ramp schedule that linearly transitions between two plateau regions.
 
     Args:
@@ -195,7 +196,7 @@ class CB_TruncateSequence(Callback):
         scheduler: scheduling function controlling truncation over training
     """
 
-    def __init__(self, truncate_length=50, scheduler=sched_ramp):
+    def __init__(self, truncate_length: int = 50, scheduler: Callable = sched_ramp):
         self._truncate_length = truncate_length
         self._scheduler = scheduler
 
@@ -219,7 +220,7 @@ class CB_AddLoss(Callback):
         alpha: scaling factor for the auxiliary loss
     """
 
-    def __init__(self, _loss_func, alpha=1.0):
+    def __init__(self, _loss_func: Callable, alpha: float = 1.0):
         self._loss_func = _loss_func
         self.alpha = alpha
 
@@ -242,7 +243,10 @@ class BatchLossFilter(Callback):
     """
 
     def __init__(
-        self, loss_perc=1.0, filter_criterion=nn.HuberLoss(reduction="none"), schedule_func: Optional[callable] = None
+        self,
+        loss_perc: float = 1.0,
+        filter_criterion: nn.Module = nn.HuberLoss(reduction="none"),
+        schedule_func: Callable | None = None,
     ):
         self.loss_perc = loss_perc
         self.filter_criterion = filter_criterion
@@ -291,7 +295,7 @@ class TimeSeriesRegularizer(HookCallback):
 
     run_before = TrainEvalCallback
 
-    def __init__(self, alpha=0.0, beta=0.0, dim=None, detach=False, **kwargs):
+    def __init__(self, alpha: float = 0.0, beta: float = 0.0, dim: int | None = None, detach: bool = False, **kwargs):
         if "modules" not in kwargs:
             print("Warning: No module was provided to TimeSerieRegularizer")
         super().__init__(detach=detach, **kwargs)
@@ -348,7 +352,7 @@ class ARInitCB(Callback):
 from matplotlib.lines import Line2D
 
 
-def plot_grad_flow(named_parameters):
+def plot_grad_flow(named_parameters: Iterator) -> None:
     """Plots the gradients flowing through different layers in the net during training.
 
     Can be used for checking for possible gradient vanishing / exploding problems.
@@ -390,7 +394,7 @@ class CB_PlotGradient(Callback):
         n_draws: number of gradient snapshots to plot across training
     """
 
-    def __init__(self, n_draws=20):
+    def __init__(self, n_draws: int = 20):
         self.n_draws = n_draws
 
     def begin_fit(self):

@@ -24,6 +24,7 @@ from fastai.data.all import *
 from ..data import *
 
 from ..data.loader import *
+from collections.abc import Callable
 import h5py
 from pathlib import Path as _Path
 from shutil import rmtree
@@ -33,14 +34,21 @@ from dataclasses import dataclass
 
 @dataclass
 class NormPair:
-    "Per-signal normalization statistics (mean, std, min, max as 1-D numpy arrays)."
+    """Per-signal normalization statistics (mean, std, min, max as 1-D numpy arrays).
+
+    Args:
+        mean: per-feature mean values
+        std: per-feature standard deviation values
+        min: per-feature minimum values
+        max: per-feature maximum values
+    """
 
     mean: np.ndarray
     std: np.ndarray
     min: np.ndarray
     max: np.ndarray
 
-    def __add__(self, other):
+    def __add__(self, other: "NormPair") -> "NormPair":
         "Concatenate two NormPairs feature-wise (e.g. norm_u + norm_y)."
         return NormPair(*(np.hstack([a, b]) for a, b in zip(self, other)))
 
@@ -55,20 +63,28 @@ from typing import NamedTuple
 
 
 class NormStats(NamedTuple):
+    """Normalization statistics for input, state, and output signals.
+
+    Args:
+        u: normalization stats for input signals
+        x: normalization stats for state signals, or None if no states
+        y: normalization stats for output signals
+    """
+
     u: NormPair
     x: NormPair | None
     y: NormPair
 
 
-def extract_mean_std_from_dls(dls):
+def extract_mean_std_from_dls(dls) -> NormStats:
     "Extract normalization statistics stored on the DataLoaders object."
     if not hasattr(dls, "norm_stats"):
         raise AttributeError("DataLoaders missing norm_stats. Use create_dls to create them.")
     return dls.norm_stats
 
 
-def dict_file_save(key, value, f_path="dls_normalize.p"):
-    "save value to a dictionary file, appends if it already exists"
+def dict_file_save(key: str, value, f_path: str | Path = "dls_normalize.p"):
+    "Save value to a dictionary file, appends if it already exists."
 
     # use the absolute path, so seperate processes refer to the same file
     f_path = Path(f_path)
@@ -83,8 +99,8 @@ def dict_file_save(key, value, f_path="dls_normalize.p"):
         pickle.dump(dictionary, f)
 
 
-def dict_file_load(key, f_path="dls_normalize.p"):
-    "load value from a dictionary file"
+def dict_file_load(key: str, f_path: str | Path = "dls_normalize.p"):
+    "Load value from a dictionary file."
 
     # use the absolute path, so seperate processes refer to the same file
     f_path = Path(f_path)
@@ -118,14 +134,14 @@ def _load_norm_stats(dls_id):
 
 
 def extract_mean_std_from_hdffiles(
-    lst_files,
-    lst_signals,
-):
+    lst_files: list,
+    lst_signals: list[str],
+) -> tuple[np.ndarray, np.ndarray] | tuple[None, None]:
     """Calculate the mean and standard deviation of the signals from the provided HDF5 files.
 
     Args:
-        lst_files: list of paths to HDF5 files
-        lst_signals: list of signal names, each a dataset within the HDF5 files
+        lst_files: paths to HDF5 files
+        lst_signals: signal names, each a dataset within the HDF5 files
     """
     if len(lst_signals) == 0:
         return (None, None)
@@ -154,7 +170,8 @@ def extract_mean_std_from_hdffiles(
     return means.astype(np.float32), stds.astype(np.float32)
 
 
-def extract_mean_std_from_dataset(lst_files, u, x, y):
+def extract_mean_std_from_dataset(lst_files: list, u: list[str], x: list[str], y: list[str]) -> tuple:
+    "Extract mean/std normalization statistics for u, x, and y signals from training files."
     train_files = lst_files[ParentSplitter()(lst_files)[0]]
     norm_u = extract_mean_std_from_hdffiles(train_files, u)
     norm_x = extract_mean_std_from_hdffiles(train_files, x)
@@ -162,7 +179,7 @@ def extract_mean_std_from_dataset(lst_files, u, x, y):
     return (norm_u, norm_x, norm_y)
 
 
-def extract_norm_from_hdffiles(lst_files, lst_signals):
+def extract_norm_from_hdffiles(lst_files: list, lst_signals: list[str]) -> NormPair | None:
     "Compute NormPair (mean, std, min, max) from all samples in HDF5 files."
     if len(lst_signals) == 0:
         return None
@@ -187,8 +204,8 @@ def extract_norm_from_hdffiles(lst_files, lst_signals):
     return NormPair(means.astype(np.float32), stds.astype(np.float32), mins.astype(np.float32), maxs.astype(np.float32))
 
 
-def estimate_norm_stats(dls, n_batches: int = 10):
-    "Estimate per-feature mean/std/min/max from training batches. Returns tuple of NormPair, one per batch element."
+def estimate_norm_stats(dls, n_batches: int = 10) -> tuple[NormPair, ...]:
+    "Estimate per-feature mean/std/min/max from training batches."
     acc = None
     for i, batch in enumerate(dls.train):
         if i >= n_batches:
@@ -226,7 +243,9 @@ def _FileListSplitter(train_set, valid_set):
     return _inner
 
 
-def split_by_parent(files_or_path, train_name="train", valid_name="valid", test_name="test"):
+def split_by_parent(
+    files_or_path: Path | str | list, train_name: str = "train", valid_name: str = "valid", test_name: str = "test"
+) -> dict[str, L]:
     "Collect HDF files and group into train/valid/test dict by parent directory name."
     if isinstance(files_or_path, (Path, str)):
         files = get_hdf_files(files_or_path)
@@ -239,15 +258,15 @@ def split_by_parent(files_or_path, train_name="train", valid_name="valid", test_
     }
 
 
-def is_dataset_directory(ds_path):
-    """Checks if the given directory path is a dataset with hdf5 files.
+def is_dataset_directory(ds_path: Path | str) -> bool:
+    """Check if the given directory path is a dataset with HDF5 files.
 
     Args:
-        ds_path: the path to the directory to check
+        ds_path: path to the directory to check
 
     Returns:
         True if the directory contains 'train', 'valid', and 'test' subdirectories,
-        each of which must contain at least one HDF5 file. False otherwise.
+        each with at least one HDF5 file.
     """
     required_dirs = ["train", "valid", "test"]
 
@@ -264,24 +283,24 @@ def is_dataset_directory(ds_path):
 
 
 def create_dls(
-    u,
-    y,
+    u: list[str],
+    y: list[str],
     dataset: Path | list | dict,
     win_sz: int = 100,
-    x: list = [],
+    x: list[str] = [],
     stp_sz: int = 1,
-    sub_seq_len: int = None,
+    sub_seq_len: int | None = None,
     bs: int = 64,
     prediction: bool = False,
     input_delay: bool = False,
-    valid_stp_sz: int = None,
+    valid_stp_sz: int | None = None,
     cached: bool = True,
     num_workers: int = 5,
     n_batches_train: int | None = 300,
     n_batches_valid: int | None = None,
     max_batches_training: int | None = None,
     max_batches_valid: int | None = None,
-    dls_id: str = None,
+    dls_id: str | None = None,
 ):
     """Create DataLoaders from HDF5 time-series files with normalization statistics.
 
@@ -470,18 +489,18 @@ def _get_project_root():
 create_dls_test = partial(
     create_dls, u=["u"], y=["y"], dataset=_get_project_root() / "test_data/WienerHammerstein", win_sz=100, stp_sz=100
 )
-create_dls_test.__doc__ = "create a dataloader from a small dataset provided with tsfast"
+create_dls_test.__doc__ = "Create a DataLoader from the small test dataset bundled with tsfast."
 
 
-def get_default_dataset_path():
-    "Create a directory in the user's home directory for storing datasets"
+def get_default_dataset_path() -> Path:
+    "Create and return the default directory for storing datasets in the user's home."
     data_dir = Path.home() / ".tsfast" / "datasets"
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir
 
 
-def get_dataset_path():
-    "Retrieves the tsfast dataset directory. Tries to read the path in the environment variable 'TSFAST_PATH', returns the default otherwise."
+def get_dataset_path() -> Path:
+    "Return the dataset directory from TSFAST_PATH env var, or the default path."
     env_var_name = "TSFAST_PATH"
     env_path = os.getenv(env_var_name)
 
@@ -491,15 +510,15 @@ def get_dataset_path():
         return get_default_dataset_path()
 
 
-def clean_default_dataset_path():
-    "Removes the default directory where the datasets are stored"
+def clean_default_dataset_path() -> None:
+    "Remove the default directory where datasets are stored."
     rmtree(get_default_dataset_path())
 
 
 @delegates(create_dls, keep=True)
 def create_dls_downl(
-    dataset=None,
-    download_function=None,
+    dataset: Path | str | None = None,
+    download_function: Callable | None = None,
     **kwargs,
 ):
     """Create DataLoaders, downloading the dataset first if needed.

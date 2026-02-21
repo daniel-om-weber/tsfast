@@ -6,7 +6,7 @@ from fastai.data.all import *
 from .core import *
 
 
-def pad_sequence(batch, sorting=False):
+def pad_sequence(batch: list, sorting: bool = False):
     """Collate function that pads sequences of different lengths.
 
     Args:
@@ -33,14 +33,14 @@ class SequenceBlock(TransformBlock):
         padding: whether to pad sequences of different lengths in each batch.
     """
 
-    def __init__(self, seq_extract, padding=False):
+    def __init__(self, seq_extract: Transform, padding: bool = False):
         return super().__init__(
             type_tfms=[seq_extract], dls_kwargs={} if not padding else {"before_batch": pad_sequence}
         )
 
     @classmethod
     @delegates(HDF2Sequence, keep=True)
-    def from_hdf(cls, clm_names, seq_cls=TensorSequencesInput, padding=False, **kwargs):
+    def from_hdf(cls, clm_names: list, seq_cls: type = TensorSequencesInput, padding: bool = False, **kwargs):
         """Create a SequenceBlock from HDF5 files.
 
         Args:
@@ -51,7 +51,7 @@ class SequenceBlock(TransformBlock):
         return cls(HDF2Sequence(clm_names, to_cls=seq_cls, **kwargs), padding)
 
     @classmethod
-    def from_numpy(cls, seq_cls=TensorSequencesInput, padding=False, **kwargs):
+    def from_numpy(cls, seq_cls: type = TensorSequencesInput, padding: bool = False, **kwargs):
         """Create a SequenceBlock from numpy arrays.
 
         Args:
@@ -70,13 +70,13 @@ class ScalarNormalize(DisplayedTransform):
         axes: axes over which to compute statistics.
     """
 
-    def __init__(self, mean=None, std=None, axes=(0,)):
+    def __init__(self, mean: Tensor | None = None, std: Tensor | None = None, axes: tuple = (0,)):
         self.mean = mean
         self.std = std
         self.axes = axes
 
     @classmethod
-    def from_stats(cls, mean, std, dim=1, ndim=4, cuda=True):
+    def from_stats(cls, mean: float, std: float, dim: int = 1, ndim: int = 4, cuda: bool = True):
         """Create from precomputed statistics with broadcasting.
 
         Args:
@@ -116,12 +116,12 @@ class ScalarBlock(TransformBlock):
         scl_extract: transform that extracts scalars from the data source.
     """
 
-    def __init__(self, scl_extract):
+    def __init__(self, scl_extract: Transform):
         return super().__init__(type_tfms=[scl_extract], batch_tfms=[ScalarNormalize()])
 
     @classmethod
     @delegates(HDF_Attrs2Scalars, keep=True)
-    def from_hdf_attrs(cls, clm_names, scl_cls=TensorScalarsInput, **kwargs):
+    def from_hdf_attrs(cls, clm_names: list, scl_cls: type = TensorScalarsInput, **kwargs):
         """Create a ScalarBlock from HDF5 file attributes.
 
         Args:
@@ -132,7 +132,7 @@ class ScalarBlock(TransformBlock):
 
     @classmethod
     @delegates(HDF_DS2Scalars, keep=True)
-    def from_hdf_ds(cls, clm_names, scl_cls=TensorScalarsInput, **kwargs):
+    def from_hdf_ds(cls, clm_names: list, scl_cls: type = TensorScalarsInput, **kwargs):
         """Create a ScalarBlock from HDF5 datasets.
 
         Args:

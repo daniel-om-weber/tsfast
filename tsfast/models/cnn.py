@@ -25,7 +25,15 @@ from torch.nn.utils.parametrizations import weight_norm
 
 
 @delegates(nn.Conv1d, keep=True)
-def Conv1D(input_size, output_size, kernel_size=3, activation=Mish, wn=True, bn=False, **kwargs):
+def Conv1D(
+    input_size: int,
+    output_size: int,
+    kernel_size: int = 3,
+    activation: type[nn.Module] | None = Mish,
+    wn: bool = True,
+    bn: bool = False,
+    **kwargs,
+) -> nn.Sequential:
     """Create a 1D convolutional block with optional activation and batch norm.
 
     Args:
@@ -56,7 +64,15 @@ class CNN(nn.Module):
         bn: Whether to apply batch normalization.
     """
 
-    def __init__(self, input_size, output_size, hl_depth=1, hl_width=10, act=Mish, bn=False):
+    def __init__(
+        self,
+        input_size: int,
+        output_size: int,
+        hl_depth: int = 1,
+        hl_width: int = 10,
+        act: type[nn.Module] = Mish,
+        bn: bool = False,
+    ):
         super().__init__()
 
         conv_layers = [
@@ -66,7 +82,7 @@ class CNN(nn.Module):
         self.conv_layers = nn.Sequential(*conv_layers)
         self.final = nn.Conv1d(hl_width, output_size, kernel_size=1)
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         x_in = x.transpose(1, 2)
         out = self.conv_layers(x_in)
         out = self.final(out).transpose(1, 2)
@@ -88,7 +104,15 @@ class CausalConv1d(torch.nn.Conv1d):
     """
 
     def __init__(
-        self, in_channels, out_channels, kernel_size, stride=1, dilation=1, groups=1, bias=True, stateful=False
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int,
+        stride: int = 1,
+        dilation: int = 1,
+        groups: int = 1,
+        bias: bool = True,
+        stateful: bool = False,
     ):
 
         super().__init__(
@@ -105,7 +129,7 @@ class CausalConv1d(torch.nn.Conv1d):
         self.x_init = None
         self.stateful = stateful
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         if self.x_init is not None and self.x_init.shape[0] != x.shape[0]:
             self.x_init = None
 
@@ -121,12 +145,20 @@ class CausalConv1d(torch.nn.Conv1d):
 
         return out
 
-    def reset_state(self):
+    def reset_state(self) -> None:
         self.x_init = None
 
 
 @delegates(CausalConv1d, keep=True)
-def CConv1D(input_size, output_size, kernel_size=2, activation=Mish, wn=True, bn=False, **kwargs):
+def CConv1D(
+    input_size: int,
+    output_size: int,
+    kernel_size: int = 2,
+    activation: type[nn.Module] | None = Mish,
+    wn: bool = True,
+    bn: bool = False,
+    **kwargs,
+) -> nn.Sequential:
     """Create a causal 1D convolutional block with optional weight norm and batch norm.
 
     Args:
@@ -163,7 +195,15 @@ class TCN_Block(nn.Module):
     """
 
     def __init__(
-        self, input_size, output_size, num_layers=1, activation=Mish, wn=True, bn=False, stateful=False, **kwargs
+        self,
+        input_size: int,
+        output_size: int,
+        num_layers: int = 1,
+        activation: type[nn.Module] | None = Mish,
+        wn: bool = True,
+        bn: bool = False,
+        stateful: bool = False,
+        **kwargs,
     ):
         super().__init__()
 
@@ -180,7 +220,7 @@ class TCN_Block(nn.Module):
 
         self.residual = nn.Conv1d(input_size, output_size, kernel_size=1) if output_size != input_size else None
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         out = self.layers(x)
         out = out + (x if self.residual is None else self.residual(x))
         return out
@@ -199,7 +239,16 @@ class TCN(nn.Module):
         stateful: Whether causal convolutions carry state across calls.
     """
 
-    def __init__(self, input_size, output_size, hl_depth=1, hl_width=10, act=Mish, bn=False, stateful=False):
+    def __init__(
+        self,
+        input_size: int,
+        output_size: int,
+        hl_depth: int = 1,
+        hl_width: int = 10,
+        act: type[nn.Module] = Mish,
+        bn: bool = False,
+        stateful: bool = False,
+    ):
         super().__init__()
 
         conv_layers = [
@@ -216,7 +265,7 @@ class TCN(nn.Module):
         self.conv_layers = nn.Sequential(*conv_layers)
         self.final = nn.Conv1d(hl_width, output_size, kernel_size=1)
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         x_in = x.transpose(1, 2)
         out = self.conv_layers(x_in)
         out = self.final(out).transpose(1, 2)
@@ -228,18 +277,18 @@ from ..data.loader import get_inp_out_size
 
 @delegates(TCN, keep=True)
 def TCNLearner(
-    dls,
-    num_layers=3,
-    hidden_size=100,
-    loss_func=nn.L1Loss(),
-    metrics=[fun_rmse],
-    n_skip=None,
-    opt_func=Adam,
-    cbs=None,
-    input_norm=StandardScaler1D,
-    output_norm=None,
+    dls: DataLoaders,
+    num_layers: int = 3,
+    hidden_size: int = 100,
+    loss_func: nn.Module = nn.L1Loss(),
+    metrics: list = [fun_rmse],
+    n_skip: int | None = None,
+    opt_func: type = Adam,
+    cbs: list | None = None,
+    input_norm: type[Scaler] | None = StandardScaler1D,
+    output_norm: type[Scaler] | None = None,
     **kwargs,
-):
+) -> Learner:
     """Create a fastai Learner with a TCN model.
 
     Args:
@@ -290,7 +339,15 @@ class SeperateTCN(nn.Module):
     """
 
     def __init__(
-        self, input_list, output_size, hl_depth=1, hl_width=10, act=Mish, bn=False, stateful=False, final_layer=3
+        self,
+        input_list: list[int],
+        output_size: int,
+        hl_depth: int = 1,
+        hl_width: int = 10,
+        act: type[nn.Module] = Mish,
+        bn: bool = False,
+        stateful: bool = False,
+        final_layer: int = 3,
     ):
         super().__init__()
         self.input_list = np.cumsum([0] + input_list)
@@ -310,7 +367,7 @@ class SeperateTCN(nn.Module):
         self.x_init = None
         self.stateful = stateful
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         if self.x_init is not None:
             if self.x_init.shape[0] != x.shape[0]:
                 self.x_init = None
@@ -332,7 +389,7 @@ class SeperateTCN(nn.Module):
 
         return out
 
-    def reset_state(self):
+    def reset_state(self) -> None:
         self.x_init = None
 
 
@@ -356,18 +413,18 @@ class CRNN(nn.Module):
 
     def __init__(
         self,
-        input_size,
-        output_size,
-        num_ft=10,
-        num_cnn_layers=4,
-        num_rnn_layers=2,
-        hs_cnn=10,
-        hs_rnn=10,
-        hidden_p=0,
-        input_p=0,
-        weight_p=0,
-        rnn_type="gru",
-        stateful=False,
+        input_size: int,
+        output_size: int,
+        num_ft: int = 10,
+        num_cnn_layers: int = 4,
+        num_rnn_layers: int = 2,
+        hs_cnn: int = 10,
+        hs_rnn: int = 10,
+        hidden_p: float = 0,
+        input_p: float = 0,
+        weight_p: float = 0,
+        rnn_type: str = "gru",
+        stateful: bool = False,
     ):
         super().__init__()
         self.cnn = TCN(input_size, num_ft, num_cnn_layers, hs_cnn, act=nn.ReLU, stateful=stateful)
@@ -383,22 +440,22 @@ class CRNN(nn.Module):
             stateful=stateful,
         )
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         return self.rnn(self.cnn(x))
 
 
 @delegates(CRNN, keep=True)
 def CRNNLearner(
-    dls,
-    loss_func=nn.L1Loss(),
-    metrics=[fun_rmse],
-    n_skip=0,
-    opt_func=Adam,
-    cbs=None,
-    input_norm=StandardScaler1D,
-    output_norm=None,
+    dls: DataLoaders,
+    loss_func: nn.Module = nn.L1Loss(),
+    metrics: list = [fun_rmse],
+    n_skip: int = 0,
+    opt_func: type = Adam,
+    cbs: list | None = None,
+    input_norm: type[Scaler] | None = StandardScaler1D,
+    output_norm: type[Scaler] | None = None,
     **kwargs,
-):
+) -> Learner:
     """Create a fastai Learner with a CRNN model.
 
     Args:
@@ -433,17 +490,17 @@ def CRNNLearner(
 
 @delegates(TCN, keep=True)
 def AR_TCNLearner(
-    dls,
-    hl_depth=3,
-    alpha=1,
-    beta=1,
-    early_stop=0,
-    metrics=None,
-    n_skip=None,
-    opt_func=Adam,
-    input_norm=StandardScaler1D,
+    dls: DataLoaders,
+    hl_depth: int = 3,
+    alpha: float = 1,
+    beta: float = 1,
+    early_stop: int = 0,
+    metrics: list | None = None,
+    n_skip: int | None = None,
+    opt_func: type = Adam,
+    input_norm: type[Scaler] | None = StandardScaler1D,
     **kwargs,
-):
+) -> Learner:
     """Create a fastai Learner with an autoregressive TCN model.
 
     Args:
@@ -506,18 +563,18 @@ class SeperateCRNN(nn.Module):
 
     def __init__(
         self,
-        input_list,
-        output_size,
-        num_ft=10,
-        num_cnn_layers=4,
-        num_rnn_layers=2,
-        hs_cnn=10,
-        hs_rnn=10,
-        hidden_p=0,
-        input_p=0,
-        weight_p=0,
-        rnn_type="gru",
-        stateful=False,
+        input_list: list[int],
+        output_size: int,
+        num_ft: int = 10,
+        num_cnn_layers: int = 4,
+        num_rnn_layers: int = 2,
+        hs_cnn: int = 10,
+        hs_rnn: int = 10,
+        hidden_p: float = 0,
+        input_p: float = 0,
+        weight_p: float = 0,
+        rnn_type: str = "gru",
+        stateful: bool = False,
     ):
         super().__init__()
         self.cnn = SeperateTCN(
@@ -535,5 +592,5 @@ class SeperateCRNN(nn.Module):
             stateful=stateful,
         )
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         return self.rnn(self.cnn(x))

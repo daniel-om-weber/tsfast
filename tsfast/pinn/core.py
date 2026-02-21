@@ -21,6 +21,8 @@ __all__ = [
     "TransitionSmoothnessCallback",
 ]
 
+from collections.abc import Callable
+
 import torch
 from fastai.learner import Callback
 import numpy as np
@@ -176,16 +178,16 @@ def generate_excitation_signals(
     n_inputs: int = 1,
     dt: float = 0.01,
     device: str = "cpu",
-    signal_types: list = None,
+    signal_types: list | None = None,
     amplitude_range: tuple = (0.5, 2.0),
     frequency_range: tuple = (0.1, 3.0),
-    input_configs: list = None,
+    input_configs: list | None = None,
     noise_probability: float = 0.0,
     noise_std_range: tuple = (0.05, 0.15),
     bias_probability: float = 0.0,
     bias_range: tuple = (-0.5, 0.5),
     synchronized_inputs: bool = False,
-    seed: int = None,
+    seed: int | None = None,
 ) -> torch.Tensor:
     """Generate standard excitation signals for PINN collocation points (vectorized).
 
@@ -443,7 +445,7 @@ def generate_random_states(
     n_outputs: int,
     output_ranges: list,
     device: str = "cpu",
-    seed: int = None,
+    seed: int | None = None,
 ) -> torch.Tensor:
     """Generate random physical states for PINN collocation points.
 
@@ -637,10 +639,10 @@ class PhysicsLossCallback(Callback):
 
     def __init__(
         self,
-        physics_loss_func,
+        physics_loss_func: Callable,
         weight: float = 1.0,
-        loss_weights: dict = None,
-        n_inputs: int = None,
+        loss_weights: dict | None = None,
+        n_inputs: int | None = None,
         n_skip: int = 0,
     ):
         self.weight = weight
@@ -717,16 +719,16 @@ class CollocationPointsCB(Callback):
 
     def __init__(
         self,
-        generate_pinn_input,
-        physics_loss_func,
+        generate_pinn_input: Callable,
+        physics_loss_func: Callable,
         weight: float = 1.0,
-        loss_weights: dict = None,
+        loss_weights: dict | None = None,
         num_workers: int = 2,
         init_mode: str = "none",
-        output_ranges: list = None,
+        output_ranges: list | None = None,
         hidden_std: float = 0.1,
         n_skip: int = 0,
-        model=None,
+        model: torch.nn.Module | None = None,
     ):
         self.weight = weight
         self.loss_weights = loss_weights or {}
@@ -842,8 +844,8 @@ class ConsistencyCallback(HookCallback):
     def __init__(
         self,
         weight: float = 1.0,
-        match_at_timestep: int = None,
-        model=None,
+        match_at_timestep: int | None = None,
+        model: torch.nn.Module | None = None,
     ):
         super().__init__(modules=[])
         self.weight = weight
@@ -906,7 +908,7 @@ class AlternatingEncoderCB(Callback):
     def __init__(
         self,
         p_state: float = 0.3,
-        model=None,
+        model: torch.nn.Module | None = None,
     ):
         self.p_state = p_state
         self.inner_model = model

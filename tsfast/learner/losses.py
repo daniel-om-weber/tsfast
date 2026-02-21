@@ -23,9 +23,10 @@ from fastai.basics import *
 import warnings
 
 import functools
+from collections.abc import Callable
 
 
-def ignore_nan(func):
+def ignore_nan(func: Callable) -> Callable:
     """Decorator that removes NaN values from tensors before function execution.
 
     Reduces tensors to a flat array. Apply to functions such as mse.
@@ -51,7 +52,7 @@ import functools
 import warnings
 
 
-def float64_func(func):
+def float64_func(func: Callable) -> Callable:
     """Decorator that computes a function in float64 and converts the result back.
 
     Args:
@@ -78,7 +79,7 @@ def float64_func(func):
     return float64_func_decorator
 
 
-def SkipNLoss(fn, n_skip=0):
+def SkipNLoss(fn: Callable, n_skip: int = 0) -> Callable:
     """Loss-function modifier that skips the first n time steps of sequential data.
 
     Args:
@@ -93,7 +94,7 @@ def SkipNLoss(fn, n_skip=0):
     return _inner
 
 
-def CutLoss(fn, l_cut=0, r_cut=None):
+def CutLoss(fn: Callable, l_cut: int = 0, r_cut: int | None = None) -> Callable:
     """Loss-function modifier that slices the sequence from l_cut to r_cut.
 
     Args:
@@ -109,7 +110,7 @@ def CutLoss(fn, l_cut=0, r_cut=None):
     return _inner
 
 
-def NormLoss(fn, norm_stats, scaler_cls=None):
+def NormLoss(fn: Callable, norm_stats, scaler_cls: type | None = None) -> Callable:
     """Loss wrapper that normalizes predictions and targets before computing loss.
 
     Args:
@@ -131,7 +132,7 @@ def NormLoss(fn, norm_stats, scaler_cls=None):
     return _inner
 
 
-def weighted_mae(input, target):
+def weighted_mae(input: Tensor, target: Tensor) -> Tensor:
     """Weighted MAE with log-spaced weights decaying along the sequence axis."""
     max_weight = 1.0
     min_weight = 0.1
@@ -163,7 +164,7 @@ def weighted_mae(input, target):
     return ((input - target).abs() * weights).sum(dim=1).mean()
 
 
-def RandSeqLenLoss(fn, min_idx=1, max_idx=None, mid_idx=None):
+def RandSeqLenLoss(fn: Callable, min_idx: int = 1, max_idx: int | None = None, mid_idx: int | None = None) -> Callable:
     """Loss-function modifier that randomly truncates each sequence in the minibatch individually.
 
     Uses a triangular distribution. Slow for very large batch sizes.
@@ -189,40 +190,40 @@ def RandSeqLenLoss(fn, min_idx=1, max_idx=None, mid_idx=None):
     return _inner
 
 
-def fun_rmse(inp, targ):
+def fun_rmse(inp: Tensor, targ: Tensor) -> Tensor:
     """RMSE loss function defined as a plain function."""
     return torch.sqrt(F.mse_loss(inp, targ))
 
 
-def cos_sim_loss(inp, targ):
+def cos_sim_loss(inp: Tensor, targ: Tensor) -> Tensor:
     """Cosine similarity loss (1 - cosine similarity), averaged over the batch."""
     return (1 - F.cosine_similarity(inp, targ, dim=-1)).mean()
 
 
-def cos_sim_loss_pow(inp, targ):
+def cos_sim_loss_pow(inp: Tensor, targ: Tensor) -> Tensor:
     """Squared cosine similarity loss, averaged over the batch."""
     return (1 - F.cosine_similarity(inp, targ, dim=-1)).pow(2).mean()
 
 
-def nrmse(inp, targ):
+def nrmse(inp: Tensor, targ: Tensor) -> Tensor:
     """RMSE loss normalized by variance of each target variable."""
     mse = (inp - targ).pow(2).mean(dim=[0, 1])
     var = targ.var(dim=[0, 1])
     return (mse / var).sqrt().mean()
 
 
-def nrmse_std(inp, targ):
+def nrmse_std(inp: Tensor, targ: Tensor) -> Tensor:
     """RMSE loss normalized by standard deviation of each target variable."""
     mse = (inp - targ).pow(2).mean(dim=[0, 1])
     var = targ.std(dim=[0, 1])
     return (mse / var).sqrt().mean()
 
 
-def mean_vaf(inp, targ):
+def mean_vaf(inp: Tensor, targ: Tensor) -> Tensor:
     """Variance accounted for (VAF) metric, returned as a percentage."""
     return (1 - ((targ - inp).var() / targ.var())) * 100
 
 
-def zero_loss(pred, targ):
+def zero_loss(pred: Tensor, targ: Tensor) -> Tensor:
     """Always-zero loss that preserves the computation graph."""
     return (pred * 0).sum()

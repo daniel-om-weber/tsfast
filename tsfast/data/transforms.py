@@ -21,7 +21,7 @@ class SeqSlice(Transform):
         r_slc: right slice boundary index.
     """
 
-    def __init__(self, l_slc=None, r_slc=None):
+    def __init__(self, l_slc: int | None = None, r_slc: int | None = None):
         self.l_slc, self.r_slc = l_slc, r_slc
 
     def encodes(self, o):
@@ -41,7 +41,7 @@ class SeqNoiseInjection(RandTransform):
 
     split_idx = 0
 
-    def __init__(self, std=1e-1, mean=0.0, p=1.0):
+    def __init__(self, std: float = 1e-1, mean: float = 0.0, p: float = 1.0):
         super().__init__(p=p)
         self.std = tensor(std).type(torch.float)
         self.mean = tensor(mean).type(torch.float)
@@ -66,7 +66,7 @@ class SeqNoiseInjection_Varying(RandTransform):
 
     split_idx = 0
 
-    def __init__(self, std_std=0.1, p=1.0):
+    def __init__(self, std_std: float = 0.1, p: float = 1.0):
         super().__init__(p=p)
         self.std_std = tensor(std_std).type(torch.float)
 
@@ -93,7 +93,7 @@ class SeqNoiseInjection_Grouped(RandTransform):
 
     split_idx = 0
 
-    def __init__(self, std_std, std_idx, p=1.0):
+    def __init__(self, std_std, std_idx, p: float = 1.0):
         super().__init__(p=p)
         self.std_std = tensor(std_std).type(torch.float)
         self.std_idx = tensor(std_idx).type(torch.long)
@@ -120,7 +120,7 @@ class SeqBiasInjection(RandTransform):
 
     split_idx = 0
 
-    def __init__(self, std=1e-1, mean=0.0, p=1.0):
+    def __init__(self, std: float = 1e-1, mean: float = 0.0, p: float = 1.0):
         super().__init__(p=p)
         self.std = tensor(std).type(torch.float)
         self.mean = tensor(mean).type(torch.float)
