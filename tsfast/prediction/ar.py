@@ -25,7 +25,8 @@ class ARProg(nn.Module):
         y_x = x[..., self.n_u :]  # measured output and external state
         u = x[..., : self.n_u]  # measured input
 
-        out_init, h = self.rnn_model(u[:, : self.init_sz], y_x[:, : self.init_sz], ar=False)
+        inp_tf = torch.cat([u[:, : self.init_sz], y_x[:, : self.init_sz]], dim=-1)
+        out_init, h = self.rnn_model(inp_tf, ar=False)
         self.rnn_model.y_init = y_x[:, self.init_sz : self.init_sz + 1]
         out_prog, _ = self.rnn_model(u[:, self.init_sz :], h_init=h, ar=True)
 

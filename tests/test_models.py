@@ -141,7 +141,7 @@ class TestModelWrappers:
         model = AR_Model(SimpleRNN(2, 1), ar=False).to(device)
         u = batch[0][:, :, :1]  # u only
         y = batch[0][:, :, 1:]  # y from input
-        out = model(u, y=y)
+        out = model(torch.cat([u, y], dim=-1))
         assert out.shape == batch[1].shape
 
     def test_batch_norm_1d_stateful_shape(self):

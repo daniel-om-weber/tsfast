@@ -269,11 +269,11 @@ class TimeSeriesRegularizer(HookCallback):
 
 
 class ARInitCB(Callback):
-    """Adds the target variable to the input tuple for autoregression"""
+    """Concatenates the target variable to the input for autoregression"""
 
     def before_batch(self):
-        #         import pdb; pdb.set_trace()
-        self.learn.xb = tuple([*self.xb, *self.yb])
+        x, y = self.xb[0], self.yb[0].as_subclass(type(self.xb[0]))
+        self.learn.xb = (torch.cat((x, y), dim=-1),)
 
 
 from matplotlib.lines import Line2D
