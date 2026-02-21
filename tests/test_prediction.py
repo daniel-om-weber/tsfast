@@ -1,4 +1,5 @@
 """Tests for tsfast.prediction module."""
+import math
 import pytest
 import torch
 
@@ -26,12 +27,14 @@ class TestFranSys:
         from tsfast.prediction.fransys import FranSysLearner
         lrn = FranSysLearner(dls_prediction, init_sz=50)
         lrn.fit(1, lr=3e-3)
+        assert not math.isnan(lrn.recorder.values[-1][1])
 
     @pytest.mark.slow
     def test_fransys_learner_attach_output(self, dls_simulation):
         from tsfast.prediction.fransys import FranSysLearner
         lrn = FranSysLearner(dls_simulation, init_sz=50, attach_output=True)
         lrn.fit(1, lr=3e-3)
+        assert not math.isnan(lrn.recorder.values[-1][1])
 
 
 class TestARRNN:
@@ -40,3 +43,4 @@ class TestARRNN:
         from tsfast.models.rnn import AR_RNNLearner
         lrn = AR_RNNLearner(dls_prediction)
         lrn.fit(1)
+        assert not math.isnan(lrn.recorder.values[-1][1])

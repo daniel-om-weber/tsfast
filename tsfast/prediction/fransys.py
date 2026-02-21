@@ -5,6 +5,7 @@ __all__ = ['Diag_RNN', 'Diag_RNN_raw', 'DiagLSTM', 'Diag_TCN', 'ARProg_Init', 'F
 from ..data import *
 from ..datasets.core import *
 from ..models import *
+from ..models.layers import _resolve_norm
 from ..learner import *
 
 from fastai.basics import *
@@ -336,24 +337,40 @@ class FranSysCallback_variable_init(Callback):
 from .core import PredictionCallback
 
 @delegates(FranSys, keep=True)
-def FranSysLearner(dls,init_sz,attach_output=False,loss_func=nn.L1Loss(),metrics=fun_rmse,opt_func=Adam,lr=3e-3,cbs=None,**kwargs):
+def FranSysLearner(dls,init_sz,attach_output=False,loss_func=nn.L1Loss(),metrics=fun_rmse,opt_func=Adam,lr=3e-3,cbs=None,
+                   input_norm='standard', output_norm=False, **kwargs):
     cbs = [] if cbs is None else list(cbs)
     metrics = list(metrics) if is_iter(metrics) else [metrics]
-    
+
     _batch = dls.one_batch()
     inp = _batch[0].shape[-1]
     out = _batch[1].shape[-1]
+
+    norm_u, norm_x, norm_y = dls.norm_stats
 
     if attach_output:
         model = FranSys(inp,out,init_sz,**kwargs)
 
         #if PredictionCallback is not in cbs, add it
         if not any(isinstance(cb, PredictionCallback) for cb in cbs):
-            pred_callback = PredictionCallback(0)
-            pred_callback.init_normalize(_batch)
-            cbs.append(pred_callback)
+            cbs.append(PredictionCallback(0))
+
+        # Input will be [u, y] after PredictionCallback concatenation
+        combined_input_stats = norm_u + norm_y
     else:
         model = FranSys(inp-out,out,init_sz,**kwargs)
+
+        # Input is [u, x?, y] from prediction-mode dls
+        parts = [norm_u] + ([norm_x] if norm_x else []) + [norm_y]
+        combined_input_stats = sum(parts[1:], parts[0])
+
+    # Wrap model with input normalization and optional output denormalization
+    in_method = _resolve_norm(input_norm)
+    out_method = _resolve_norm(output_norm)
+    if in_method:
+        in_scaler = Scaler.from_stats(combined_input_stats, in_method)
+        out_scaler = Scaler.from_stats(norm_y, out_method) if out_method else None
+        model = NormalizedModel(model, in_scaler, out_scaler)
 
     #for long sequences, add a TruncateSequenceCallback
     seq_len = _batch[0].shape[1]
@@ -362,11 +379,11 @@ def FranSysLearner(dls,init_sz,attach_output=False,loss_func=nn.L1Loss(),metrics
         if not any(isinstance(cb, CB_TruncateSequence) for cb in cbs):
             INITIAL_SEQ_LEN = 100 #initial sequence length for truncation, increases during training
             cbs.append(CB_TruncateSequence(init_sz+INITIAL_SEQ_LEN))
-  
+
     skip = partial(SkipNLoss,n_skip=init_sz)
-        
+
     metrics= [skip(f) for f in metrics]
     loss_func = skip(loss_func)
-        
+
     lrn = Learner(dls,model,loss_func=loss_func,metrics=metrics,cbs=cbs,opt_func=opt_func,lr=lr)
     return lrn

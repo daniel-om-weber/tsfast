@@ -1,5 +1,6 @@
 
-__all__ = ['BatchNorm_1D_Stateful', 'SeqLinear', 'Normalizer1D', 'AR_Model', 'NormalizedModel', 'SeqAggregation']
+__all__ = ['BatchNorm_1D_Stateful', 'SeqLinear', 'Scaler', 'StandardScaler1D', 'MinMaxScaler1D', 'MaxAbsScaler1D',
+           'Normalizer1D', 'AR_Model', 'NormalizedModel', 'SeqAggregation']
 
 from ..data import *
 from fastai.basics import *
@@ -136,53 +137,96 @@ class SeqLinear(nn.Module):
         if not self.batch_first: out = out.transpose(0,1)
         return out
 
-class Normalizer1D(nn.Module):
+class Scaler(nn.Module):
+    'Base class for feature scaling on [batch, seq, features] tensors.'
+    def normalize(self, x): raise NotImplementedError
+    def denormalize(self, x): raise NotImplementedError
+    def unnormalize(self, x): return self.denormalize(x)
+
+    @staticmethod
+    def from_stats(stats, method='standard'):
+        'Create a Scaler from a NormPair using the given method.'
+        match method:
+            case 'standard': return StandardScaler1D(stats.mean, stats.std)
+            case 'minmax':   return MinMaxScaler1D(stats.min, stats.max)
+            case 'maxabs':   return MaxAbsScaler1D(stats.min, stats.max)
+            case _: raise ValueError(f"Unknown scaling method: {method!r}. Use 'standard', 'minmax', or 'maxabs'.")
+
+def _ensure_tensor(arr):
+    'Convert numpy array or tensor to shape [1,1,features] float tensor.'
+    if isinstance(arr, np.ndarray): return torch.from_numpy(arr[None,None,:]).float()
+    if isinstance(arr, torch.Tensor):
+        if arr.ndim == 1: return arr[None,None,:].float()
+        return arr.float()
+    raise TypeError(f"Expected ndarray or Tensor, got {type(arr)}")
+
+class StandardScaler1D(Scaler):
+    'Normalize by (x - mean) / std.'
     _epsilon = 1e-16
-
     def __init__(self, mean, std):
-        super(Normalizer1D, self).__init__()
-        self.register_buffer('std', std.clone().detach() + self._epsilon)
-        self.register_buffer('mean', mean.clone().detach())
+        super().__init__()
+        self.register_buffer('mean', _ensure_tensor(mean))
+        self.register_buffer('std', _ensure_tensor(std) + self._epsilon)
+    def normalize(self, x): return (x - self.mean) / self.std
+    def denormalize(self, x): return x * self.std + self.mean
 
-    def normalize(self, x):
-        if x.device != self.mean.device:
-            self.mean = self.mean.to(x.device)
-            self.std = self.std.to(x.device)
-        return (x-self.mean)/self.std
+class MinMaxScaler1D(Scaler):
+    'Normalize by (x - min) / (max - min) to [0, 1].'
+    _epsilon = 1e-16
+    def __init__(self, min_val, max_val):
+        super().__init__()
+        self.register_buffer('min_val', _ensure_tensor(min_val))
+        self.register_buffer('range_val', _ensure_tensor(max_val) - _ensure_tensor(min_val) + self._epsilon)
+    def normalize(self, x): return (x - self.min_val) / self.range_val
+    def denormalize(self, x): return x * self.range_val + self.min_val
 
-    def unnormalize(self, x):
-        if x.device != self.mean.device:
-            self.mean = self.mean.to(x.device)
-            self.std = self.std.to(x.device)
-        return x*self.std + self.mean
+class MaxAbsScaler1D(Scaler):
+    'Normalize by x / max(|min|, |max|).'
+    _epsilon = 1e-16
+    def __init__(self, min_val, max_val):
+        super().__init__()
+        self.register_buffer('max_abs', torch.max(torch.abs(_ensure_tensor(min_val)),
+                                                   torch.abs(_ensure_tensor(max_val))) + self._epsilon)
+    def normalize(self, x): return x / self.max_abs
+    def denormalize(self, x): return x * self.max_abs
+
+Normalizer1D = StandardScaler1D  # backward compat
+
+def _resolve_norm(method):
+    'Resolve input_norm/output_norm parameter to a method string or None.'
+    if method is True: return 'standard'
+    if method is False or method is None: return None
+    if isinstance(method, str): return method
+    raise ValueError(f"input_norm/output_norm must be str, bool, or None — got {type(method)}")
 
 class AR_Model(nn.Module):
     '''
     Autoregressive model container which work autoregressively if the sequence y is not provided, otherwise it works as a normal model.
-    This way it can be trained either with teacher forcing or with autoregression 
+    This way it can be trained either with teacher forcing or with autoregression
     '''
     def __init__(self,model,ar=True,stateful=False,model_has_state=False,return_state=False,out_sz=None):
         super().__init__()
         store_attr()
         if return_state and not model_has_state: raise ValueError('return_state=True requires model_has_state=True')
-        self.norm = None
+        self.input_norm = None
+        self.output_norm = None
         self.y_init = None
-    
-    def init_normalize(self, batch,axes = [0,1]):
-        x = batch[1]
-        mean = x.mean(axes, keepdim=True)
-        std = x.std(axes, keepdim=True)
-        self.init_normalize_values(mean,std)
-        
-    def init_normalize_values(self, mean, std):
-        self.norm = Normalizer1D(mean,std)
-        
+
+    def set_normalization(self, norm_u, norm_y, method='standard'):
+        'Set input and output normalization from NormPair stats.'
+        self.input_norm = Scaler.from_stats(norm_u, method)
+        self.output_norm = Scaler.from_stats(norm_y, method)
+
     def forward(self, u,y=None,h_init=None,ar=None):
         if ar is None: ar = self.ar
 
+        # Normalize inputs
+        if self.input_norm is not None: u = self.input_norm.normalize(u)
+        if y is not None and self.output_norm is not None: y = self.output_norm.normalize(y)
+
         if ar: #autoregressive mode
             y_e = []
-            
+
             y_next = self.y_init if self.y_init is not None else torch.zeros(u.shape[0],1,self.out_sz).to(u.device)
 
             #two loops in the if clause to avoid the if inside the loop
@@ -197,9 +241,9 @@ class AR_Model(nn.Module):
                     x = torch.cat((u_in, y_next), dim=2)
                     y_next = self.model(x)
                     y_e.append(y_next)
-                    
+
             y_e = torch.cat(y_e,dim=1)
-            
+
         else: #teacherforcing mode
             if y is None: raise ValueError('y must be provided in teacher forcing mode')
 
@@ -209,33 +253,50 @@ class AR_Model(nn.Module):
                 y_e,h0 = self.model(x,h_init)
             else:
                 y_e = self.model(x)
-                
-        if self.stateful:
-            self.y_init = to_detach(y_e[:,-1:], cpu=False, gather=False) 
 
-        if self.norm is not None: y_e = self.norm.unnormalize(y_e)
+        if self.stateful:
+            self.y_init = to_detach(y_e[:,-1:], cpu=False, gather=False)
+
+        # Denormalize output
+        if self.output_norm is not None: y_e = self.output_norm.denormalize(y_e)
         return y_e if not self.return_state else (y_e,h0)
-    
+
     def reset_state(self):
         self.y_init = None
 
-from ..datasets.core import  extract_mean_std_from_dls
 class NormalizedModel(nn.Module):
-    def __init__(self, model, mean, std):
+    'Wraps a model with input normalization and optional output denormalization.'
+    def __init__(self, model, input_norm:Scaler, output_norm:Scaler|None=None):
         super().__init__()
         self.model = model
-        self.register_buffer('mean', torch.clone(mean))
-        self.register_buffer('std', torch.clone(std))
+        self.input_norm = input_norm
+        self.output_norm = output_norm
 
     @classmethod
-    def from_dls(cls,model,dls):
-        mean, std = extract_mean_std_from_dls(dls)
-        return cls(model,mean,std)
+    def from_stats(cls, model, input_stats, output_stats=None, method='standard'):
+        'Create from NormPair stats with the given scaling method.'
+        input_norm = Scaler.from_stats(input_stats, method)
+        output_norm = Scaler.from_stats(output_stats, method) if output_stats is not None else None
+        return cls(model, input_norm, output_norm)
 
-    def forward(self, xb):
-        # Normalize x and then pass it through the model
-        xb = (xb - self.mean) / self.std
-        return self.model(xb)
+    @classmethod
+    def from_dls(cls, model, dls, method='standard'):
+        'Create from DataLoaders norm_stats.'
+        from ..datasets.core import extract_mean_std_from_dls
+        norm_u, _, norm_y = extract_mean_std_from_dls(dls)
+        return cls.from_stats(model, norm_u, norm_y, method=method)
+
+    def __getattr__(self, name):
+        'Delegate attribute access to inner model for transparency'
+        try: return super().__getattr__(name)
+        except AttributeError: return getattr(self._modules['model'], name)
+
+    def forward(self, xb, **kwargs):
+        xb = self.input_norm.normalize(xb)
+        out = self.model(xb, **kwargs)
+        if self.output_norm is not None:
+            out = self.output_norm.denormalize(out)
+        return out
 
 class SeqAggregation(nn.Module):
     "Creates an aggregation layer for a sequence, reducing the sequence dimension."

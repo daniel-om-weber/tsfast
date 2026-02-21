@@ -1,4 +1,5 @@
 """Tests for tsfast.datasets module."""
+import math
 import pytest
 import numpy as np
 import torch
@@ -20,11 +21,30 @@ class TestCreateDls:
 
 
 class TestNormalization:
+    def test_norm_stats_on_dls(self, dls_simulation):
+        from tsfast.datasets.core import NormPair, NormStats
+        assert hasattr(dls_simulation, 'norm_stats')
+        stats = dls_simulation.norm_stats
+        assert isinstance(stats, NormStats)
+        assert isinstance(stats.u, NormPair)
+        assert stats.x is None
+        assert isinstance(stats.y, NormPair)
+        # Named access
+        assert stats.u.mean.shape == (1,)
+        assert stats.u.std.shape == (1,)
+        assert stats.u.min.shape == (1,)
+        assert stats.u.max.shape == (1,)
+        assert stats.y.mean.shape == (1,)
+        assert stats.y.std.shape == (1,)
+        # Tuple destructuring still works
+        norm_u, norm_x, norm_y = stats
+        assert norm_u.mean.shape == (1,)
+
     def test_extract_mean_std_from_dls(self, dls_simulation):
         from tsfast.datasets.core import extract_mean_std_from_dls
-        mean, std = extract_mean_std_from_dls(dls_simulation)
-        assert mean.shape[-1] == 1
-        assert std.shape[-1] == 1
+        norm_u, norm_x, norm_y = extract_mean_std_from_dls(dls_simulation)
+        assert norm_u.mean.shape == (1,)
+        assert norm_u.std.shape == (1,)
 
     def test_extract_mean_std_from_hdffiles(self, hdf_files):
         from tsfast.datasets.core import extract_mean_std_from_hdffiles
@@ -32,6 +52,43 @@ class TestNormalization:
         assert means.shape == (2,)
         assert stds.shape == (2,)
         assert all(stds > 0)
+
+    def test_estimate_norm_stats(self, dls_simulation):
+        from tsfast.datasets.core import estimate_norm_stats, NormPair
+        input_stats, output_stats = estimate_norm_stats(dls_simulation, n_batches=3)
+        assert isinstance(input_stats, NormPair)
+        assert isinstance(output_stats, NormPair)
+        assert input_stats.mean.shape == (1,)
+        assert input_stats.std.shape == (1,)
+        assert input_stats.min.shape == (1,)
+        assert input_stats.max.shape == (1,)
+        assert all(input_stats.std > 0)
+        assert all(input_stats.min <= input_stats.mean)
+        assert all(input_stats.max >= input_stats.mean)
+
+    def test_normpair_add(self, dls_simulation):
+        from tsfast.datasets.core import NormPair
+        stats = dls_simulation.norm_stats
+        combined = stats.u + stats.y
+        assert combined.mean.shape == (2,)
+        assert combined.std.shape == (2,)
+        assert combined.min.shape == (2,)
+        assert combined.max.shape == (2,)
+        np.testing.assert_array_equal(combined.mean, np.hstack([stats.u.mean, stats.y.mean]))
+        np.testing.assert_array_equal(combined.std, np.hstack([stats.u.std, stats.y.std]))
+
+    def test_normpair_backward_compat(self, dls_simulation):
+        from tsfast.datasets.core import NormPair
+        stats = dls_simulation.norm_stats
+        # Indexing
+        assert np.array_equal(stats.u[0], stats.u.mean)
+        assert np.array_equal(stats.u[1], stats.u.std)
+        # Iteration
+        items = list(stats.u)
+        assert len(items) == 4
+        # Destructuring
+        mean, std, mn, mx = stats.u
+        assert np.array_equal(mean, stats.u.mean)
 
     def test_is_dataset_directory(self, wh_path):
         from tsfast.datasets.core import is_dataset_directory
@@ -67,10 +124,11 @@ class TestTbpttDataLoader:
         dls = create_dls(
             u=["u"], y=["y"], dataset=wh_path,
             win_sz=100, stp_sz=100, num_workers=0,
-            n_batches_train=5, sub_seq_len=25,
+            n_batches_train=2, sub_seq_len=25,
         )
         lrn = RNNLearner(dls, rnn_type="gru", num_layers=1, hidden_size=10, stateful=True)
         lrn.fit(1, 1e-4)
+        assert not math.isnan(lrn.recorder.values[-1][1])
 
     def test_batch_limit_factory(self, wh_path):
         from tsfast.datasets.core import create_dls

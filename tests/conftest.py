@@ -42,7 +42,7 @@ def dls_simulation(wh_path):
     return create_dls(
         u=["u"], y=["y"], dataset=wh_path,
         win_sz=100, stp_sz=100, num_workers=0,
-        n_batches_train=10,
+        n_batches_train=2,
     )
 
 
@@ -53,7 +53,7 @@ def dls_prediction(wh_path):
     return create_dls(
         u=["u"], y=["y"], dataset=wh_path,
         win_sz=100, stp_sz=100, num_workers=0,
-        n_batches_train=10, prediction=True,
+        n_batches_train=2, prediction=True,
     )
 
 
@@ -80,7 +80,7 @@ def dls_pinn(pinn_path):
     return create_dls(
         u=["u"], y=["x", "v"], dataset=pinn_path,
         win_sz=100, stp_sz=100, num_workers=0,
-        n_batches_train=5,
+        n_batches_train=2,
     )
 
 
@@ -91,5 +91,5 @@ def dls_pinn_prediction(pinn_path):
     return create_dls(
         u=["u"], y=["x", "v"], dataset=pinn_path,
         win_sz=100, stp_sz=100, num_workers=0,
-        n_batches_train=5, prediction=True,
+        n_batches_train=2, prediction=True,
     )

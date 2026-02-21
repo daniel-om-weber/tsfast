@@ -4,6 +4,7 @@ __all__ = ['RNN', 'Sequential_RNN', 'SimpleRNN', 'RNNLearner', 'AR_RNNLearner', 
 
 from ..data import *
 from .layers import *
+from .layers import _resolve_norm
 from ..learner.callbacks import *
 from ..learner.losses import *
 
@@ -116,40 +117,55 @@ from ..data.loader import get_inp_out_size
 
 
 @delegates(SimpleRNN, keep=True)
-def RNNLearner(dls,loss_func=nn.L1Loss(),metrics=[fun_rmse],n_skip=0,num_layers=1,hidden_size=100,stateful=False,opt_func=Adam,cbs=None,**kwargs):
+def RNNLearner(dls,loss_func=nn.L1Loss(),metrics=[fun_rmse],n_skip=0,num_layers=1,hidden_size=100,stateful=False,opt_func=Adam,cbs=None,
+               input_norm='standard', output_norm=False, **kwargs):
     if cbs is None: cbs = []
 
     inp,out = get_inp_out_size(dls)
     model = SimpleRNN(inp,out,num_layers,hidden_size,stateful=stateful,**kwargs)
-  
+
+    # Wrap model with input normalization and optional output denormalization
+    in_method = _resolve_norm(input_norm)
+    out_method = _resolve_norm(output_norm)
+    if in_method:
+        norm_u, _, norm_y = dls.norm_stats
+        in_scaler = Scaler.from_stats(norm_u, in_method)
+        out_scaler = Scaler.from_stats(norm_y, out_method) if out_method else None
+        model = NormalizedModel(model, in_scaler, out_scaler)
+
     skip = partial(SkipNLoss,n_skip=n_skip)
-        
+
     metrics= [skip(f) for f in metrics]
 
-    if stateful: 
+    if stateful:
         cbs.append(TbpttResetCB())
         # if stateful apply n_skip with a callback for the first minibatch of a tbptt sequence
         cbs.append(SkipFirstNCallback(n_skip))
     else:
         loss_func = skip(loss_func)
-        
+
     lrn = Learner(dls,model,loss_func=loss_func,opt_func=opt_func,metrics=metrics,cbs=cbs,lr=3e-3)
     return lrn
 
 
 @delegates(SimpleRNN, keep=True)
-def AR_RNNLearner(dls,alpha=0,beta=0,early_stop=0,metrics=None,n_skip=0,opt_func=Adam,**kwargs):
+def AR_RNNLearner(dls,alpha=0,beta=0,early_stop=0,metrics=None,n_skip=0,opt_func=Adam,input_norm='standard',**kwargs):
 
     inp,out = get_inp_out_size(dls)
     model = AR_Model(SimpleRNN(inp+out,out,**kwargs),ar=False)
-    model.init_normalize(dls.one_batch())
-    
+
+    # Set normalization on the AR model
+    method = _resolve_norm(input_norm)
+    if method:
+        norm_u, _, norm_y = dls.norm_stats
+        model.set_normalization(norm_u, norm_y, method=method)
+
     cbs=[ARInitCB(),TimeSeriesRegularizer(alpha=alpha,beta=beta,modules=[model.model.rnn])]#SaveModelCallback()
     if early_stop > 0:
         cbs += [EarlyStoppingCallback(patience=early_stop)]
-        
+
     if metrics is None: metrics=SkipNLoss(fun_rmse,n_skip)
-        
+
     lrn = Learner(dls,model,loss_func=nn.L1Loss(),opt_func=opt_func,metrics=metrics,cbs=cbs,lr=3e-3)
     return lrn
 

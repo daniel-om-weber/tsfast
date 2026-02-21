@@ -3,8 +3,6 @@ __all__ = ['pad_sequence', 'SequenceBlock', 'ScalarNormalize', 'ScalarBlock']
 
 from fastai.data.all import *
 from .core import *
-from .transforms import Normalize
-
 def pad_sequence(batch,sorting = False):
     '''collate_fn for padding of sequences of different lengths, use in before_batch of databunch, still quite slow'''
     #takes list of tuples as input, returns list of tuples
@@ -21,7 +19,6 @@ def pad_sequence(batch,sorting = False):
 class SequenceBlock(TransformBlock):
     def __init__(self, seq_extract,padding=False):
         return super().__init__(type_tfms=[seq_extract],
-                                batch_tfms=[Normalize(axes=[0,1])],
                                 dls_kwargs={} if not padding else {'before_batch': pad_sequence})
 
     @classmethod

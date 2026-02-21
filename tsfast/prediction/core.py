@@ -7,30 +7,15 @@ from ..learner import *
 from fastai.basics import *
 
 class PredictionCallback(Callback):
-    'Concatenates the optionally normalized system output to the input data for autoregression, assumes 1-tuple as input'
-    
+    'Concatenates the system output to the input data for autoregression, assumes 1-tuple as input'
+
     order= -56 #the callback has to be the first one executed, so everything else has the correct database
-    
+
     def __init__(self,
-                 t_offset=1, #the number of steps output is shifted in the past, shortens the sequence length by that number
-                 std=None, #standard deviation of the output tensor
-                 mean=None #mean of the output tensor
+                 t_offset=1 #the number of steps output is shifted in the past, shortens the sequence length by that number
                 ):
         super().__init__()
         self.t_offset = t_offset
-        self.norm = None
-        
-        if not(std is None or mean is None):
-            self.init_normalize_values(mean,std)
-
-    def init_normalize(self, batch,axes = (0,1)):
-        y = batch[1]
-        mean = y.mean(axes, keepdim=True)
-        std = y.std(axes, keepdim=True)
-        self.init_normalize_values(mean,std)
-        
-    def init_normalize_values(self, mean, std):
-        self.norm = Normalizer1D(mean,std)
 
     def before_batch(self):
         #output has to be casted to the input tensor type
@@ -44,11 +29,5 @@ class PredictionCallback(Callback):
             #shorten the output by the same size
             self.learn.yb = tuple((y[:,self.t_offset:,:] for y in self.yb))
 
-        if self.norm is not None: y = self.norm.normalize(y)
-
         #concatenate and reconvert to tuple
         self.learn.xb = (torch.cat((x,y), dim=-1),)
-
-        # #approach for handling tuples as input and output
-        # self.learn.xb = tuple((torch.cat((x,y.as_subclass(type(x))), dim=-1) 
-        #                        for x,y in zip(self.xb,self.yb)))
