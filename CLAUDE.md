@@ -14,9 +14,6 @@ Edit `.py` files in `tsfast/` directly. Examples are in `examples/` as Jupyter n
 # Run all tests
 pytest tests/ -v
 
-# Run tests excluding slow training tests
-pytest tests/ -v -m "not slow"
-
 # Run a specific test file
 pytest tests/test_models.py -v
 

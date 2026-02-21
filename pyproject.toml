@@ -59,6 +59,8 @@ markers = [
 filterwarnings = [
     "ignore:datetime.datetime.utcnow:DeprecationWarning:gnupg",
     "ignore:unclosed file:ResourceWarning:bagpy",
+    "ignore:`torch.jit.script` is deprecated:DeprecationWarning:torch",
+    "ignore:`torch.jit.script_method` is deprecated:DeprecationWarning:torch",
 ]
 
 [tool.ruff]
