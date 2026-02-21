@@ -293,6 +293,10 @@ class FranSysCallback(HookCallback):
         self.clear()
 
     def before_fit(self):
+        from ..models.layers import NormalizedModel, _unwrap_ddp
+
+        wrapper = _unwrap_ddp(self.learn.model)
+        self._output_norm = wrapper.output_norm if isinstance(wrapper, NormalizedModel) else None
         if self.model is None:
             from ..models.layers import unwrap_model
 
@@ -357,6 +361,8 @@ class FranSysCallback(HookCallback):
         # self.diag loss
         if self.p_diag_loss > 0:
             y_diag = model.final(diag_trunc[-1])
+            if self._output_norm is not None:
+                y_diag = self._output_norm.denormalize(y_diag)
             hidden_loss = self.targ_loss_func(y_diag, self.yb[0][:, -y_diag.shape[1] :])
             self.learn.loss_grad += self.p_diag_loss * hidden_loss
             self.learn.loss += self.p_diag_loss * hidden_loss
@@ -386,6 +392,8 @@ class FranSysCallback(HookCallback):
 
             # osp target loss - one step prediction error on every timestep
             y_osp = model.final(out)
+            if self._output_norm is not None:
+                y_osp = self._output_norm.denormalize(y_osp)
             hidden_loss = self.targ_loss_func(y_osp, self.yb[0][:, -y_osp.shape[1] :])
             # import pdb;pdb.set_trace()
             self.learn.loss_grad += self.p_osp_loss * hidden_loss

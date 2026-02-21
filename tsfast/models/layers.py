@@ -358,8 +358,16 @@ class NormalizedModel(nn.Module):
         return out
 
 
+def _unwrap_ddp(model):
+    "Unwrap DistributedDataParallel/DataParallel wrappers."
+    while hasattr(model, 'module'):
+        model = model.module
+    return model
+
+
 def unwrap_model(model):
-    "Get the inner model, unwrapping NormalizedModel if present."
+    "Get the inner model, unwrapping DDP/DP and NormalizedModel if present."
+    model = _unwrap_ddp(model)
     return model.model if isinstance(model, NormalizedModel) else model
 
 
