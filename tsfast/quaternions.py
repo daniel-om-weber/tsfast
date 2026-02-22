@@ -69,7 +69,7 @@ from fastai.data.block import TransformBlock
 from fastai.data.transforms import Normalize
 from fastai.torch_basics import Transform, tensor
 from fastcore.meta import delegates
-from plum import dispatch
+from fastai.data.core import show_batch, show_results
 from scipy.signal import resample
 
 from .data.block import pad_sequence
@@ -921,8 +921,8 @@ def plot_quaternion_rel_angle(
     axs[-1].plot(in_sig)
 
 
-@dispatch
-def show_results(x: TensorSequences, y: TensorInclination, samples, outs, ctxs=None, max_n=2, **kwargs):
+@show_results.dispatch
+def show_results(x: TensorSequences, y: TensorInclination, samples, outs, *, ctxs=None, max_n=2, **kwargs):
     """Show prediction results for scalar inclination targets."""
     n_samples = min(len(samples), max_n)
     n_targ = 2
@@ -935,8 +935,8 @@ def show_results(x: TensorSequences, y: TensorInclination, samples, outs, ctxs=N
     return ctxs
 
 
-@dispatch
-def show_batch(x: TensorSequences, y: TensorInclination, samples, ctxs=None, max_n=6, **kwargs):
+@show_batch.dispatch
+def show_batch(x: TensorSequences, y: TensorInclination, samples, *, ctxs=None, max_n=6, **kwargs):
     """Show a batch of scalar inclination samples."""
     n_samples = min(len(samples), max_n)
     n_targ = 1
@@ -949,11 +949,11 @@ def show_batch(x: TensorSequences, y: TensorInclination, samples, ctxs=None, max
     return ctxs
 
 
-@dispatch
-def show_results(x: TensorSequences, y: TensorQuaternionInclination, samples, outs, ctxs=None, max_n=2, **kwargs):
+@show_results.dispatch
+def show_results(x: TensorSequences, y: TensorQuaternionInclination, samples, outs, *, ctxs=None, max_n=2, **kwargs):
     """Show prediction results for quaternion inclination targets."""
     if "quat" in kwargs:
-        return show_results(x, TensorSequencesOutput(y), samples, outs, ctxs, max_n, **kwargs)
+        return show_results(x, TensorSequencesOutput(y), samples, outs, ctxs=ctxs, max_n=max_n, **kwargs)
     n_samples = min(len(samples), max_n)
     n_targ = 2
     if n_samples > 3:
@@ -965,8 +965,8 @@ def show_results(x: TensorSequences, y: TensorQuaternionInclination, samples, ou
     return ctxs
 
 
-@dispatch
-def show_batch(x: TensorSequences, y: TensorQuaternionInclination, samples, ctxs=None, max_n=6, **kwargs):
+@show_batch.dispatch
+def show_batch(x: TensorSequences, y: TensorQuaternionInclination, samples, *, ctxs=None, max_n=6, **kwargs):
     """Show a batch of quaternion inclination samples."""
     n_samples = min(len(samples), max_n)
     n_targ = 1
@@ -979,8 +979,8 @@ def show_batch(x: TensorSequences, y: TensorQuaternionInclination, samples, ctxs
     return ctxs
 
 
-@dispatch
-def show_results(x: TensorSequences, y: TensorQuaternionAngle, samples, outs, ctxs=None, max_n=2, **kwargs):
+@show_results.dispatch
+def show_results(x: TensorSequences, y: TensorQuaternionAngle, samples, outs, *, ctxs=None, max_n=2, **kwargs):
     """Show prediction results for quaternion angle targets."""
     n_samples = min(len(samples), max_n)
     n_targ = 2
@@ -993,8 +993,8 @@ def show_results(x: TensorSequences, y: TensorQuaternionAngle, samples, outs, ct
     return ctxs
 
 
-@dispatch
-def show_batch(x: TensorSequences, y: TensorQuaternionAngle, samples, ctxs=None, max_n=6, **kwargs):
+@show_batch.dispatch
+def show_batch(x: TensorSequences, y: TensorQuaternionAngle, samples, *, ctxs=None, max_n=6, **kwargs):
     """Show a batch of quaternion angle samples."""
     n_samples = min(len(samples), max_n)
     n_targ = 1
