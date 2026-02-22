@@ -20,9 +20,19 @@ __all__ = [
     "CB_PlotGradient",
 ]
 
-from ..data import *
-from fastai.basics import *
-from collections.abc import Callable
+import random
+from collections.abc import Callable, Iterator
+
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+from matplotlib.lines import Line2D
+from torch import nn
+
+from fastcore.meta import delegates
+
+from fastai.callback.core import Callback, CancelBatchException, CancelTrainException, TrainEvalCallback
+from fastai.callback.hook import HookCallback
 
 
 class GradientClipping(Callback):
@@ -185,9 +195,6 @@ def sched_ramp(start: float, end: float, pos: float, p_left: float = 0.2, p_righ
         return start + (end - start) * (pos - p_left) / (p_right - p_left)
 
 
-from fastai.callback.all import *
-
-
 class CB_TruncateSequence(Callback):
     """Progressively truncates sequence length during training using a scheduler.
 
@@ -278,9 +285,6 @@ class BatchLossFilter(Callback):
         self.learn.pred = self.pred[idxs]
 
 
-from fastai.callback.hook import *
-
-
 @delegates()
 class TimeSeriesRegularizer(HookCallback):
     """Adds activation regularization (AR) and temporal activation regularization (TAR) to the loss.
@@ -347,9 +351,6 @@ class ARInitCB(Callback):
     def before_batch(self):
         x, y = self.xb[0], self.yb[0].as_subclass(type(self.xb[0]))
         self.learn.xb = (torch.cat((x, y), dim=-1),)
-
-
-from matplotlib.lines import Line2D
 
 
 def plot_grad_flow(named_parameters: Iterator) -> None:

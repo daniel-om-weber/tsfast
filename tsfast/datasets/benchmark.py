@@ -37,11 +37,14 @@ __all__ = [
     "create_dls_from_spec",
 ]
 
-from fastai.data.all import *
+from functools import partial
 
-from ..data import *
-from .core import create_dls_downl
 import identibench as idb
+
+from fastcore.meta import delegates
+from fastai.data.core import DataLoaders
+
+from .core import create_dls_downl
 
 BENCHMARK_DL_KWARGS = {
     # Simulation Benchmarks

@@ -2,8 +2,24 @@
 
 __all__ = ["pad_sequence", "SequenceBlock", "ScalarNormalize", "ScalarBlock"]
 
-from fastai.data.all import *
-from .core import *
+from functools import partial
+
+import torch
+from torch import Tensor
+
+from fastcore.meta import delegates
+from fastai.data.block import TransformBlock
+from fastai.data.load import DataLoader
+from fastai.data.transforms import ToTensor, broadcast_vec
+from fastai.torch_basics import DisplayedTransform, Transform, retain_types
+
+from .core import (
+    HDF2Sequence,
+    HDF_Attrs2Scalars,
+    HDF_DS2Scalars,
+    TensorScalarsInput,
+    TensorSequencesInput,
+)
 
 
 def pad_sequence(batch: list, sorting: bool = False):

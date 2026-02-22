@@ -24,8 +24,11 @@ __all__ = [
 from collections.abc import Callable
 
 import torch
-from fastai.learner import Callback
+import torch.nn.functional as F
+
 import numpy as np
+from fastai.callback.hook import HookCallback
+from fastai.learner import Callback
 
 DEFAULT_SIGNAL_TYPES = ["sine", "multisine", "step", "ramp", "chirp", "noise", "prbs", "square", "doublet"]
 
@@ -826,10 +829,6 @@ class CollocationPointsCB(Callback):
 
         self.learn.loss = self.learn.loss + self.weight * physics_total
         self.learn.loss_grad = self.learn.loss_grad + self.weight * physics_total
-
-
-from fastai.callback.hook import HookCallback
-import torch.nn.functional as F
 
 
 class ConsistencyCallback(HookCallback):

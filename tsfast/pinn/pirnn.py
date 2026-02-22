@@ -4,14 +4,21 @@ __all__ = ["PIRNN", "AuxiliaryOutputLoss", "PIRNNLearner"]
 
 import torch
 import torch.nn as nn
-from ..prediction.fransys import Diag_RNN
-from ..models.rnn import RNN
-from ..models.layers import SeqLinear, StandardScaler1D, NormalizedModel
-from ..learner.callbacks import CB_TruncateSequence
-from ..learner.losses import SkipNLoss
-from fastai.basics import *
+import torch.nn.functional as F
 from collections.abc import Callable
 from functools import partial
+
+from fastai.data.core import DataLoaders
+from fastai.learner import Learner
+from fastai.optimizer import Adam
+from fastcore.imports import is_iter
+from fastcore.meta import delegates
+
+from ..learner.callbacks import CB_TruncateSequence
+from ..learner.losses import SkipNLoss
+from ..models.layers import NormalizedModel, SeqLinear, StandardScaler1D
+from ..models.rnn import RNN
+from ..prediction.fransys import Diag_RNN
 
 
 class PIRNN(nn.Module):

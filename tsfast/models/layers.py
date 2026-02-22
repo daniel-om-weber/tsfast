@@ -13,12 +13,15 @@ __all__ = [
     "SeqAggregation",
 ]
 
-from ..data import *
-from fastai.basics import *
 from collections.abc import Callable
 
-from fastai.callback.progress import *  # import activate learning progress bar
-from torch.nn import Parameter
+import numpy as np
+import torch
+from torch import nn
+from torch.nn import Mish, Parameter
+
+import fastai.callback.progress  # noqa: F401  — side-effect import activates progress bar
+from fastai.torch_basics import to_detach
 
 
 class BatchNorm_1D_Stateful(nn.Module):

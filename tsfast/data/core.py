@@ -47,8 +47,27 @@ __all__ = [
     "show_results",
 ]
 
-from fastai.data.all import *
+import math
+import numbers
+import re
+from collections.abc import Callable
+from multiprocessing import Lock, Manager, shared_memory
+from pathlib import Path
+
 import h5py
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import torch
+from torch import Tensor, nn
+from scipy.signal import butter, lfilter, lfilter_zi, resample
+
+from fastcore.foundation import L
+from fastcore.meta import delegates
+from fastai.data.transforms import get_files
+from fastai.imports import noop
+from fastai.torch_basics import TensorBase, Transform, tensor
+from plum import dispatch
 
 
 def obj_in_lst(lst: list, cls: type):
@@ -147,9 +166,6 @@ def DfHDFGetSeqLen(clm: str):
         return df_get_hdf_seq_len(df, clm)
 
     return _inner
-
-
-import numbers
 
 
 def DfResamplingFactor(src_fs: float | str, lst_targ_fs: list[float]):
@@ -284,9 +300,6 @@ def downsample_mean(x: np.ndarray, N: int) -> np.ndarray:
     return x[:trunc, :].reshape((-1, N, x.shape[-1])).mean(axis=1)
 
 
-from scipy.signal import butter, lfilter, lfilter_zi
-
-
 def resample_interp(
     x: np.ndarray,
     resampling_factor: float,
@@ -339,9 +352,6 @@ def resample_interp(
         x = x.T
 
     return x
-
-
-from scipy.signal import resample
 
 
 def hdf_extract_sequence(
@@ -417,9 +427,6 @@ class Memoize:
         if args not in self.memo:
             self.memo[args] = self.fn(*args)
         return self.memo[args]
-
-
-from multiprocessing import Lock, Manager, shared_memory
 
 
 class MemoizeMP:
@@ -979,9 +986,6 @@ def plot_seqs_multi_figures(
         plot_func(axs, in_sig, targ_sig, out_sig=out_sig if outs is not None else None, **kwargs)
 
         plt.tight_layout()
-
-
-from plum import dispatch
 
 
 @dispatch

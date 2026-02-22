@@ -8,9 +8,12 @@ __all__ = [
     "SeqBiasInjection",
 ]
 
-from fastai.basics import *
-from .core import TensorSequencesInput
+import torch
+
+from fastai.torch_basics import Transform, tensor
 from fastai.vision.augment import RandTransform
+
+from .core import TensorSequencesInput
 
 
 class SeqSlice(Transform):

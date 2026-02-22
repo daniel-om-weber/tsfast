@@ -2,10 +2,13 @@
 
 __all__ = ["ARProg"]
 
-from ..data import *
-from ..models import *
-from ..learner import *
-from fastai.basics import *
+import torch
+from torch import Tensor, nn
+
+from fastcore.meta import delegates
+
+from ..models.layers import AR_Model
+from ..models.rnn import RNN, SimpleRNN
 
 
 class ARProg(nn.Module):

@@ -55,12 +55,32 @@ __all__ = [
     "show_batch",
 ]
 
-from .data import *
-from .models import *
-from .learner import *
-
-from fastai.basics import *
+import math
 import warnings
+
+import h5py
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from fastai.callback.core import TrainEvalCallback
+from fastai.callback.hook import HookCallback
+from fastai.data.block import TransformBlock
+from fastai.data.transforms import Normalize
+from fastai.torch_basics import Transform, tensor
+from fastcore.meta import delegates
+from plum import dispatch
+from scipy.signal import resample
+
+from .data.block import pad_sequence
+from .data.core import (
+    HDF2Sequence,
+    TensorSequences,
+    TensorSequencesOutput,
+    plot_seqs_multi_figures,
+    plot_seqs_single_figure,
+)
+from .learner.losses import fun_rmse
 
 
 class TensorQuaternionInclination(TensorSequences):
@@ -410,9 +430,6 @@ def deg_rmse(inp: torch.Tensor, targ: torch.Tensor) -> torch.Tensor:
     return rad2deg(fun_rmse(inp, targ))
 
 
-from fastai.callback.hook import *
-
-
 @delegates()
 class QuaternionRegularizer(HookCallback):
     """Regularize quaternion output toward unit norm.
@@ -497,9 +514,6 @@ class QuaternionAugmentation(Transform):
 
     def encodes(self, x: TensorQuaternionAngle):
         return multiplyQuat(x, self.r_quat)
-
-
-from scipy.signal import resample
 
 
 class Quaternion_ResamplingModel(nn.Module):
@@ -707,9 +721,6 @@ def quatInterp_np(quat: np.ndarray, ind: np.ndarray, extend: bool = True) -> np.
     return quat_out
 
 
-import h5py
-
-
 class HDF2Quaternion(HDF2Sequence):
     """Extract quaternion sequences from HDF5 files with Slerp resampling."""
 
@@ -790,9 +801,6 @@ class TensorInclination(TensorSequences):
     pass
 
 
-import h5py
-
-
 class HDF2Inclination(HDF2Sequence):
     """Extract inclination angle sequences from HDF5 quaternion data."""
 
@@ -801,7 +809,7 @@ class HDF2Inclination(HDF2Sequence):
             ds = f if dataset is None else f[dataset]
             l_array = [ds[n][l_slc:r_slc] for n in self.clm_names]
             seq = np.vstack(l_array).T
-            seq = array(inclinationAngleAbs(tensor(seq))[:, None])
+            seq = np.array(inclinationAngleAbs(tensor(seq))[:, None])
             return seq
 
 

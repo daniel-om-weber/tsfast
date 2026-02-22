@@ -20,16 +20,36 @@ __all__ = [
     "split_by_parent",
 ]
 
-from fastai.data.all import *
-from ..data import *
-
-from ..data.loader import *
-from collections.abc import Callable
-import h5py
-from pathlib import Path as _Path
-from shutil import rmtree
+import os
+import pickle
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
+from pathlib import Path
+from shutil import rmtree
+from typing import NamedTuple
+
+import h5py
+import numpy as np
+import torch
+
+from fastcore.foundation import L, mask2idxs
+from fastcore.meta import delegates
+from fastai.data.block import DataBlock
+from fastai.data.core import TfmdDL
+
+from ..data.block import SequenceBlock
+from ..data.core import (
+    CreateDict,
+    DfApplyFuncSplit,
+    DfHDFCreateWindows,
+    TensorSequencesInput,
+    TensorSequencesOutput,
+    get_hdf_files,
+)
+from ..data.loader import TbpttDl, NBatches_Factory, BatchLimit_Factory
+from ..data.split import ParentSplitter
 
 
 @dataclass
@@ -57,9 +77,6 @@ class NormPair:
 
     def __getitem__(self, idx):
         return (self.mean, self.std, self.min, self.max)[idx]
-
-
-from typing import NamedTuple
 
 
 class NormStats(NamedTuple):
@@ -478,7 +495,7 @@ def create_dls(
 
 def _get_project_root():
     """Walk up from this file to find the project root (directory containing test_data/)."""
-    d = _Path(__file__).resolve().parent
+    d = Path(__file__).resolve().parent
     while d != d.parent:
         if (d / "test_data").is_dir():
             return d

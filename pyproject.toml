@@ -73,7 +73,11 @@ filterwarnings = [
 line-length = 120
 
 [tool.ruff.lint]
-ignore = ["F403", "F405", "F811", "E401", "E701", "E702", "E402"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "F403"]      # re-export barrels: unused imports + wildcard imports
+"tsfast/basics.py" = ["F401", "F403"] # re-export barrel
+"tsfast/quaternions.py" = ["F811"]    # @dispatch overloads and encodes type-dispatch
 
 [tool.jupytext]
 formats = "notebooks//ipynb,scripts//py:percent"

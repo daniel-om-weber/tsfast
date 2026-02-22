@@ -12,12 +12,28 @@ __all__ = [
     "FranSysLearner",
 ]
 
-from ..data import *
-from ..datasets.core import *
-from ..models import *
-from ..learner import *
+from functools import partial
 
-from fastai.basics import *
+import numpy as np
+import torch
+from torch import nn
+
+from fastcore.imports import is_iter
+from fastcore.meta import delegates
+
+from fastai.callback.core import Callback
+from fastai.callback.hook import HookCallback
+from fastai.data.core import DataLoaders
+from fastai.learner import Learner
+from fastai.metrics import mae
+from fastai.optimizer import Adam
+
+from ..learner.callbacks import CB_TruncateSequence
+from ..learner.losses import SkipNLoss, cos_sim_loss, cos_sim_loss_pow, fun_rmse
+from ..models.cnn import TCN
+from ..models.layers import AR_Model, NormalizedModel, SeqLinear, StandardScaler1D
+from ..models.rnn import RNN, SimpleRNN
+from .core import PredictionCallback
 
 
 class Diag_RNN(nn.Module):
@@ -380,9 +396,6 @@ class FranSys(nn.Module):
         return result
 
 
-from fastai.callback.hook import *
-
-
 class FranSysCallback(HookCallback):
     """Regularizes FranSys output by syncing diagnosis and prognosis hidden states.
 
@@ -581,9 +594,6 @@ class FranSysCallback_variable_init(Callback):
                 self.inner_model.init_sz = np.random.randint(self.init_sz_min, self.init_sz_max + 1)
             else:
                 self.inner_model.init_sz = self.init_sz_valid
-
-
-from .core import PredictionCallback
 
 
 @delegates(FranSys, keep=True)
