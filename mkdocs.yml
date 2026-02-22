@@ -1,0 +1,134 @@
+site_name: TSFast
+site_description: Deep learning library for time series analysis and system identification
+site_url: https://daniel-om-weber.github.io/tsfast
+repo_url: https://github.com/daniel-om-weber/tsfast
+repo_name: daniel-om-weber/tsfast
+
+theme:
+  name: material
+  logo: assets/logo.svg
+  favicon: assets/logo.svg
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - toc.follow
+
+plugins:
+  - search
+  - mkdocs-jupyter:
+      include: ["examples/notebooks/*.ipynb"]
+      execute: false
+      allow_errors: false
+      theme: light
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: ["."]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: false
+            show_root_toc_entry: false
+            members_order: source
+            show_bases: true
+            show_if_no_docstring: false
+            inherited_members: false
+            merge_init_into_class: true
+            separate_signature: true
+            show_signature_annotations: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path: ["."]
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+  - attr_list
+  - md_in_html
+  - pymdownx.arithmatex:
+      generic: true
+
+extra_javascript:
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Your First Model: examples/notebooks/00_your_first_model.ipynb
+  - Tutorials:
+    - Data Pipeline: examples/notebooks/01_data_pipeline.ipynb
+    - Simulation: examples/notebooks/02_simulation.ipynb
+    - Prediction: examples/notebooks/03_prediction.ipynb
+    - Model Architectures: examples/notebooks/04_model_architectures.ipynb
+    - Losses and Metrics: examples/notebooks/05_losses_and_metrics.ipynb
+    - Custom Normalization: examples/notebooks/06_custom_normalization.ipynb
+    - Callbacks and Augmentation: examples/notebooks/07_callbacks_and_augmentation.ipynb
+  - Advanced:
+    - FranSys: examples/notebooks/08_fransys.ipynb
+    - Autoregressive Models: examples/notebooks/09_autoregressive.ipynb
+    - Physics-Informed NNs: examples/notebooks/10_pinn.ipynb
+    - IdentiBench: examples/notebooks/11_identibench.ipynb
+    - Seq-to-Scalar: examples/notebooks/12_seq_to_scalar.ipynb
+    - Custom Data Pipelines: examples/notebooks/13_custom_data_pipelines.ipynb
+    - Hyperparameter Optimization: examples/notebooks/14_hyperparameter_optimization.ipynb
+    - ONNX Export: examples/notebooks/15_onnx_export.ipynb
+    - Stateful TBPTT: examples/notebooks/16_stateful_tbptt.ipynb
+  - API Reference:
+    - Data:
+      - Core: api/data/core.md
+      - Transforms: api/data/transforms.md
+      - Splitting: api/data/split.md
+      - Blocks: api/data/block.md
+      - DataLoaders: api/data/loader.md
+    - Datasets:
+      - Core: api/datasets/core.md
+      - Benchmarks: api/datasets/benchmark.md
+    - Models:
+      - Layers: api/models/layers.md
+      - RNN: api/models/rnn.md
+      - CNN / TCN: api/models/cnn.md
+    - Learner:
+      - Callbacks: api/learner/callbacks.md
+      - Losses: api/learner/losses.md
+    - Prediction:
+      - Core: api/prediction/core.md
+      - Autoregressive: api/prediction/ar.md
+      - FranSys: api/prediction/fransys.md
+    - Inference:
+      - Core: api/inference/core.md
+      - ONNX: api/inference/onnx.md
+    - PINN:
+      - Core: api/pinn/core.md
+      - PIRNN: api/pinn/pirnn.md
+    - Quaternions: api/quaternions.md
+    - Spectrogram: api/spectogram.md
+    - Hyperparameter Tuning: api/tune.md
+  - Contributing: contributing.md

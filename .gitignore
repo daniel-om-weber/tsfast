@@ -50,6 +50,9 @@ Thumbs.db
 # Stale generated docs
 _docs/
 
+# MkDocs build output
+site/
+
 # Misc
 *.bak
 *.log
