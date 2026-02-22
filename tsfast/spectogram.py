@@ -8,9 +8,19 @@ __all__ = [
     "SpectrogramBlock",
 ]
 
-from .data import *
+from collections.abc import Callable
 
-from fastai.basics import *
+import matplotlib.pyplot as plt
+import torch
+from torch import Tensor
+
+from fastcore.meta import delegates
+from fastcore.basics import ifnone
+from fastai.torch_basics import TensorBase, Transform
+from fastai.data.block import TransformBlock
+
+from .data.core import HDF2Sequence
+from .data.block import pad_sequence
 
 
 class TensorSpectrogram(TensorBase):
@@ -95,9 +105,6 @@ def spectrogram(
         spec_f = complex_norm(spec_f, power=power)
 
     return spec_f
-
-
-from typing import Callable
 
 
 class Spectrogram(torch.nn.Module):

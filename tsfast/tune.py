@@ -10,19 +10,26 @@ __all__ = [
     "HPOptimizer",
 ]
 
-from .data import *
-from .models import *
-from .learner import *
-
-from fastai.basics import *
-from fastai.callback.core import Callback
+import gc
+import os
+import tempfile
 from collections.abc import Callable
+from multiprocessing.managers import SharedMemoryManager
+
+import numpy as np
+import torch
+from torch import nn
 
 import ray
 from ray import tune
-from ray.tune.schedulers import *
-from ray.tune.experiment.trial import ExportFormat
 from ray.tune import Checkpoint
+from ray.tune.experiment.trial import ExportFormat
+from ray.tune.schedulers import PopulationBasedTraining
+
+from fastcore.meta import delegates
+
+from fastai.callback.core import Callback
+from fastai.learner import Learner, save_model
 
 
 def log_uniform(min_bound: float, max_bound: float, base: float = 10) -> Callable:
@@ -87,9 +94,6 @@ class LearnerTrainable(tune.Trainable):
         return True
 
 
-from multiprocessing.managers import SharedMemoryManager
-
-
 def stop_shared_memory_managers(obj: object):
     """Find and stop all SharedMemoryManager instances within an object.
 
@@ -120,9 +124,6 @@ def stop_shared_memory_managers(obj: object):
             stack.extend(current_obj)
         elif hasattr(current_obj, "__dict__"):  # Check for custom objects with attributes
             stack.extend(vars(current_obj).values())
-
-
-import gc
 
 
 def learner_optimize(config: dict):

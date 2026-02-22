@@ -18,12 +18,16 @@ __all__ = [
     "zero_loss",
 ]
 
-from ..data import *
-from fastai.basics import *
-import warnings
-
 import functools
+import warnings
 from collections.abc import Callable
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+from torch import Tensor
+
+from fastai.metrics import mse
 
 
 def ignore_nan(func: Callable) -> Callable:
@@ -47,9 +51,6 @@ def ignore_nan(func: Callable) -> Callable:
 
 
 mse_nan = ignore_nan(mse)
-
-import functools
-import warnings
 
 
 def float64_func(func: Callable) -> Callable:

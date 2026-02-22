@@ -2,7 +2,11 @@
 
 __all__ = ["valid_clm_splitter", "ParentSplitter", "PercentageSplitter", "ApplyToDict"]
 
-from fastai.data.all import *
+from collections.abc import Callable
+from pathlib import Path
+
+from fastcore.foundation import L, mask2idxs
+from fastai.data.transforms import FuncSplitter
 
 
 def _parent_idxs(items, name):

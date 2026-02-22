@@ -2,10 +2,8 @@
 
 __all__ = ["PredictionCallback"]
 
-from ..data import *
-from ..models import *
-from ..learner import *
-from fastai.basics import *
+import torch
+from fastai.callback.core import Callback
 
 
 class PredictionCallback(Callback):
