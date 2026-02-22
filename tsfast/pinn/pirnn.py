@@ -16,6 +16,7 @@ from fastcore.meta import delegates
 
 from ..learner.callbacks import CB_TruncateSequence
 from ..learner.losses import SkipNLoss
+from ..datasets.core import ensure_norm_stats
 from ..models.layers import NormalizedModel, SeqLinear, StandardScaler1D
 from ..models.rnn import RNN
 from ..prediction.fransys import Diag_RNN
@@ -284,6 +285,7 @@ def PIRNNLearner(
     out = _batch[1].shape[-1]  # Supervised outputs from dataset
     n_y_total = out + n_aux_outputs  # Total outputs (supervised + auxiliary)
 
+    ensure_norm_stats(dls)
     norm_u, norm_x, norm_y = dls.norm_stats
 
     if attach_output:

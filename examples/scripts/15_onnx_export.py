@@ -53,12 +53,12 @@ from tsfast.learner.losses import fun_rmse
 # - **`bs=16`** -- batch size
 # - **`win_sz=500`** -- window length in timesteps
 # - **`stp_sz=10`** -- stride between consecutive windows
-# - **`hidden_size=100`** -- number of LSTM hidden units
+# - **`hidden_size=40`** -- number of LSTM hidden units
 # - **`metrics=[fun_rmse]`** -- track RMSE during training
 
 # %%
 dls = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
-lrn = RNNLearner(dls, rnn_type='lstm', hidden_size=100, metrics=[fun_rmse])
+lrn = RNNLearner(dls, rnn_type='lstm', hidden_size=40, metrics=[fun_rmse])
 lrn.fit_flat_cos(n_epoch=5, lr=3e-3)
 
 # %%

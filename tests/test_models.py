@@ -243,3 +243,27 @@ class TestScalers:
         lrn = RNNLearner(dls_simulation, rnn_type="gru", output_norm=StandardScaler1D)
         assert isinstance(lrn.model, NormalizedModel)
         assert isinstance(lrn.model.output_norm, StandardScaler1D)
+
+    def test_rnn_learner_custom_datablock_auto_norm(self, hdf_files):
+        """RNNLearner should auto-estimate norm_stats when dls lacks them."""
+        from fastai.data.block import DataBlock
+        from tsfast.data.block import SequenceBlock
+        from tsfast.data.core import CreateDict, DfHDFCreateWindows, TensorSequencesOutput
+        from tsfast.data.split import ParentSplitter
+        from tsfast.models.rnn import RNNLearner
+        from tsfast.models.layers import NormalizedModel
+
+        dblock = DataBlock(
+            blocks=(
+                SequenceBlock.from_hdf(["u"]),
+                SequenceBlock.from_hdf(["y"], seq_cls=TensorSequencesOutput),
+            ),
+            splitter=ParentSplitter(),
+            get_items=CreateDict([DfHDFCreateWindows(win_sz=100, stp_sz=100, clm="u")]),
+        )
+        dls = dblock.dataloaders(hdf_files, bs=16)
+        assert not hasattr(dls, "norm_stats")  # custom dls has no norm_stats
+
+        # Should not raise AttributeError; should auto-estimate norm_stats
+        lrn = RNNLearner(dls, rnn_type="gru", hidden_size=10)
+        assert isinstance(lrn.model, NormalizedModel)

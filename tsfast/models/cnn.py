@@ -317,13 +317,7 @@ def TCNLearner(
     inp, out = get_inp_out_size(dls)
     n_skip = 2**num_layers if n_skip is None else n_skip
     model = TCN(inp, out, num_layers, hidden_size, **kwargs)
-
-    # Wrap model with input normalization and optional output denormalization
-    if input_norm is not None:
-        norm_u, _, norm_y = dls.norm_stats
-        in_scaler = input_norm.from_stats(norm_u)
-        out_scaler = output_norm.from_stats(norm_y) if output_norm is not None else None
-        model = NormalizedModel(model, in_scaler, out_scaler)
+    model = NormalizedModel.from_dls(model, dls, input_norm, output_norm)
 
     skip = partial(SkipNLoss, n_skip=n_skip)
 
@@ -481,13 +475,7 @@ def CRNNLearner(
     """
     inp, out = get_inp_out_size(dls)
     model = CRNN(inp, out, **kwargs)
-
-    # Wrap model with input normalization and optional output denormalization
-    if input_norm is not None:
-        norm_u, _, norm_y = dls.norm_stats
-        in_scaler = input_norm.from_stats(norm_u)
-        out_scaler = output_norm.from_stats(norm_y) if output_norm is not None else None
-        model = NormalizedModel(model, in_scaler, out_scaler)
+    model = NormalizedModel.from_dls(model, dls, input_norm, output_norm)
 
     skip = partial(SkipNLoss, n_skip=n_skip)
 
@@ -531,13 +519,7 @@ def AR_TCNLearner(
     ar_model = AR_Model(TCN(inp + out, out, hl_depth, **kwargs), ar=False)
     conv_module = ar_model.model.conv_layers[-1]
 
-    if input_norm is not None:
-        norm_u, _, norm_y = dls.norm_stats
-        in_scaler = input_norm.from_stats(norm_u + norm_y)
-        out_scaler = input_norm.from_stats(norm_y)
-        model = NormalizedModel(ar_model, in_scaler, out_scaler)
-    else:
-        model = ar_model
+    model = NormalizedModel.from_dls(ar_model, dls, input_norm, autoregressive=True)
 
     cbs = [
         ARInitCB(),

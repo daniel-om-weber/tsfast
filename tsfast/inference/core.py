@@ -35,19 +35,19 @@ class InferenceWrapper:
         )
 
     def _prepare_tensor(self, np_array: np.ndarray, name: str) -> torch.Tensor:
-        "Converts numpy array to a 3D tensor [1, seq_len, features] on the correct device."
+        "Converts numpy array to a 3D tensor [batch, seq_len, features] on the correct device."
         if not isinstance(np_array, np.ndarray):
             raise TypeError(f"{name} must be a NumPy array.")
         if np_array.ndim == 1:
             np_array = np_array[None, :, None]
         elif np_array.ndim == 2:
             np_array = np_array[None, :, :]
-        elif np_array.ndim != 3 or np_array.shape[0] != 1:
-            raise ValueError(f"{name} must be 1D, 2D, or 3D with batch_size=1. Got shape: {np_array.shape}")
+        elif np_array.ndim != 3:
+            raise ValueError(f"{name} must be 1D, 2D, or 3D. Got {np_array.ndim}D with shape: {np_array.shape}")
         return torch.from_numpy(np_array).float().to(self.device)
 
     def _adjust_seq_len(self, tensor: torch.Tensor, target_len: int, name: str) -> torch.Tensor:
-        "Adjusts sequence length (dim 1) of a [1, seq_len, features] tensor."
+        "Adjusts sequence length (dim 1) of a [batch, seq_len, features] tensor."
         current_len = tensor.shape[1]
         if current_len == target_len:
             return tensor
@@ -64,18 +64,29 @@ class InferenceWrapper:
     ) -> np.ndarray:
         """Run inference on numpy input, returns numpy output.
 
+        Output shape mirrors input dimensionality:
+        - 1D ``(seq_len,)`` → 1D ``(seq_len,)`` (single-feature output only)
+        - 2D ``(seq_len, features)`` → 2D ``(seq_len, out_features)``
+        - 3D ``(batch, seq_len, features)`` → 3D ``(batch, seq_len, out_features)``
+
         Args:
-            np_input: input time series (u), shape [seq_len], [seq_len, features],
-                or [1, seq_len, features]
+            np_input: input time series (u)
             np_output_init: initial output series (y_init), required if trained
                 with PredictionCallback
-
-        Returns:
-            Model prediction as numpy array with shape [seq_len, out_features].
         """
+        input_ndim = np_input.ndim
         u_tensor = self._prepare_tensor(np_input, "np_input")
         input_seq_len = u_tensor.shape[1]
-        y_init_tensor = self._prepare_tensor(np_output_init, "np_output_init") if np_output_init is not None else None
+
+        if np_output_init is not None:
+            y_init_tensor = self._prepare_tensor(np_output_init, "np_output_init")
+            if u_tensor.shape[0] != y_init_tensor.shape[0]:
+                raise ValueError(
+                    f"Batch size mismatch: np_input has {u_tensor.shape[0]}, "
+                    f"np_output_init has {y_init_tensor.shape[0]}."
+                )
+        else:
+            y_init_tensor = None
 
         if self._pred_cb:
             if y_init_tensor is None:
@@ -98,7 +109,20 @@ class InferenceWrapper:
         output_tensor = model_output[0] if isinstance(model_output, tuple) else model_output
         if not isinstance(output_tensor, torch.Tensor):
             raise RuntimeError(f"Model output is not a tensor. Type: {type(output_tensor)}")
-        return output_tensor.squeeze(0).cpu().numpy()
+
+        result = output_tensor.cpu().numpy()
+        match input_ndim:
+            case 1:
+                if result.shape[-1] != 1:
+                    raise ValueError(
+                        f"Cannot return 1D output: model produces {result.shape[-1]} features. "
+                        f"Pass 2D input (seq_len, features) instead."
+                    )
+                return result[0, :, 0]
+            case 2:
+                return result[0]
+            case _:
+                return result
 
     def __call__(self, np_input: np.ndarray, np_output_init: np.ndarray | None = None) -> np.ndarray:
         return self.inference(np_input, np_output_init)

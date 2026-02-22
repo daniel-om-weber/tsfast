@@ -17,6 +17,7 @@ __all__ = [
     "estimate_norm_stats",
     "NormPair",
     "NormStats",
+    "ensure_norm_stats",
     "split_by_parent",
 ]
 
@@ -247,6 +248,26 @@ def estimate_norm_stats(dls, n_batches: int = 10) -> tuple[NormPair, ...]:
     return tuple(stats)
 
 
+def ensure_norm_stats(dls, n_batches: int = 10) -> None:
+    """Estimate and attach ``norm_stats`` to *dls* if not already present.
+
+    When DataLoaders are created via a custom ``DataBlock`` rather than
+    ``create_dls``, they lack the ``norm_stats`` attribute that Learner
+    factories rely on for input/output normalization.  This helper fills
+    the gap by sampling a few training batches to compute per-feature
+    statistics.
+    """
+    if hasattr(dls, "norm_stats"):
+        return
+    stats = estimate_norm_stats(dls, n_batches=n_batches)
+    # estimate_norm_stats returns one NormPair per tensor in the batch.
+    # Standard layout: (input_stats, output_stats); states slot is None.
+    if len(stats) >= 2:
+        dls.norm_stats = NormStats(u=stats[0], x=None, y=stats[1])
+    else:
+        dls.norm_stats = NormStats(u=stats[0], x=None, y=stats[0])
+
+
 def _FileListSplitter(train_set, valid_set):
     "Split items by membership in train/valid file path sets."
 
@@ -357,6 +378,10 @@ def create_dls(
         splitter = _FileListSplitter({str(f) for f in train_files}, {str(f) for f in valid_files})
     elif isinstance(dataset, (Path, str)):
         hdf_files = get_hdf_files(dataset)
+        if len(hdf_files) == 0:
+            raise FileNotFoundError(
+                f"No HDF5 files found in '{dataset}'. Check that the path exists and contains .hdf5/.h5 files."
+            )
         splitter = ParentSplitter()
         train_files = hdf_files[splitter(hdf_files)[0]]
         test_files = None

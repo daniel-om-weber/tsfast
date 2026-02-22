@@ -116,11 +116,11 @@ dls.show_batch(max_n=4)
 #
 # - `init_sz=50`: use the first 50 timesteps for state estimation (diagnosis);
 #   predictions are evaluated on the remainder (prognosis)
-# - `hidden_size=100`: 100 hidden units in the RNN layers
+# - `hidden_size=40`: 40 hidden units in the RNN layers
 # - `metrics=[fun_rmse]`: track root mean squared error
 
 # %%
-lrn = FranSysLearner(dls, init_sz=50, hidden_size=100, metrics=[fun_rmse])
+lrn = FranSysLearner(dls, init_sz=50, hidden_size=40, metrics=[fun_rmse])
 lrn.fit_flat_cos(n_epoch=10, lr=3e-3)
 
 # %% [markdown]

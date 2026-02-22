@@ -20,6 +20,15 @@ class TestCreateDls:
         assert len(dls_simulation.loaders) == 3  # train, valid, test
 
 
+    def test_empty_path_raises_file_not_found(self, tmp_path):
+        from tsfast.datasets.core import create_dls
+        empty_dir = tmp_path / "empty_dataset"
+        empty_dir.mkdir()
+        with pytest.raises(FileNotFoundError, match="No HDF5 files found"):
+            create_dls(u=["u"], y=["y"], dataset=empty_dir,
+                       win_sz=100, num_workers=0)
+
+
 class TestNormalization:
     def test_norm_stats_on_dls(self, dls_simulation):
         from tsfast.datasets.core import NormPair, NormStats

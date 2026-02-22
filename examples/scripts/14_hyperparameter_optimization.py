@@ -110,7 +110,7 @@ def create_learner(dls, config):
 # %%
 search_config = {
     "rnn_type": tune.choice(["gru", "lstm"]),
-    "hidden_size": tune.choice([50, 100]),
+    "hidden_size": tune.choice([32, 40]),
     "n_epoch": 3,
     "lr": 3e-3,
 }
@@ -174,7 +174,7 @@ result_df[["config/rnn_type", "config/hidden_size", "valid_loss"]]
 # %%
 search_config_v2 = {
     "rnn_type": tune.choice(["gru", "lstm"]),
-    "hidden_size": tune.choice([50, 100]),
+    "hidden_size": tune.choice([32, 40]),
     "lr": log_uniform(1e-4, 1e-2),
     "n_epoch": 3,
 }

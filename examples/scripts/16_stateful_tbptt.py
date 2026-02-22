@@ -65,7 +65,7 @@ from tsfast.learner.losses import fun_rmse
 # %%
 dls_standard = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
 
-lrn_standard = RNNLearner(dls_standard, rnn_type='lstm', hidden_size=100, metrics=[fun_rmse])
+lrn_standard = RNNLearner(dls_standard, rnn_type='lstm', hidden_size=40, metrics=[fun_rmse])
 lrn_standard.fit_flat_cos(n_epoch=10, lr=3e-3)
 
 # %%
@@ -113,7 +113,7 @@ dls_tbptt = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10, sub_seq_len=100)
 
 # %%
 lrn_tbptt = RNNLearner(
-    dls_tbptt, rnn_type='lstm', hidden_size=100,
+    dls_tbptt, rnn_type='lstm', hidden_size=40,
     stateful=True, metrics=[fun_rmse],
 )
 

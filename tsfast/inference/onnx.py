@@ -83,15 +83,15 @@ class OnnxInferenceWrapper:
         self._output_name = self.session.get_outputs()[0].name
 
     def _prepare(self, np_array: np.ndarray, name: str) -> np.ndarray:
-        "Reshape to [1, seq_len, features] float32."
+        "Reshape to [batch, seq_len, features] float32."
         if not isinstance(np_array, np.ndarray):
             raise TypeError(f"{name} must be a NumPy array.")
         if np_array.ndim == 1:
             np_array = np_array[None, :, None]
         elif np_array.ndim == 2:
             np_array = np_array[None, :, :]
-        elif np_array.ndim != 3 or np_array.shape[0] != 1:
-            raise ValueError(f"{name} must be 1D, 2D, or 3D with batch_size=1. Got shape: {np_array.shape}")
+        elif np_array.ndim != 3:
+            raise ValueError(f"{name} must be 1D, 2D, or 3D. Got {np_array.ndim}D with shape: {np_array.shape}")
         return np_array.astype(np.float32)
 
     def inference(
@@ -99,10 +99,16 @@ class OnnxInferenceWrapper:
         np_input: np.ndarray,  # input time series
         np_output_init: np.ndarray | None = None,  # initial output (for PredictionCallback models)
     ) -> np.ndarray:
-        "Run inference on numpy input, returns numpy output."
+        "Run inference on numpy input, returns numpy output. Output ndim mirrors input ndim."
+        input_ndim = np_input.ndim
         u = self._prepare(np_input, "np_input")
         if np_output_init is not None:
             y_init = self._prepare(np_output_init, "np_output_init")
+            if u.shape[0] != y_init.shape[0]:
+                raise ValueError(
+                    f"Batch size mismatch: np_input has {u.shape[0]}, "
+                    f"np_output_init has {y_init.shape[0]}."
+                )
             seq_len = u.shape[1]
             if y_init.shape[1] != seq_len:
                 y_init = (
@@ -113,7 +119,18 @@ class OnnxInferenceWrapper:
             u = np.concatenate((u, y_init), axis=-1)
 
         result = self.session.run([self._output_name], {self._input_name: u})[0]
-        return result.squeeze(0)
+        match input_ndim:
+            case 1:
+                if result.shape[-1] != 1:
+                    raise ValueError(
+                        f"Cannot return 1D output: model produces {result.shape[-1]} features. "
+                        f"Pass 2D input (seq_len, features) instead."
+                    )
+                return result[0, :, 0]
+            case 2:
+                return result[0]
+            case _:
+                return result
 
     def __call__(self, np_input: np.ndarray, np_output_init: np.ndarray | None = None) -> np.ndarray:
         return self.inference(np_input, np_output_init)
