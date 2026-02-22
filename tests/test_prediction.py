@@ -192,7 +192,7 @@ class TestFranSysRegularization:
         batch = dls_prediction.one_batch()
         xb = batch[0]
 
-        wrapper.eval()
+        wrapper.to(xb.device).eval()
         with torch.no_grad():
             # Write init_sz on the inner model (what callbacks now do via unwrap_model)
             inner.init_sz = 30

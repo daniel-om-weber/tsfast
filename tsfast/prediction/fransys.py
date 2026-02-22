@@ -433,7 +433,7 @@ class FranSysCallback(HookCallback):
         detach: bool = False,
         **kwargs,
     ):
-        super().__init__(modules=modules, detach=detach, **kwargs)
+        super().__init__(modules=modules, detach=detach, cpu=False, **kwargs)
         self.p_state_sync = p_state_sync
         self.p_diag_loss = p_diag_loss
         self.p_osp_sync = p_osp_sync
