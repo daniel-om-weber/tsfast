@@ -104,6 +104,7 @@ class SeqNoiseInjection_Grouped(RandTransform):
     def encodes(self, o: TensorSequencesInput):
         if o.device != self.std_std.device:
             self.std_std = self.std_std.to(o.device)
+            self.std_idx = self.std_idx.to(o.device)
 
         # expand creates a view on a tensor and is therefore very fast compared to copy
         std = torch.normal(mean=0, std=self.std_std).abs()[self.std_idx]

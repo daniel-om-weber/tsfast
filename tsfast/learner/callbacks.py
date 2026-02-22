@@ -302,7 +302,7 @@ class TimeSeriesRegularizer(HookCallback):
     def __init__(self, alpha: float = 0.0, beta: float = 0.0, dim: int | None = None, detach: bool = False, **kwargs):
         if "modules" not in kwargs:
             print("Warning: No module was provided to TimeSerieRegularizer")
-        super().__init__(detach=detach, **kwargs)
+        super().__init__(detach=detach, cpu=False, **kwargs)
         self.alpha = alpha
         self.beta = beta
         self.dim = dim

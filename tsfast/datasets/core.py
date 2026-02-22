@@ -238,10 +238,10 @@ def estimate_norm_stats(dls, n_batches: int = 10) -> tuple[NormPair, ...]:
         t = torch.cat(tensors).flatten(0, -2)  # [total_samples, features]
         stats.append(
             NormPair(
-                mean=t.mean(0).numpy().astype(np.float32),
-                std=t.std(0).numpy().astype(np.float32),
-                min=t.min(0).values.numpy().astype(np.float32),
-                max=t.max(0).values.numpy().astype(np.float32),
+                mean=t.mean(0).cpu().numpy().astype(np.float32),
+                std=t.std(0).cpu().numpy().astype(np.float32),
+                min=t.min(0).values.cpu().numpy().astype(np.float32),
+                max=t.max(0).values.cpu().numpy().astype(np.float32),
             )
         )
     return tuple(stats)

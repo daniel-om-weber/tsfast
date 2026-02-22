@@ -477,7 +477,6 @@ def generate_random_states(
     return torch.from_numpy(states).to(device).float()
 
 
-@torch.compile
 def diff1_forward(signal: torch.Tensor, dt: float) -> torch.Tensor:
     """
     First-order forward difference.
@@ -492,7 +491,6 @@ def diff1_forward(signal: torch.Tensor, dt: float) -> torch.Tensor:
     )
 
 
-@torch.compile
 def diff1_forward_double(signal: torch.Tensor, dt: float) -> torch.Tensor:
     """
     First-order forward difference (float64).
@@ -508,7 +506,6 @@ def diff1_forward_double(signal: torch.Tensor, dt: float) -> torch.Tensor:
     ).type(signal.dtype)
 
 
-@torch.compile
 def diff1_central(signal: torch.Tensor, dt: float) -> torch.Tensor:
     """
     First-order central difference.
@@ -522,7 +519,6 @@ def diff1_central(signal: torch.Tensor, dt: float) -> torch.Tensor:
     return torch.cat([first, interior, last], dim=1)
 
 
-@torch.compile
 def diff1_central4_double(signal: torch.Tensor, dt: float) -> torch.Tensor:
     """
     4th-order central difference:
@@ -548,7 +544,6 @@ def diff1_central4_double(signal: torch.Tensor, dt: float) -> torch.Tensor:
     return torch.cat([first, point1, interior, point_m2, last], dim=1).type(signal.dtype)
 
 
-@torch.compile
 def diff2_forward(signal: torch.Tensor, dt: float) -> torch.Tensor:
     """
     Second-order forward difference.
@@ -562,7 +557,6 @@ def diff2_forward(signal: torch.Tensor, dt: float) -> torch.Tensor:
     return torch.cat([first, interior, last], dim=1)
 
 
-@torch.compile
 def diff2_central(signal: torch.Tensor, dt: float) -> torch.Tensor:
     """
     Second-order central difference.
@@ -576,7 +570,6 @@ def diff2_central(signal: torch.Tensor, dt: float) -> torch.Tensor:
     return torch.cat([first, interior, last], dim=1)
 
 
-@torch.compile
 def diff2_central_double(signal: torch.Tensor, dt: float) -> torch.Tensor:
     """
     Second-order central difference (float64).
@@ -594,7 +587,6 @@ def diff2_central_double(signal: torch.Tensor, dt: float) -> torch.Tensor:
     ).type(signal.dtype)
 
 
-@torch.compile
 def diff3_forward(signal: torch.Tensor, dt: float) -> torch.Tensor:
     """
     Third-order forward difference.
@@ -609,7 +601,6 @@ def diff3_forward(signal: torch.Tensor, dt: float) -> torch.Tensor:
     return torch.cat([first, second, interior, last], dim=1)
 
 
-@torch.compile
 def diff3_central(signal: torch.Tensor, dt: float) -> torch.Tensor:
     """
     Third-order central difference.
@@ -846,7 +837,7 @@ class ConsistencyCallback(HookCallback):
         match_at_timestep: int | None = None,
         model: torch.nn.Module | None = None,
     ):
-        super().__init__(modules=[])
+        super().__init__(modules=[], cpu=False)
         self.weight = weight
         self.match_at_timestep = match_at_timestep
         self._diag_out = None

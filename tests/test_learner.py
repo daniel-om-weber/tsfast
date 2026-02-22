@@ -168,7 +168,7 @@ class TestCallbacks:
         lrn.fit(1)
         # Model params should be unchanged since all gradients were zeroed
         for p_before, p_after in zip(params_before, model.parameters()):
-            assert torch.allclose(p_before, p_after.data)
+            assert torch.allclose(p_before.to(p_after.device), p_after.data)
 
     @pytest.mark.slow
     def test_time_series_regularizer(self, dls_simulation):

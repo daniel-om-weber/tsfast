@@ -99,7 +99,6 @@ def rad2deg(t: torch.Tensor) -> torch.Tensor:
     return 180.0 * t / _pi.to(t.device).type(t.dtype)
 
 
-@torch.compile
 def multiplyQuat(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
     """Multiply two quaternions element-wise."""
     o1 = q1[..., 0] * q2[..., 0] - q1[..., 1] * q2[..., 1] - q1[..., 2] * q2[..., 2] - q1[..., 3] * q2[..., 3]
@@ -143,7 +142,6 @@ def diffQuat(q1: torch.Tensor, q2: torch.Tensor, norm: bool = True) -> torch.Ten
 #     return multiplyQuat(nq1, conjQuat(nq2))
 
 
-@torch.compile
 def relativeQuat(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
     """Compute the relative quaternion as quat1*inv(quat2)."""
 
@@ -209,7 +207,7 @@ _unit_quaternion = tensor([1.0, 0, 0, 0])
 
 def inclinationAngleAbs(q: torch.Tensor) -> torch.Tensor:
     """Compute the absolute inclination angle relative to the identity quaternion."""
-    q = diffQuat(q, _unit_quaternion[None, :])
+    q = diffQuat(q, _unit_quaternion[None, :].to(q.device))
     return 2 * ((q[..., 3] ** 2 + q[..., 0] ** 2).sqrt()).acos()
 
 
@@ -442,7 +440,7 @@ class QuaternionRegularizer(HookCallback):
     run_before = TrainEvalCallback
 
     def __init__(self, reg_unit: float = 0.0, detach: bool = False, **kwargs):
-        super().__init__(detach=detach, **kwargs)
+        super().__init__(detach=detach, cpu=False, **kwargs)
         self.reg_unit = reg_unit
 
     def hook(self, m, i, o):
@@ -852,14 +850,14 @@ def plot_scalar_inclination(
         targ_sig: target inclination tensor.
         out_sig: predicted inclination tensor, or None for batch display.
     """
-    axs[0].plot(rad2deg(targ_sig).detach().numpy())
+    axs[0].plot(rad2deg(targ_sig).detach().cpu().numpy())
     axs[0].label_outer()
     axs[0].set_ylabel("inclination[°]")
 
     if out_sig is not None:
-        axs[0].plot(rad2deg(out_sig).detach().numpy())
+        axs[0].plot(rad2deg(out_sig).detach().cpu().numpy())
         axs[0].legend(["y", "ŷ"])
-        axs[1].plot(rad2deg(targ_sig - out_sig).detach().numpy())
+        axs[1].plot(rad2deg(targ_sig - out_sig).detach().cpu().numpy())
         axs[1].label_outer()
         axs[1].set_ylabel("error[°]")
 
@@ -877,21 +875,21 @@ def plot_quaternion_inclination(
         targ_sig: target quaternion tensor.
         out_sig: predicted quaternion tensor, or None for batch display.
     """
-    axs[0].plot(rad2deg(inclinationAngleAbs(targ_sig)).detach().numpy())
+    axs[0].plot(rad2deg(inclinationAngleAbs(targ_sig)).detach().cpu().numpy())
     axs[0].label_outer()
     axs[0].legend(["y"])
     axs[0].set_ylabel("inclination[°]")
 
     if out_sig is not None:
-        axs[0].plot(rad2deg(inclinationAngleAbs(out_sig)).detach().numpy())
+        axs[0].plot(rad2deg(inclinationAngleAbs(out_sig)).detach().cpu().numpy())
         axs[0].legend(["y", "ŷ"])
-        axs[1].plot(rad2deg(inclinationAngle(out_sig, targ_sig)).detach().numpy())
+        axs[1].plot(rad2deg(inclinationAngle(out_sig, targ_sig)).detach().cpu().numpy())
         axs[1].label_outer()
         axs[1].set_ylabel("error[°]")
         if "ref" in kwargs:
             #             axs[0].plot(rad2deg(inclinationAngleAbs(kwargs['ref'])))
             #             axs[0].legend(['y','ŷ','y_ref'])
-            axs[1].plot(rad2deg(inclinationAngle(targ_sig, kwargs["ref"])).detach().numpy())
+            axs[1].plot(rad2deg(inclinationAngle(targ_sig, kwargs["ref"])).detach().cpu().numpy())
             axs[1].legend(["ŷ", "y_ref"])
 
     axs[-1].plot(in_sig)
@@ -909,15 +907,15 @@ def plot_quaternion_rel_angle(
         out_sig: predicted quaternion tensor, or None for batch display.
     """
     first_targ = targ_sig[0].repeat(targ_sig.shape[0], 1)
-    axs[0].plot(rad2deg(relativeAngle(first_targ, targ_sig)).detach().numpy())
+    axs[0].plot(rad2deg(relativeAngle(first_targ, targ_sig)).detach().cpu().numpy())
     axs[0].label_outer()
     axs[0].legend(["y"])
     axs[0].set_ylabel("angle[°]")
 
     if out_sig is not None:
-        axs[0].plot(rad2deg(relativeAngle(first_targ, out_sig)).detach().numpy())
+        axs[0].plot(rad2deg(relativeAngle(first_targ, out_sig)).detach().cpu().numpy())
         axs[0].legend(["y", "ŷ"])
-        axs[1].plot(rad2deg(relativeAngle(out_sig, targ_sig)).detach().numpy())
+        axs[1].plot(rad2deg(relativeAngle(out_sig, targ_sig)).detach().cpu().numpy())
         axs[1].label_outer()
         axs[1].set_ylabel("error[°]")
 
