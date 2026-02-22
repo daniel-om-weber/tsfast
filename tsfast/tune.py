@@ -133,6 +133,17 @@ def stop_shared_memory_managers(obj: object):
             stack.extend(vars(current_obj).values())
 
 
+def _prepare_dls_for_serialization(dls):
+    """Remove transient iterator state from DataLoaders for Ray serialization.
+
+    fastai DataLoaders accumulate generator attributes during iteration
+    that cannot be pickled.  This strips them so ``ray.put(dls)`` succeeds.
+    """
+    for dl in dls.loaders:
+        if hasattr(dl, "it"):
+            del dl.it
+
+
 def learner_optimize(config: dict):
     """Training function for Ray Tune function-based API.
 
@@ -251,6 +262,7 @@ class HPOptimizer:
         """
         config["create_lrn"] = ray.put(self.create_lrn)
         # dls are large objects, letting ray handle the copying process makes it much faster
+        _prepare_dls_for_serialization(self.dls)
         config["dls"] = ray.put(self.dls)
         if "fit_method" not in config:
             config["fit_method"] = ray.put(Learner.fit_flat_cos)
@@ -291,6 +303,7 @@ class HPOptimizer:
 
         config["create_lrn"] = ray.put(self.create_lrn)
         # dls are large objects, letting ray handle the copying process makes it much faster
+        _prepare_dls_for_serialization(self.dls)
         config["dls"] = ray.put(self.dls)
 
         scheduler = PopulationBasedTraining(
