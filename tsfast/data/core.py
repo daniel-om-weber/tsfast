@@ -67,7 +67,7 @@ from fastcore.meta import delegates
 from fastai.data.transforms import get_files
 from fastai.imports import noop
 from fastai.torch_basics import TensorBase, Transform, tensor
-from plum import dispatch
+from fastai.data.core import show_batch, show_results  # plum multi-dispatch functions
 
 
 def obj_in_lst(lst: list, cls: type):
@@ -962,7 +962,6 @@ def plot_seqs_single_figure(
     cols = min(3, n_samples)
     fig = plt.figure(figsize=(9, 2 * cols))
     outer_grid = fig.add_gridspec(rows, cols)
-    #     import pdb; pdb.set_trace()
     for i in range(n_samples):
         in_sig = samples[i][0]
         targ_sig = samples[i][1]
@@ -991,8 +990,8 @@ def plot_seqs_multi_figures(
         plt.tight_layout()
 
 
-@dispatch
-def show_batch(x: TensorSequences, y: TensorSequences, samples: list, ctxs=None, max_n: int = 6, **kwargs):
+@show_batch.dispatch
+def show_batch(x: TensorSequences, y: TensorSequences, samples, *, ctxs=None, max_n=6, **kwargs):
     """Display a batch of input/target sequence pairs."""
     n_samples = min(len(samples), max_n)
     n_targ = samples[0][1].shape[1]
@@ -1005,10 +1004,8 @@ def show_batch(x: TensorSequences, y: TensorSequences, samples: list, ctxs=None,
     return ctxs
 
 
-@dispatch
-def show_results(
-    x: TensorSequences, y: TensorSequences, samples: list, outs: list, ctxs=None, max_n: int = 2, **kwargs
-):
+@show_results.dispatch
+def show_results(x: TensorSequences, y: TensorSequences, samples, outs, *, ctxs=None, max_n=2, **kwargs):
     """Display input/target/prediction results for model evaluation."""
     n_samples = min(len(samples), max_n)
     n_targ = samples[0][1].shape[1]
