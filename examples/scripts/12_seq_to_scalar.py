@@ -40,7 +40,7 @@ from pathlib import Path
 
 import torch.nn as nn
 from fastai.data.block import DataBlock
-from fastai.data.transforms import ParentSplitter
+from tsfast.data.split import ParentSplitter
 from fastai.learner import Learner
 from fastai.optimizer import Adam
 

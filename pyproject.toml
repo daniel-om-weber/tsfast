@@ -45,6 +45,8 @@ dev = [
     "twine",
     "jupytext",
     "pre-commit",
+    "onnx>=1.14",
+    "onnxruntime>=1.16",
 ]
 
 [project.urls]
