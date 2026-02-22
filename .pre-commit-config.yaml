@@ -1,4 +1,12 @@
 repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.7
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^tsfast/
+      - id: ruff-format
+        files: ^tsfast/
   - repo: https://github.com/mwouts/jupytext
     rev: v1.19.1
     hooks:

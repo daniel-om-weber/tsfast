@@ -113,7 +113,6 @@ class Diag_RNN_raw(nn.Module):
         self.rnn = RNN(input_size, output_size, output_layer, stateful=stateful, ret_full_hidden=True)
 
     def forward(self, x: torch.Tensor, init_state: list | None = None):
-
         return self.rnn(x, init_state)
 
     def output_to_hidden(self, out: torch.Tensor, idx: int) -> list[torch.Tensor]:

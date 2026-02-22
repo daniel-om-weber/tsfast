@@ -127,7 +127,6 @@ class CausalConv1d(torch.nn.Conv1d):
         bias: bool = True,
         stateful: bool = False,
     ):
-
         super().__init__(
             in_channels,
             out_channels,
