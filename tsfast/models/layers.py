@@ -21,6 +21,7 @@ from torch import nn
 from torch.nn import Mish, Parameter
 
 import fastai.callback.progress  # noqa: F401  — side-effect import activates progress bar
+import fastai.callback.schedule  # noqa: F401  — side-effect import patches fit_flat_cos onto Learner
 from fastai.torch_basics import to_detach
 
 
