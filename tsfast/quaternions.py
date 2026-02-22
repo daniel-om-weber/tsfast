@@ -733,7 +733,6 @@ class HDF2Quaternion(HDF2Sequence):
         dt_idx=False,
         fast_resample=True,
     ):
-
         if resampling_factor is not None:
             seq_len = (
                 r_slc - l_slc if l_slc is not None and r_slc is not None else None

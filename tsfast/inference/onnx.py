@@ -106,8 +106,7 @@ class OnnxInferenceWrapper:
             y_init = self._prepare(np_output_init, "np_output_init")
             if u.shape[0] != y_init.shape[0]:
                 raise ValueError(
-                    f"Batch size mismatch: np_input has {u.shape[0]}, "
-                    f"np_output_init has {y_init.shape[0]}."
+                    f"Batch size mismatch: np_input has {u.shape[0]}, np_output_init has {y_init.shape[0]}."
                 )
             seq_len = u.shape[1]
             if y_init.shape[1] != seq_len:
