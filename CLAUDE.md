@@ -38,6 +38,9 @@ pytest tests/test_models.py -v
 # Run example notebooks (verify they execute)
 pytest --nbmake examples/notebooks/00_minimal_example.ipynb
 
+# Run all example notebooks and save outputs in-place (takes a long time)
+jupyter nbconvert --to notebook --execute --inplace examples/notebooks/*.ipynb
+
 # Lint
 ruff check tsfast/
 
