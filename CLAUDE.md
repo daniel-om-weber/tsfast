@@ -6,7 +6,25 @@ TSFast is a deep learning library for time series analysis and system identifica
 
 ## Development Workflow
 
-Edit `.py` files in `tsfast/` directly. Examples are in `examples/` as Jupyter notebooks. Integration tests are in `tests/` as pytest files.
+Edit `.py` files in `tsfast/` directly. Examples are in `examples/` as jupytext-paired notebooks. Integration tests are in `tests/` as pytest files.
+
+## Example Notebooks
+
+Examples use jupytext pairing with separate directories:
+
+- `examples/scripts/` — `.py` percent-format files (source of truth for diffs/review)
+- `examples/notebooks/` — `.ipynb` files with rendered outputs (for browsing)
+- `examples/04_benchmark_rnn.py` — standalone script, not a paired notebook
+
+A pre-commit hook syncs the pair automatically on commit. Edit either file.
+
+```bash
+# Manually sync all paired notebooks
+cd examples && jupytext --sync notebooks/*.ipynb
+
+# Convert a new notebook to paired format
+cd examples && jupytext --set-formats notebooks//ipynb,scripts//py:percent notebooks/new_notebook.ipynb
+```
 
 ## Commands
 
@@ -18,7 +36,7 @@ pytest tests/ -v
 pytest tests/test_models.py -v
 
 # Run example notebooks (verify they execute)
-pytest --nbmake examples/00_minimal_example.ipynb
+pytest --nbmake examples/notebooks/00_minimal_example.ipynb
 
 # Lint
 ruff check tsfast/

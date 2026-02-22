@@ -43,6 +43,8 @@ dev = [
     "ruff",
     "ipykernel",
     "twine",
+    "jupytext",
+    "pre-commit",
 ]
 
 [project.urls]
@@ -72,3 +74,6 @@ line-length = 120
 
 [tool.ruff.lint]
 ignore = ["F403", "F405", "F811", "E401", "E701", "E702", "E402"]
+
+[tool.jupytext]
+formats = "notebooks//ipynb,scripts//py:percent"
