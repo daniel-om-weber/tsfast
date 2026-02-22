@@ -76,11 +76,11 @@ dls.show_batch(max_n=4)
 #
 # - `rnn_type='lstm'`: use an LSTM cell (alternatives: `'gru'`, `'rnn'`)
 # - `n_skip=50`: exclude the first 50 timesteps from the loss
-# - `hidden_size=100`: 100 hidden units in the LSTM layer
+# - `hidden_size=40`: 40 hidden units in the LSTM layer
 # - `metrics=[fun_rmse]`: track root mean squared error during training
 
 # %%
-lrn = RNNLearner(dls, rnn_type='lstm', n_skip=50, hidden_size=100, metrics=[fun_rmse])
+lrn = RNNLearner(dls, rnn_type='lstm', n_skip=50, hidden_size=40, metrics=[fun_rmse])
 lrn.fit_flat_cos(n_epoch=10, lr=3e-3)
 
 # %% [markdown]
@@ -129,7 +129,7 @@ print(f"Targets shape: {targs.shape}")
 
 # %%
 dls_wh = create_dls_wh()
-lrn_wh = RNNLearner(dls_wh, rnn_type='lstm', n_skip=50, hidden_size=100, metrics=[fun_rmse])
+lrn_wh = RNNLearner(dls_wh, rnn_type='lstm', n_skip=50, hidden_size=40, metrics=[fun_rmse])
 lrn_wh.fit_flat_cos(n_epoch=10, lr=3e-3)
 
 # %%

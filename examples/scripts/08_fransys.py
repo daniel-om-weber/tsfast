@@ -87,7 +87,7 @@ lrn = FranSysLearner(
     dls, init_sz=50, attach_output=True,
     hidden_size=40, metrics=[fun_rmse]
 )
-lrn.fit_flat_cos(n_epoch=50, lr=3e-3)
+lrn.fit_flat_cos(n_epoch=10, lr=3e-3)
 
 # %% [markdown]
 # ## Visualize Results
@@ -115,7 +115,7 @@ lrn_reg = FranSysLearner(
     hidden_size=40, metrics=[fun_rmse]
 )
 model_reg = unwrap_model(lrn_reg.model)
-lrn_reg.fit_flat_cos(n_epoch=50, lr=3e-3, cbs=[
+lrn_reg.fit_flat_cos(n_epoch=10, lr=3e-3, cbs=[
     TimeSeriesRegularizer(alpha=6.0, beta=6.0, modules=[model_reg.rnn_prognosis])
 ])
 lrn_reg.show_results(ds_idx=-1, max_n=2)
@@ -137,7 +137,7 @@ lrn_sync = FranSysLearner(
     hidden_size=40, metrics=[fun_rmse]
 )
 model_sync = unwrap_model(lrn_sync.model)
-lrn_sync.fit_flat_cos(n_epoch=50, lr=3e-3, cbs=[
+lrn_sync.fit_flat_cos(n_epoch=10, lr=3e-3, cbs=[
     TimeSeriesRegularizer(alpha=6.0, beta=6.0, modules=[model_sync.rnn_prognosis]),
     FranSysCallback(
         modules=[model_sync.rnn_diagnosis, model_sync.rnn_prognosis],

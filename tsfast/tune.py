@@ -32,6 +32,13 @@ from fastai.callback.core import Callback
 from fastai.learner import Learner, save_model
 
 
+def _worker_device() -> torch.device:
+    """Detect the appropriate device inside a Ray worker."""
+    if torch.cuda.is_available():
+        return torch.device("cuda", torch.cuda.current_device())
+    return torch.device("cpu")
+
+
 def log_uniform(min_bound: float, max_bound: float, base: float = 10) -> Callable:
     """Sample uniformly in an exponential (log) range.
 
@@ -58,7 +65,7 @@ class LearnerTrainable(tune.Trainable):
 
     def setup(self, config: dict):
         self.create_lrn = ray.get(config["create_lrn"])
-        self.dls = ray.get(config["dls"])
+        self.dls = ray.get(config["dls"]).to(_worker_device())
 
         self.lrn = self.create_lrn(self.dls, config)
 
@@ -135,7 +142,7 @@ def learner_optimize(config: dict):
     """
     try:
         create_lrn = ray.get(config["create_lrn"])
-        dls = ray.get(config["dls"])
+        dls = ray.get(config["dls"]).to(_worker_device())
 
         # Scheduling Parameters for training the Model
         lrn_kwargs = {"n_epoch": 100, "pct_start": 0.5}
@@ -151,7 +158,8 @@ def learner_optimize(config: dict):
             with checkpoint.as_directory() as checkpoint_dir:
                 lrn.model.load_state_dict(torch.load(checkpoint_dir + "model.pth"))
 
-        lrn.lr = config["lr"] if "lr" in config else 3e-3
+        lr = config["lr"] if "lr" in config else 3e-3
+        lrn.lr = lr() if callable(lr) else lr
         lrn.add_cb(CBRayReporter() if "reporter" not in config else ray.get(config["reporter"])())
         with lrn.no_bar():
             ray.get(config["fit_method"])(lrn, **lrn_kwargs)

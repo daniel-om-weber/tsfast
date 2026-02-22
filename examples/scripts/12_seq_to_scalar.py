@@ -76,11 +76,21 @@ from tsfast.learner.losses import fun_rmse
 # (initial velocity).
 
 # %%
-try:
-    _root = Path(__file__).resolve().parent.parent
-except NameError:
-    _root = Path(".").resolve().parent
+def _find_project_root(marker: str = "test_data") -> Path:
+    """Walk up from script/notebook location to find the project root."""
+    try:
+        start = Path(__file__).resolve().parent
+    except NameError:
+        start = Path(".").resolve()
+    p = start
+    while p != p.parent:
+        if (p / marker).is_dir():
+            return p
+        p = p.parent
+    raise FileNotFoundError(f"Could not find '{marker}' directory above {start}")
 
+
+_root = _find_project_root()
 data_path = _root / "test_data" / "pinn_var_ic"
 
 files = get_hdf_files(data_path)
@@ -143,7 +153,7 @@ dls.show_batch(max_n=4)
 # %%
 input_size = 3   # u, x, v
 output_size = 2  # x0, v0
-hidden_size = 64
+hidden_size = 40
 
 model = nn.Sequential(
     SimpleRNN(input_size, output_size, hidden_size=hidden_size, rnn_type='lstm'),
@@ -171,7 +181,7 @@ lrn = Learner(
 # ## Train and Evaluate
 
 # %%
-lrn.fit_flat_cos(n_epoch=20, lr=1e-3)
+lrn.fit_flat_cos(n_epoch=10, lr=1e-3)
 
 # %% [markdown]
 # ## Inspect Predictions

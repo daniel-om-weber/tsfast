@@ -430,18 +430,37 @@ class NormalizedModel(nn.Module):
 
     @classmethod
     def from_dls(
-        cls, model: nn.Module, dls, prediction: bool = False, scaler_cls: type | None = None
-    ) -> "NormalizedModel":
-        "Create from DataLoaders norm_stats."
-        from ..datasets.core import extract_mean_std_from_dls
+        cls,
+        model: nn.Module,
+        dls,
+        input_norm: type[Scaler] | None = StandardScaler1D,
+        output_norm: type[Scaler] | None = None,
+        *,
+        autoregressive: bool = False,
+    ) -> nn.Module:
+        """Create from DataLoaders norm_stats, or return *model* unchanged if *input_norm* is None.
 
-        norm_u, norm_x, norm_y = extract_mean_std_from_dls(dls)
-        if prediction:
-            parts = [norm_u] + ([norm_x] if norm_x else []) + [norm_y]
-            input_stats = sum(parts[1:], parts[0])
+        Args:
+            model: inner model to wrap
+            dls: DataLoaders with ``norm_stats`` attribute (populated automatically if missing)
+            input_norm: scaler class for input normalization, or None to skip wrapping
+            output_norm: scaler class for output denormalization, or None to skip
+            autoregressive: if True, input stats are ``norm_u + norm_y`` and output
+                stats use ``input_norm`` (AR models use the same scaler for both)
+        """
+        if input_norm is None:
+            return model
+        from ..datasets.core import ensure_norm_stats
+
+        ensure_norm_stats(dls)
+        norm_u, _, norm_y = dls.norm_stats
+        if autoregressive:
+            in_scaler = input_norm.from_stats(norm_u + norm_y)
+            out_scaler = input_norm.from_stats(norm_y)
         else:
-            input_stats = norm_u
-        return cls.from_stats(model, input_stats, norm_y, scaler_cls=scaler_cls)
+            in_scaler = input_norm.from_stats(norm_u)
+            out_scaler = output_norm.from_stats(norm_y) if output_norm is not None else None
+        return cls(model, in_scaler, out_scaler)
 
     def forward(self, xb: torch.Tensor, **kwargs) -> torch.Tensor:
         xb = self.input_norm.normalize(xb)

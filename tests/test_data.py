@@ -38,6 +38,15 @@ class TestCreateDict:
         result = win(hdf_files)
         assert len(result) > 10
 
+    def test_windowing_empty_files(self):
+        """DfHDFCreateWindows must return an empty DataFrame for empty input."""
+        import pandas as pd
+        from tsfast.data.core import DfHDFCreateWindows
+        empty_df = pd.DataFrame(columns=["path"])
+        tfm = DfHDFCreateWindows(win_sz=500, stp_sz=500, clm="u")
+        result = tfm(empty_df)
+        assert len(result) == 0
+
 
 class TestResampling:
     def test_resampling_factor(self, hdf_files):

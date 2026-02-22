@@ -18,7 +18,7 @@ class TestInferenceWrapper:
         lrn = RNNLearner(dls_simulation)
         model = InferenceWrapper(lrn)
         result = model(np.random.randn(100))
-        assert result.shape == (100, 1)
+        assert result.shape == (100,)
 
     def test_simulation_3d_input(self, dls_simulation):
         from tsfast.models.rnn import RNNLearner
@@ -26,7 +26,16 @@ class TestInferenceWrapper:
         lrn = RNNLearner(dls_simulation)
         model = InferenceWrapper(lrn)
         result = model(np.random.randn(1, 100, 1))
-        assert result.shape == (100, 1)
+        assert result.shape == (1, 100, 1)
+
+    def test_simulation_3d_batched_input(self, dls_simulation):
+        from tsfast.models.rnn import RNNLearner
+        from tsfast.inference.core import InferenceWrapper
+        lrn = RNNLearner(dls_simulation)
+        model = InferenceWrapper(lrn)
+        batch_size = 4
+        result = model(np.random.randn(batch_size, 100, 1))
+        assert result.shape == (batch_size, 100, 1)
 
     @pytest.mark.slow
     def test_prediction_with_output_init(self, dls_simulation):

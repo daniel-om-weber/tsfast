@@ -245,13 +245,7 @@ def RNNLearner(
 
     inp, out = get_inp_out_size(dls)
     model = SimpleRNN(inp, out, num_layers, hidden_size, stateful=stateful, **kwargs)
-
-    # Wrap model with input normalization and optional output denormalization
-    if input_norm is not None:
-        norm_u, _, norm_y = dls.norm_stats
-        in_scaler = input_norm.from_stats(norm_u)
-        out_scaler = output_norm.from_stats(norm_y) if output_norm is not None else None
-        model = NormalizedModel(model, in_scaler, out_scaler)
+    model = NormalizedModel.from_dls(model, dls, input_norm, output_norm)
 
     skip = partial(SkipNLoss, n_skip=n_skip)
 
@@ -297,13 +291,7 @@ def AR_RNNLearner(
     ar_model = AR_Model(SimpleRNN(inp + out, out, **kwargs), ar=False)
     rnn_module = ar_model.model.rnn
 
-    if input_norm is not None:
-        norm_u, _, norm_y = dls.norm_stats
-        in_scaler = input_norm.from_stats(norm_u + norm_y)
-        out_scaler = input_norm.from_stats(norm_y)
-        model = NormalizedModel(ar_model, in_scaler, out_scaler)
-    else:
-        model = ar_model
+    model = NormalizedModel.from_dls(ar_model, dls, input_norm, autoregressive=True)
 
     cbs = [ARInitCB(), TimeSeriesRegularizer(alpha=alpha, beta=beta, modules=[rnn_module])]  # SaveModelCallback()
     if early_stop > 0:

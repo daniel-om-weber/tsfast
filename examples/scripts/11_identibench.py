@@ -83,7 +83,7 @@ def build_model(context: idb.TrainingContext):
         dls,
         rnn_type=context.hyperparameters.get('model_type', 'lstm'),
         num_layers=context.hyperparameters.get('num_layers', 1),
-        hidden_size=context.hyperparameters.get('hidden_size', 100),
+        hidden_size=context.hyperparameters.get('hidden_size', 40),
         n_skip=context.spec.init_window,
         metrics=[fun_rmse],
     )
@@ -122,7 +122,7 @@ def build_model(context: idb.TrainingContext):
 model_config = {
     'model_type': 'lstm',
     'num_layers': 1,
-    'hidden_size': 100,
+    'hidden_size': 40,
 }
 
 benchmarks = list(idb.workshop_benchmarks.values())
@@ -148,7 +148,7 @@ print(results)
 model_config_v2 = {
     'model_type': 'gru',
     'num_layers': 2,
-    'hidden_size': 100,
+    'hidden_size': 40,
 }
 
 results_v2 = idb.run_benchmarks(benchmarks, build_model, model_config_v2)

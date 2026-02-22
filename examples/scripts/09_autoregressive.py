@@ -68,7 +68,7 @@ dls.show_batch(max_n=2)
 # highlight the difference autoregressive models make.
 
 # %%
-lrn_std = RNNLearner(dls, rnn_type='lstm', hidden_size=100, n_skip=50, metrics=[fun_rmse])
+lrn_std = RNNLearner(dls, rnn_type='lstm', hidden_size=40, n_skip=50, metrics=[fun_rmse])
 lrn_std.fit_flat_cos(n_epoch=10, lr=3e-3)
 lrn_std.show_results(max_n=2)
 print(f"Standard RNN: {lrn_std.validate()}")
@@ -83,14 +83,14 @@ print(f"Standard RNN: {lrn_std.validate()}")
 # Key parameters:
 #
 # - **`rnn_type='lstm'`**: use LSTM cells for the recurrent layer.
-# - **`hidden_size=100`**: 100 hidden units in the LSTM.
+# - **`hidden_size=40`**: 40 hidden units in the LSTM.
 # - **`alpha=1.0`**: penalty weight for large activations (AR regularization).
 # - **`beta=1.0`**: penalty weight for abrupt activation changes between
 #   timesteps (TAR regularization).
 
 # %%
 lrn_ar = AR_RNNLearner(
-    dls, rnn_type='lstm', hidden_size=100,
+    dls, rnn_type='lstm', hidden_size=40,
     alpha=1.0, beta=1.0, metrics=[fun_rmse]
 )
 lrn_ar.fit_flat_cos(n_epoch=10, lr=3e-3)
@@ -127,7 +127,7 @@ print(f"AR-TCN: {lrn_ar_tcn.validate()}")
 
 # %%
 lrn_ar_strong = AR_RNNLearner(
-    dls, rnn_type='lstm', hidden_size=100,
+    dls, rnn_type='lstm', hidden_size=40,
     alpha=3.0, beta=3.0, metrics=[fun_rmse]
 )
 lrn_ar_strong.fit_flat_cos(n_epoch=10, lr=3e-3)

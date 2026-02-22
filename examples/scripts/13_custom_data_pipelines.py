@@ -58,10 +58,20 @@ from tsfast.models.rnn import RNNLearner
 # files and returns them as a fastcore `L` list.
 
 # %%
-try:
-    _root = Path(__file__).resolve().parent.parent
-except NameError:
-    _root = Path(".").resolve().parent
+def _find_project_root(marker: str = "test_data") -> Path:
+    """Walk up from script/notebook location to find the project root."""
+    try:
+        start = Path(__file__).resolve().parent
+    except NameError:
+        start = Path(".").resolve()
+    p = start
+    while p != p.parent:
+        if (p / marker).is_dir():
+            return p
+        p = p.parent
+    raise FileNotFoundError(f"Could not find '{marker}' directory above {start}")
+
+_root = _find_project_root()
 
 data_path = _root / "test_data" / "WienerHammerstein"
 
@@ -231,11 +241,11 @@ dblock_padded = DataBlock(
 #
 # - **`dls_custom`** -- the DataLoaders we built manually above.
 # - **`rnn_type='lstm'`** -- use Long Short-Term Memory cells.
-# - **`hidden_size=100`** -- number of hidden units in the LSTM.
+# - **`hidden_size=40`** -- number of hidden units in the LSTM.
 # - **`metrics=[fun_rmse]`** -- track root mean squared error during training.
 
 # %%
-lrn = RNNLearner(dls_custom, rnn_type='lstm', hidden_size=100, metrics=[fun_rmse])
+lrn = RNNLearner(dls_custom, rnn_type='lstm', hidden_size=40, metrics=[fun_rmse])
 lrn.fit_flat_cos(n_epoch=5, lr=3e-3)
 
 # %%

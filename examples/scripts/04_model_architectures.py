@@ -60,12 +60,12 @@ dls.show_batch(max_n=2)
 #
 # Key parameter:
 #
-# - **`hidden_size=100`** -- dimension of the hidden state vector. Larger values
+# - **`hidden_size=40`** -- dimension of the hidden state vector. Larger values
 #   give the model more capacity to represent complex dynamics, but increase
 #   memory usage and training time.
 
 # %%
-lrn_lstm = RNNLearner(dls, rnn_type='lstm', hidden_size=100, metrics=[fun_rmse])
+lrn_lstm = RNNLearner(dls, rnn_type='lstm', hidden_size=40, metrics=[fun_rmse])
 lrn_lstm.fit_flat_cos(n_epoch=10, lr=3e-3)
 
 # %%
@@ -80,7 +80,7 @@ lrn_lstm.show_results(max_n=2)
 # with comparable performance on many tasks.
 
 # %%
-lrn_gru = RNNLearner(dls, rnn_type='gru', hidden_size=100, metrics=[fun_rmse])
+lrn_gru = RNNLearner(dls, rnn_type='gru', hidden_size=40, metrics=[fun_rmse])
 lrn_gru.fit_flat_cos(n_epoch=10, lr=3e-3)
 
 # %%
@@ -98,11 +98,11 @@ lrn_gru.show_results(max_n=2)
 #
 # - **`num_layers=4`** -- number of TCN blocks. Controls the receptive field
 #   (2^4 = 16 timesteps). Deeper networks see further back in time.
-# - **`hidden_size=64`** -- number of channels (feature maps) per layer.
+# - **`hidden_size=40`** -- number of channels (feature maps) per layer.
 #   Controls the width of the network.
 
 # %%
-lrn_tcn = TCNLearner(dls, num_layers=4, hidden_size=64, metrics=[fun_rmse])
+lrn_tcn = TCNLearner(dls, num_layers=4, hidden_size=40, metrics=[fun_rmse])
 lrn_tcn.fit_flat_cos(n_epoch=10, lr=3e-3)
 
 # %%

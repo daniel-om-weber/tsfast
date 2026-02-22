@@ -77,7 +77,7 @@ class TestOnnxInferenceWrapper:
         lrn = RNNLearner(dls_simulation)
         path = export_onnx(lrn, tmp_path / "model.onnx")
         result = OnnxInferenceWrapper(path)(np.random.randn(100))
-        assert result.shape == (100, 1)
+        assert result.shape == (100,)
 
     def test_2d_input(self, dls_simulation, tmp_path):
         from tsfast.models.rnn import RNNLearner
@@ -95,7 +95,23 @@ class TestOnnxInferenceWrapper:
         lrn = RNNLearner(dls_simulation)
         path = export_onnx(lrn, tmp_path / "model.onnx")
         result = OnnxInferenceWrapper(path)(np.random.randn(1, 100, 1))
-        assert result.shape == (100, 1)
+        assert result.shape == (1, 100, 1)
+
+    def test_batched_3d_input(self, dls_simulation, tmp_path):
+        from tsfast.models.rnn import RNNLearner
+        from tsfast.inference.core import InferenceWrapper
+        from tsfast.inference.onnx import export_onnx, OnnxInferenceWrapper
+
+        lrn = RNNLearner(dls_simulation)
+        path = export_onnx(lrn, tmp_path / "model.onnx")
+
+        # Batched 3D input with batch_size > 1 (matches dls.valid.one_batch() usage)
+        inp = np.random.randn(4, 100, 1).astype(np.float32)
+        pt_result = InferenceWrapper(lrn)(inp)
+        onnx_result = OnnxInferenceWrapper(path)(inp)
+
+        assert onnx_result.shape == pt_result.shape
+        np.testing.assert_allclose(pt_result, onnx_result, atol=1e-5)
 
     def test_dynamic_seq_len(self, dls_simulation, tmp_path):
         from tsfast.models.rnn import RNNLearner

@@ -31,6 +31,7 @@ from fastai.optimizer import Adam
 from ..learner.callbacks import CB_TruncateSequence
 from ..learner.losses import SkipNLoss, cos_sim_loss, cos_sim_loss_pow, fun_rmse
 from ..models.cnn import TCN
+from ..datasets.core import ensure_norm_stats
 from ..models.layers import AR_Model, NormalizedModel, SeqLinear, StandardScaler1D
 from ..models.rnn import RNN, SimpleRNN
 from .core import PredictionCallback
@@ -632,6 +633,7 @@ def FranSysLearner(
     inp = _batch[0].shape[-1]
     out = _batch[1].shape[-1]
 
+    ensure_norm_stats(dls)
     norm_u, norm_x, norm_y = dls.norm_stats
 
     if attach_output:

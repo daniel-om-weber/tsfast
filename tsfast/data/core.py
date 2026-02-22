@@ -205,6 +205,9 @@ def DfHDFCreateWindows(win_sz: int, stp_sz: int, clm: str, fixed_start: bool = F
         if fixed_start and fixed_end:
             raise Exception
 
+        if len(df) == 0:
+            return df
+
         if "seq_len" in df:
             np_f_len = df.seq_len.values
         else:

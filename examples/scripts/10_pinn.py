@@ -130,11 +130,21 @@ def spring_damper_physics(u, y_pred, y_ref):
 # `examples/scripts/`).
 
 # %%
-try:
-    _root = Path(__file__).resolve().parent.parent
-except NameError:
-    _root = Path(".").resolve().parent
+def _find_project_root(marker: str = "test_data") -> Path:
+    """Walk up from script/notebook location to find the project root."""
+    try:
+        start = Path(__file__).resolve().parent
+    except NameError:
+        start = Path(".").resolve()
+    p = start
+    while p != p.parent:
+        if (p / marker).is_dir():
+            return p
+        p = p.parent
+    raise FileNotFoundError(f"Could not find '{marker}' directory above {start}")
 
+
+_root = _find_project_root()
 path = _root / "test_data" / "pinn"
 
 # %% [markdown]
@@ -275,7 +285,7 @@ learn.add_cb(CollocationPointsCB(
     num_workers=1,
 ))
 
-learn.fit_flat_cos(50, 3e-3)
+learn.fit_flat_cos(10, 3e-3)
 
 # %% [markdown]
 # ## Approach 2: Results
