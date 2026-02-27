@@ -15,7 +15,7 @@ from .norm import (
     _save_norm_stats,
     compute_stats,
     compute_stats_from_files,
-)
+)  # NormPair used in batch-estimation path
 from .split import discover_split_files, get_hdf_files, split_by_parent
 
 
@@ -81,7 +81,6 @@ def create_dls(
     y: list[str],
     dataset: Path | str | list | dict,
     win_sz: int = 100,
-    x: list[str] | None = None,
     stp_sz: int = 1,
     bs: int = 64,
     valid_stp_sz: int | None = None,
@@ -99,7 +98,6 @@ def create_dls(
         y: list of output signal names
         dataset: path to dataset, list of filepaths, or {'train':[], 'valid':[], 'test':[]} dict
         win_sz: window size in (resampled) samples
-        x: optional list of state signal names
         stp_sz: step size between consecutive training windows
         bs: batch size
         valid_stp_sz: step size between consecutive validation windows, defaults to win_sz
@@ -110,8 +108,6 @@ def create_dls(
         targ_fs: target sampling frequency/frequencies for resampling
         src_fs: source sampling frequency (number or HDF5 attribute name)
     """
-    if x is None:
-        x = []
     if valid_stp_sz is None:
         valid_stp_sz = win_sz
 
@@ -149,7 +145,7 @@ def create_dls(
 
     # --- Build blocks ---
     input_block = HDF5Signals(u)
-    target_block = HDF5Signals(y if len(x) == 0 else x + y)
+    target_block = HDF5Signals(y)
 
     # Handle resampling
     if targ_fs is not None:
@@ -228,26 +224,14 @@ def create_dls(
         norm_stats = _load_norm_stats(dls_id)
         if norm_stats is None:
             norm_u = compute_stats_from_files(train_files, u)
-            norm_x = compute_stats_from_files(train_files, x) if len(x) > 0 else None
             norm_y = compute_stats_from_files(train_files, y)
-            norm_stats = NormStats(norm_u, norm_x, norm_y)
+            norm_stats = NormStats(norm_u, norm_y)
             _save_norm_stats(dls_id, norm_stats)
     else:
         input_stats, output_stats = compute_stats(train_dl)
         n_u = len(u)
         norm_u = NormPair(input_stats.mean[:n_u], input_stats.std[:n_u], input_stats.min[:n_u], input_stats.max[:n_u])
-        n_x = len(x)
-        norm_x = (
-            NormPair(
-                input_stats.mean[n_u : n_u + n_x],
-                input_stats.std[n_u : n_u + n_x],
-                input_stats.min[n_u : n_u + n_x],
-                input_stats.max[n_u : n_u + n_x],
-            )
-            if n_x > 0
-            else None
-        )
         norm_y = output_stats
-        norm_stats = NormStats(norm_u, norm_x, norm_y)
+        norm_stats = NormStats(norm_u, norm_y)
 
     return DataLoaders(train=train_dl, valid=valid_dl, test=test_dl, norm_stats=norm_stats)

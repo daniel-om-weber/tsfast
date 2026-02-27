@@ -36,7 +36,6 @@ class TestNormalization:
         stats = dls_simulation.norm_stats
         assert isinstance(stats, NormStats)
         assert isinstance(stats.u, NormPair)
-        assert stats.x is None
         assert isinstance(stats.y, NormPair)
         # Named access
         assert stats.u.mean.shape == (1,)
@@ -46,12 +45,12 @@ class TestNormalization:
         assert stats.y.mean.shape == (1,)
         assert stats.y.std.shape == (1,)
         # Tuple destructuring still works
-        norm_u, norm_x, norm_y = stats
+        norm_u, norm_y = stats
         assert norm_u.mean.shape == (1,)
 
     def test_extract_mean_std_from_dls(self, dls_simulation):
         from tsfast.datasets.core import extract_mean_std_from_dls
-        norm_u, norm_x, norm_y = extract_mean_std_from_dls(dls_simulation)
+        norm_u, norm_y = extract_mean_std_from_dls(dls_simulation)
         assert norm_u.mean.shape == (1,)
         assert norm_u.std.shape == (1,)
 

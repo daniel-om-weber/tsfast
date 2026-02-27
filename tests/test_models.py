@@ -219,7 +219,7 @@ class TestScalers:
         from tsfast.models.layers import NormalizedModel, MinMaxScaler1D
         batch = dls_simulation.one_batch()
         device = batch[0].device
-        norm_u, _, norm_y = dls_simulation.norm_stats
+        norm_u, norm_y = dls_simulation.norm_stats
         model = NormalizedModel.from_stats(SimpleRNN(1, 1), norm_u, norm_y, scaler_cls=MinMaxScaler1D).to(device)
         out = model(batch[0])
         assert out.shape == batch[1].shape

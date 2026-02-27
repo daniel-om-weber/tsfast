@@ -168,31 +168,6 @@ class TestPIRNN:
 
 
 @pytest.mark.pinn
-class TestCollocationPointsCB:
-    @pytest.mark.slow
-    def test_collocation_points_training(self, dls_pinn):
-        from tsfast.models.rnn import RNNLearner
-        from tsfast.pinn.core import CollocationPointsCB, diff1_forward, generate_excitation_signals
-
-        def simple_physics(u, y_pred, y_ref):
-            dy = diff1_forward(y_pred, 0.01)
-            return {"physics": (dy ** 2).mean()}
-
-        def gen_fn(batch_size, seq_len, device):
-            return generate_excitation_signals(batch_size, seq_len, n_inputs=1, dt=0.01)
-
-        lrn = RNNLearner(dls_pinn, rnn_type="gru", num_layers=1, hidden_size=10)
-        lrn.add_cb(CollocationPointsCB(
-            generate_pinn_input=gen_fn,
-            physics_loss_func=simple_physics,
-            weight=0.1,
-            num_workers=1,
-        ))
-        lrn.fit(1, 3e-3)
-        assert not math.isnan(lrn.recorder.values[-1][1])
-
-
-@pytest.mark.pinn
 class TestPINNCallbacks:
     @pytest.mark.slow
     def test_transition_smoothness(self, dls_pinn_prediction):

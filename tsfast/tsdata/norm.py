@@ -38,16 +38,14 @@ class NormPair:
 
 
 class NormStats(NamedTuple):
-    """Normalization statistics for input, state, and output signals.
+    """Normalization statistics for input and output signals.
 
     Args:
         u: normalization stats for input signals
-        x: normalization stats for state signals, or None if no states
         y: normalization stats for output signals
     """
 
     u: NormPair
-    x: NormPair | None
     y: NormPair
 
 

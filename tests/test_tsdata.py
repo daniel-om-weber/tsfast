@@ -351,7 +351,6 @@ class TestPipeline:
 
         dls = create_dls(u=["u"], y=["y"], dataset=WH_PATH, win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2)
         assert dls.norm_stats is not None
-        assert dls.norm_stats.x is None
         assert len(dls.norm_stats.u.mean) == 1
         assert len(dls.norm_stats.y.mean) == 1
 
@@ -436,7 +435,6 @@ class TestGoldenBaselines:
         # Loose tolerance — stats are estimated from random batches
         np.testing.assert_allclose(dls.norm_stats.u.mean, g["norm_u"]["mean"], atol=0.5)
         np.testing.assert_allclose(dls.norm_stats.y.mean, g["norm_y"]["mean"], atol=0.5)
-        assert dls.norm_stats.x is None
 
     def test_pinn_simulation_shapes(self, golden):
         from tsfast.tsdata import create_dls
@@ -470,7 +468,6 @@ class TestGoldenBaselines:
         assert len(dls.norm_stats.y.mean) == len(g["norm_y"]["mean"])
         np.testing.assert_allclose(dls.norm_stats.u.mean, g["norm_u"]["mean"], atol=0.5)
         np.testing.assert_allclose(dls.norm_stats.y.mean, g["norm_y"]["mean"], atol=0.5)
-        assert dls.norm_stats.x is None
 
 
 # ──────────────────────────────────────────────────────────────────────────────

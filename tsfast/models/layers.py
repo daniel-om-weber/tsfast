@@ -453,7 +453,7 @@ class NormalizedModel(nn.Module):
         from ..datasets.core import ensure_norm_stats
 
         ensure_norm_stats(dls)
-        norm_u, _, norm_y = dls.norm_stats
+        norm_u, norm_y = dls.norm_stats
         if autoregressive:
             in_scaler = input_norm.from_stats(norm_u + norm_y)
             out_scaler = input_norm.from_stats(norm_y)

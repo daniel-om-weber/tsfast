@@ -113,7 +113,7 @@ class TestDataPipelineGolden:
 
         golden = data_golden[config_name]
         dls = create_dls(**DLS_CONFIGS[config_name])
-        norm_u, norm_x, norm_y = dls.norm_stats
+        norm_u, norm_y = dls.norm_stats
 
         # Feature counts must match exactly
         assert len(norm_u.mean) == len(golden["norm_u"]["mean"])
@@ -123,12 +123,6 @@ class TestDataPipelineGolden:
         np.testing.assert_allclose(norm_u.mean, golden["norm_u"]["mean"], atol=0.5)
         np.testing.assert_allclose(norm_y.mean, golden["norm_y"]["mean"], atol=0.5)
 
-        # x stats nullness pattern
-        if golden["norm_x"] is None:
-            assert norm_x is None
-        else:
-            assert norm_x is not None
-            assert len(norm_x.mean) == len(golden["norm_x"]["mean"])
 
 
 # --------------------------------------------------------------------------- #

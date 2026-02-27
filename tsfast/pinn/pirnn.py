@@ -286,7 +286,7 @@ def PIRNNLearner(
     n_y_total = out + n_aux_outputs  # Total outputs (supervised + auxiliary)
 
     ensure_norm_stats(dls)
-    norm_u, norm_x, norm_y = dls.norm_stats
+    norm_u, norm_y = dls.norm_stats
 
     if attach_output:
         model = PIRNN(inp, n_y_total, init_sz, n_y_supervised=out, **kwargs)
@@ -300,9 +300,8 @@ def PIRNNLearner(
     else:
         model = PIRNN(inp - out, n_y_total, init_sz, n_y_supervised=out, **kwargs)
 
-        # Input is [u, x?, y] from prediction-mode dls
-        parts = [norm_u] + ([norm_x] if norm_x else []) + [norm_y]
-        combined_input_stats = sum(parts[1:], parts[0])
+        # Input is [u, y] from prediction-mode dls
+        combined_input_stats = norm_u + norm_y
 
     # Wrap model with input normalization and optional output denormalization
     if input_norm is not None:
