@@ -1003,6 +1003,7 @@ a new subpackage that never imports from the rest of `tsfast`.
    - `.stats(n_batches)` — on-demand stats, cached after first call
    - `.stats_from_files(cache_id)` — exact stats with disk caching
    - `create_dls(u, y, dataset, win_sz, ...)` — convenience factory
+   - **Note:** `x` (state signals) dropped from the data pipeline — `NormStats` has `(u, y)` fields only, `create_dls` takes `u` and `y` but no `x`. Users put all target signals in `y`.
 8. `tsfast/tsdata/benchmark.py` — benchmark datasets (from `datasets/benchmark.py`)
    - `Silverbox`, `WienerHammerstein`, etc. via identibench integration
 

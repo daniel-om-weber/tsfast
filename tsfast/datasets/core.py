@@ -81,16 +81,14 @@ class NormPair:
 
 
 class NormStats(NamedTuple):
-    """Normalization statistics for input, state, and output signals.
+    """Normalization statistics for input and output signals.
 
     Args:
         u: normalization stats for input signals
-        x: normalization stats for state signals, or None if no states
         y: normalization stats for output signals
     """
 
     u: NormPair
-    x: NormPair | None
     y: NormPair
 
 
@@ -188,13 +186,12 @@ def extract_mean_std_from_hdffiles(
     return means.astype(np.float32), stds.astype(np.float32)
 
 
-def extract_mean_std_from_dataset(lst_files: list, u: list[str], x: list[str], y: list[str]) -> tuple:
-    "Extract mean/std normalization statistics for u, x, and y signals from training files."
+def extract_mean_std_from_dataset(lst_files: list, u: list[str], y: list[str]) -> tuple:
+    "Extract mean/std normalization statistics for u and y signals from training files."
     train_files = lst_files[ParentSplitter()(lst_files)[0]]
     norm_u = extract_mean_std_from_hdffiles(train_files, u)
-    norm_x = extract_mean_std_from_hdffiles(train_files, x)
     norm_y = extract_mean_std_from_hdffiles(train_files, y)
-    return (norm_u, norm_x, norm_y)
+    return (norm_u, norm_y)
 
 
 def extract_norm_from_hdffiles(lst_files: list, lst_signals: list[str]) -> NormPair | None:
@@ -263,9 +260,9 @@ def ensure_norm_stats(dls, n_batches: int = 10) -> None:
     # estimate_norm_stats returns one NormPair per tensor in the batch.
     # Standard layout: (input_stats, output_stats); states slot is None.
     if len(stats) >= 2:
-        dls.norm_stats = NormStats(u=stats[0], x=None, y=stats[1])
+        dls.norm_stats = NormStats(u=stats[0], y=stats[1])
     else:
-        dls.norm_stats = NormStats(u=stats[0], x=None, y=stats[0])
+        dls.norm_stats = NormStats(u=stats[0], y=stats[0])
 
 
 def _FileListSplitter(train_set, valid_set):
@@ -325,7 +322,6 @@ def create_dls(
     y: list[str],
     dataset: Path | list | dict,
     win_sz: int = 100,
-    x: list[str] = [],
     stp_sz: int = 1,
     sub_seq_len: int | None = None,
     bs: int = 64,
@@ -347,7 +343,6 @@ def create_dls(
         y: list of output signal names
         dataset: path to dataset, list of filepaths, or {'train':[], 'valid':[], 'test':[]} dict
         win_sz: initial window size
-        x: optional list of state signal names
         stp_sz: step size between consecutive windows
         sub_seq_len: if provided uses truncated backpropagation through time with this sub sequence length
         bs: batch size
@@ -397,13 +392,13 @@ def create_dls(
     if prediction:
         if input_delay:
             blocks = (
-                SequenceBlock.from_hdf(u + x + y, TensorSequencesInput, clm_shift=[-1] * len(u + x + y), cached=cached),
+                SequenceBlock.from_hdf(u + y, TensorSequencesInput, clm_shift=[-1] * len(u + y), cached=cached),
                 SequenceBlock.from_hdf(y, TensorSequencesOutput, clm_shift=[1] * len(y), cached=cached),
             )
         else:
             blocks = (
                 SequenceBlock.from_hdf(
-                    u + x + y, TensorSequencesInput, clm_shift=([0] * len(u) + [-1] * len(x + y)), cached=cached
+                    u + y, TensorSequencesInput, clm_shift=([0] * len(u) + [-1] * len(y)), cached=cached
                 ),
                 SequenceBlock.from_hdf(y, TensorSequencesOutput, clm_shift=[1] * len(y), cached=cached),
             )
@@ -480,28 +475,17 @@ def create_dls(
         norm_stats = _load_norm_stats(dls_id)
         if norm_stats is None:
             norm_u = extract_norm_from_hdffiles(train_files, u)
-            norm_x = extract_norm_from_hdffiles(train_files, x) if len(x) > 0 else None
             norm_y = extract_norm_from_hdffiles(train_files, y)
-            norm_stats = NormStats(norm_u, norm_x, norm_y)
+            norm_stats = NormStats(norm_u, norm_y)
             _save_norm_stats(dls_id, norm_stats)
         dls.norm_stats = norm_stats
     else:
         # estimate from training batches
         input_stats, output_stats = estimate_norm_stats(dls)
-        n_u, n_x = len(u), len(x)
+        n_u = len(u)
         norm_u = NormPair(input_stats.mean[:n_u], input_stats.std[:n_u], input_stats.min[:n_u], input_stats.max[:n_u])
-        norm_x = (
-            NormPair(
-                input_stats.mean[n_u : n_u + n_x],
-                input_stats.std[n_u : n_u + n_x],
-                input_stats.min[n_u : n_u + n_x],
-                input_stats.max[n_u : n_u + n_x],
-            )
-            if n_x > 0
-            else None
-        )
         norm_y = output_stats
-        dls.norm_stats = NormStats(norm_u, norm_x, norm_y)
+        dls.norm_stats = NormStats(norm_u, norm_y)
 
     # add the test dataloader
     if test_files is None:

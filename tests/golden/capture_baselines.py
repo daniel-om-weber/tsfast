@@ -91,7 +91,7 @@ def capture_data_pipeline() -> dict:
     for name, kwargs in DLS_CONFIGS.items():
         dls = create_dls(**kwargs)
         batch = dls.one_batch()
-        norm_u, norm_x, norm_y = dls.norm_stats
+        norm_u, norm_y = dls.norm_stats
 
         results[name] = {
             "train_len": len(dls.train),
@@ -99,7 +99,6 @@ def capture_data_pipeline() -> dict:
             "batch_xb_shape": list(batch[0].shape),
             "batch_yb_shape": list(batch[1].shape),
             "norm_u": _norm_pair_to_dict(norm_u),
-            "norm_x": _norm_pair_to_dict(norm_x),
             "norm_y": _norm_pair_to_dict(norm_y),
         }
         print(f"  [{name}] xb={batch[0].shape}, yb={batch[1].shape}, "
