@@ -9,11 +9,14 @@ __all__ = [
     "bias",
     "vary_seq_len",
     "truncate_sequence",
+    "variable_init_sz",
+    "alternating_encoder",
 ]
 
 import random
 from collections.abc import Callable
 
+import numpy as np
 import torch
 from torch import Tensor
 
@@ -205,4 +208,82 @@ class truncate_sequence:
         if lim > 0:
             xb = xb[:, :-lim]
             yb = yb[:, :-lim]
+        return xb, yb
+
+
+class variable_init_sz:
+    """Randomizes ``model.init_sz`` during training, restores during validation.
+
+    Transform (applied train + valid): during training, sets a random init_sz
+    per batch; during validation, restores the original init_sz.
+
+    Args:
+        init_sz_min: minimum initialization window size
+        init_sz_max: maximum initialization window size (inclusive)
+        model: explicit model reference (auto-detected via unwrap_model if None)
+    """
+
+    def __init__(self, init_sz_min: int, init_sz_max: int, model: torch.nn.Module | None = None):
+        self.init_sz_min = init_sz_min
+        self.init_sz_max = init_sz_max
+        self.inner_model = model
+        self._init_sz_valid: int | None = None
+        self._training: bool = False
+
+    def setup(self, trainer):
+        if self.inner_model is None:
+            from ..models.layers import unwrap_model
+
+            self.inner_model = unwrap_model(trainer.model)
+        self._trainer = trainer
+
+    def teardown(self, trainer):
+        self._trainer = None
+
+    def __call__(self, xb: Tensor, yb: Tensor) -> tuple[Tensor, Tensor]:
+        model = self.inner_model
+        if model is None or not hasattr(model, "init_sz"):
+            return xb, yb
+
+        training = self._trainer.model.training if self._trainer is not None else False
+
+        if self._init_sz_valid is None:
+            self._init_sz_valid = model.init_sz
+
+        if training:
+            model.init_sz = np.random.randint(self.init_sz_min, self.init_sz_max + 1)
+        else:
+            model.init_sz = self._init_sz_valid
+
+        return xb, yb
+
+
+class alternating_encoder:
+    """Randomly alternates between sequence and state encoder per training batch.
+
+    Augmentation (train only): randomly switches ``model.default_encoder_mode``.
+    Resets to ``'sequence'`` on teardown.
+
+    Args:
+        p_state: probability of using state encoder per batch
+        model: explicit model reference (auto-detected via unwrap_model if None)
+    """
+
+    def __init__(self, p_state: float = 0.3, model: torch.nn.Module | None = None):
+        self.p_state = p_state
+        self.inner_model = model
+
+    def setup(self, trainer):
+        if self.inner_model is None:
+            from ..models.layers import unwrap_model
+
+            self.inner_model = unwrap_model(trainer.model)
+
+    def teardown(self, trainer):
+        if self.inner_model is not None and hasattr(self.inner_model, "default_encoder_mode"):
+            self.inner_model.default_encoder_mode = "sequence"
+
+    def __call__(self, xb: Tensor, yb: Tensor) -> tuple[Tensor, Tensor]:
+        if self.inner_model is not None and hasattr(self.inner_model, "default_encoder_mode"):
+            self.inner_model.default_encoder_mode = "state" if np.random.rand() < self.p_state else "sequence"
         return xb, yb

@@ -48,10 +48,11 @@ class TestFranSysRegularization:
         "mse", "mae", "mspe", "mape", "cos", "cos_pow",
     ])
     def test_fransys_sync_types(self, dls_prediction, sync_type):
-        from tsfast.prediction.fransys import FranSysLearner, FranSysCallback
+        from tsfast.prediction.fransys import FranSysLearner
+        from tsfast.training import FranSysRegularizer
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1)
         model = self._get_model(lrn)
-        lrn.add_cb(FranSysCallback(
+        lrn.add_aux_loss(FranSysRegularizer(
             modules=[model.rnn_diagnosis, model.rnn_prognosis],
             p_state_sync=1.0, sync_type=sync_type, model=model,
         ))
@@ -60,10 +61,11 @@ class TestFranSysRegularization:
 
     @pytest.mark.slow
     def test_fransys_diag_loss(self, dls_prediction):
-        from tsfast.prediction.fransys import FranSysLearner, FranSysCallback
+        from tsfast.prediction.fransys import FranSysLearner
+        from tsfast.training import FranSysRegularizer
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1)
         model = self._get_model(lrn)
-        lrn.add_cb(FranSysCallback(
+        lrn.add_aux_loss(FranSysRegularizer(
             modules=[model.rnn_diagnosis, model.rnn_prognosis],
             p_state_sync=0, p_diag_loss=0.1, model=model,
         ))
@@ -72,10 +74,11 @@ class TestFranSysRegularization:
 
     @pytest.mark.slow
     def test_fransys_osp_loss(self, dls_prediction):
-        from tsfast.prediction.fransys import FranSysLearner, FranSysCallback
+        from tsfast.prediction.fransys import FranSysLearner
+        from tsfast.training import FranSysRegularizer
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1)
         model = self._get_model(lrn)
-        lrn.add_cb(FranSysCallback(
+        lrn.add_aux_loss(FranSysRegularizer(
             modules=[model.rnn_diagnosis, model.rnn_prognosis],
             p_state_sync=0, p_osp_loss=0.1, p_osp_sync=0.1, model=model,
         ))
@@ -84,10 +87,11 @@ class TestFranSysRegularization:
 
     @pytest.mark.slow
     def test_fransys_tar_loss(self, dls_prediction):
-        from tsfast.prediction.fransys import FranSysLearner, FranSysCallback
+        from tsfast.prediction.fransys import FranSysLearner
+        from tsfast.training import FranSysRegularizer
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1)
         model = self._get_model(lrn)
-        lrn.add_cb(FranSysCallback(
+        lrn.add_aux_loss(FranSysRegularizer(
             modules=[model.rnn_diagnosis, model.rnn_prognosis],
             p_state_sync=0, p_tar_loss=0.1, model=model,
         ))
@@ -96,23 +100,25 @@ class TestFranSysRegularization:
 
     @pytest.mark.slow
     def test_fransys_variable_init(self, dls_prediction):
-        from tsfast.prediction.fransys import FranSysLearner, FranSysCallback_variable_init
+        from tsfast.prediction.fransys import FranSysLearner
+        from tsfast.training import variable_init_sz
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1)
-        lrn.add_cb(FranSysCallback_variable_init(init_sz_min=30, init_sz_max=70))
+        lrn.add_transform(variable_init_sz(init_sz_min=30, init_sz_max=70))
         lrn.fit(1, 3e-3)
         assert not math.isnan(lrn.recorder.values[-1][1])
 
     @pytest.mark.slow
     def test_fransys_diag_loss_with_output_norm(self, dls_prediction):
         """Verify diag_loss denormalizes predictions when output_norm is used."""
-        from tsfast.prediction.fransys import FranSysLearner, FranSysCallback
+        from tsfast.prediction.fransys import FranSysLearner
+        from tsfast.training import FranSysRegularizer
         from tsfast.models.layers import StandardScaler1D
         lrn = FranSysLearner(
             dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1,
             output_norm=StandardScaler1D,
         )
         model = self._get_model(lrn)
-        lrn.add_cb(FranSysCallback(
+        lrn.add_aux_loss(FranSysRegularizer(
             modules=[model.rnn_diagnosis, model.rnn_prognosis],
             p_state_sync=0, p_diag_loss=0.1, model=model,
         ))
@@ -122,14 +128,15 @@ class TestFranSysRegularization:
     @pytest.mark.slow
     def test_fransys_osp_loss_with_output_norm(self, dls_prediction):
         """Verify osp_loss denormalizes predictions when output_norm is used."""
-        from tsfast.prediction.fransys import FranSysLearner, FranSysCallback
+        from tsfast.prediction.fransys import FranSysLearner
+        from tsfast.training import FranSysRegularizer
         from tsfast.models.layers import StandardScaler1D
         lrn = FranSysLearner(
             dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1,
             output_norm=StandardScaler1D,
         )
         model = self._get_model(lrn)
-        lrn.add_cb(FranSysCallback(
+        lrn.add_aux_loss(FranSysRegularizer(
             modules=[model.rnn_diagnosis, model.rnn_prognosis],
             p_state_sync=0, p_osp_loss=0.1, p_osp_sync=0.1, model=model,
         ))
@@ -137,8 +144,9 @@ class TestFranSysRegularization:
         assert not math.isnan(lrn.recorder.values[-1][1])
 
     def test_fransys_callback_captures_output_norm(self, dls_prediction):
-        """Verify FranSysCallback detects output_norm from NormalizedModel."""
-        from tsfast.prediction.fransys import FranSysLearner, FranSysCallback
+        """Verify FranSysRegularizer detects output_norm from NormalizedModel."""
+        from tsfast.prediction.fransys import FranSysLearner
+        from tsfast.training import FranSysRegularizer
         from tsfast.models.layers import NormalizedModel, StandardScaler1D
 
         lrn = FranSysLearner(
@@ -149,19 +157,20 @@ class TestFranSysRegularization:
         assert lrn.model.output_norm is not None
 
         model = self._get_model(lrn)
-        cb = FranSysCallback(
+        reg = FranSysRegularizer(
             modules=[model.rnn_diagnosis, model.rnn_prognosis],
             p_state_sync=0, p_diag_loss=0.1, model=model,
         )
-        lrn.add_cb(cb)
-        # before_fit triggers output_norm detection
-        cb.learn = lrn
-        cb.before_fit()
-        assert cb._output_norm is lrn.model.output_norm
+        lrn.add_aux_loss(reg)
+        # setup triggers output_norm detection
+        reg.setup(lrn)
+        assert reg._output_norm is lrn.model.output_norm
+        reg.teardown(lrn)
 
     def test_fransys_callback_no_output_norm(self, dls_prediction):
         """Verify output_norm is None when NormalizedModel has no output scaler."""
-        from tsfast.prediction.fransys import FranSysLearner, FranSysCallback
+        from tsfast.prediction.fransys import FranSysLearner
+        from tsfast.training import FranSysRegularizer
         from tsfast.models.layers import NormalizedModel
 
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1)
@@ -169,14 +178,14 @@ class TestFranSysRegularization:
         assert lrn.model.output_norm is None
 
         model = self._get_model(lrn)
-        cb = FranSysCallback(
+        reg = FranSysRegularizer(
             modules=[model.rnn_diagnosis, model.rnn_prognosis],
             p_state_sync=0, p_diag_loss=0.1, model=model,
         )
-        lrn.add_cb(cb)
-        cb.learn = lrn
-        cb.before_fit()
-        assert cb._output_norm is None
+        lrn.add_aux_loss(reg)
+        reg.setup(lrn)
+        assert reg._output_norm is None
+        reg.teardown(lrn)
 
     def test_fransys_variable_init_writes_through_unwrap(self, dls_prediction):
         """Verify that unwrap_model returns the inner model and writes reach forward()."""

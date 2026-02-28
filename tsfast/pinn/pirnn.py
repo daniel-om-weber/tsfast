@@ -6,16 +6,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from collections.abc import Callable
-from functools import partial
 
-from fastai.data.core import DataLoaders
-from fastai.learner import Learner
-from fastai.optimizer import Adam
-from fastcore.imports import is_iter
-from fastcore.meta import delegates
-
-from ..learner.callbacks import CB_TruncateSequence
-from ..learner.losses import SkipNLoss
+from ..training import Learner, fun_rmse, prediction_concat, truncate_sequence
 from ..datasets.core import ensure_norm_stats
 from ..models.layers import NormalizedModel, SeqLinear, StandardScaler1D
 from ..models.rnn import RNN
@@ -243,17 +235,18 @@ class AuxiliaryOutputLoss:
         return self.loss_func(pred[..., : self.n_supervised], targ)
 
 
-@delegates(PIRNN, keep=True)
 def PIRNNLearner(
-    dls: DataLoaders,
+    dls,
     init_sz: int,
     n_aux_outputs: int = 0,
     attach_output: bool = False,
     loss_func: Callable = nn.L1Loss(),
     metrics: list | None = None,
-    opt_func: Callable = Adam,
+    opt_func: Callable = torch.optim.Adam,
     lr: float = 3e-3,
-    cbs: list | None = None,
+    transforms: list | None = None,
+    augmentations: list | None = None,
+    aux_losses: list | None = None,
     input_norm: type | None = StandardScaler1D,
     output_norm: type | None = None,
     **kwargs,
@@ -264,21 +257,23 @@ def PIRNNLearner(
         dls: DataLoaders.
         init_sz: Initialization sequence length.
         n_aux_outputs: Number of auxiliary outputs (not in dataset).
-        attach_output: Whether to attach output to input via PredictionCallback.
+        attach_output: Whether to attach output to input via prediction_concat.
         loss_func: Loss function.
         metrics: Metrics.
         opt_func: Optimizer.
         lr: Learning rate.
-        cbs: Additional callbacks.
+        transforms: Additional transforms (train + valid).
+        augmentations: Additional augmentations (train only).
+        aux_losses: Additional auxiliary losses.
         input_norm: Input normalization Scaler class.
         output_norm: Output denormalization Scaler class.
         **kwargs: Additional arguments for PIRNN.
     """
-    from tsfast.prediction.core import PredictionCallback
-    from tsfast.learner.losses import fun_rmse
-
-    cbs = [] if cbs is None else list(cbs)
-    metrics = [fun_rmse] if metrics is None else list(metrics) if is_iter(metrics) else [metrics]
+    if metrics is None:
+        metrics = [fun_rmse]
+    transforms = list(transforms) if transforms else []
+    augmentations = list(augmentations) if augmentations else []
+    aux_losses = list(aux_losses) if aux_losses else []
 
     _batch = dls.one_batch()
     inp = _batch[0].shape[-1]
@@ -291,11 +286,11 @@ def PIRNNLearner(
     if attach_output:
         model = PIRNN(inp, n_y_total, init_sz, n_y_supervised=out, **kwargs)
 
-        # Add PredictionCallback if not present
-        if not any(isinstance(cb, PredictionCallback) for cb in cbs):
-            cbs.append(PredictionCallback(0))
+        # Add prediction_concat transform if not present
+        if not any(isinstance(t, prediction_concat) for t in transforms):
+            transforms.insert(0, prediction_concat(t_offset=0))
 
-        # Input will be [u, y] after PredictionCallback concatenation
+        # Input will be [u, y] after prediction_concat
         combined_input_stats = norm_u + norm_y
     else:
         model = PIRNN(inp - out, n_y_total, init_sz, n_y_supervised=out, **kwargs)
@@ -309,23 +304,28 @@ def PIRNNLearner(
         out_scaler = output_norm.from_stats(norm_y) if output_norm is not None else None
         model = NormalizedModel(model, in_scaler, out_scaler)
 
-    # For long sequences, add truncation callback
+    # For long sequences, add truncate_sequence augmentation
     seq_len = _batch[0].shape[1]
     LENGTH_THRESHOLD = 300
     if seq_len > init_sz + LENGTH_THRESHOLD:
-        if not any(isinstance(cb, CB_TruncateSequence) for cb in cbs):
+        if not any(isinstance(a, truncate_sequence) for a in augmentations):
             INITIAL_SEQ_LEN = 100
-            cbs.append(CB_TruncateSequence(init_sz + INITIAL_SEQ_LEN))
+            augmentations.append(truncate_sequence(init_sz + INITIAL_SEQ_LEN))
 
     # Wrap loss and metrics to only use supervised outputs when auxiliary outputs present
     if n_aux_outputs > 0:
         loss_func = AuxiliaryOutputLoss(loss_func, out)
         metrics = [AuxiliaryOutputLoss(m, out) for m in metrics]
 
-    # Skip initial timesteps in loss/metrics
-    skip = partial(SkipNLoss, n_skip=init_sz)
-    metrics = [skip(f) for f in metrics]
-    loss_func = skip(loss_func)
-
-    lrn = Learner(dls, model, loss_func=loss_func, metrics=metrics, cbs=cbs, opt_func=opt_func, lr=lr)
-    return lrn
+    return Learner(
+        model,
+        dls,
+        loss_func=loss_func,
+        metrics=metrics,
+        n_skip=init_sz,
+        opt_func=opt_func,
+        lr=lr,
+        transforms=transforms,
+        augmentations=augmentations,
+        aux_losses=aux_losses,
+    )

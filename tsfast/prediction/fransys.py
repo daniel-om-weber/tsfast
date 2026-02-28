@@ -12,29 +12,21 @@ __all__ = [
     "FranSysLearner",
 ]
 
-from functools import partial
-
 import numpy as np
 import torch
 from torch import nn
 
-from fastcore.imports import is_iter
 from fastcore.meta import delegates
 
 from fastai.callback.core import Callback
 from fastai.callback.hook import HookCallback
-from fastai.data.core import DataLoaders
-from fastai.learner import Learner
 from fastai.metrics import mae
-from fastai.optimizer import Adam
 
-from ..learner.callbacks import CB_TruncateSequence
-from ..learner.losses import SkipNLoss, cos_sim_loss, cos_sim_loss_pow, fun_rmse
+from ..training import Learner, cos_sim_loss, cos_sim_loss_pow, fun_rmse, prediction_concat, truncate_sequence
 from ..models.cnn import TCN
 from ..datasets.core import ensure_norm_stats
 from ..models.layers import AR_Model, NormalizedModel, SeqLinear, StandardScaler1D
 from ..models.rnn import RNN, SimpleRNN
-from .core import PredictionCallback
 
 
 class Diag_RNN(nn.Module):
@@ -593,16 +585,17 @@ class FranSysCallback_variable_init(Callback):
                 self.inner_model.init_sz = self.init_sz_valid
 
 
-@delegates(FranSys, keep=True)
 def FranSysLearner(
-    dls: DataLoaders,
+    dls,
     init_sz: int,
     attach_output: bool = False,
     loss_func=nn.L1Loss(),
-    metrics=fun_rmse,
-    opt_func=Adam,
+    metrics: list | None = None,
+    opt_func=torch.optim.Adam,
     lr: float = 3e-3,
-    cbs: list | None = None,
+    transforms: list | None = None,
+    augmentations: list | None = None,
+    aux_losses: list | None = None,
     input_norm: type | None = StandardScaler1D,
     output_norm: type | None = None,
     **kwargs,
@@ -612,18 +605,22 @@ def FranSysLearner(
     Args:
         dls: DataLoaders with norm_stats for input/output normalization
         init_sz: number of initial time steps used for diagnosis
-        attach_output: if True, use PredictionCallback to concatenate output
-            to input
-        loss_func: loss function, wrapped with SkipNLoss(init_sz)
-        metrics: metrics to track, each wrapped with SkipNLoss(init_sz)
+        attach_output: if True, use prediction_concat to concatenate output to input
+        loss_func: loss function
+        metrics: metrics to track
         opt_func: optimizer constructor
         lr: learning rate
-        cbs: additional callbacks
+        transforms: additional transforms (train + valid)
+        augmentations: additional augmentations (train only)
+        aux_losses: additional auxiliary losses
         input_norm: scaler class for input normalization, None to disable
         output_norm: scaler class for output denormalization, None to disable
     """
-    cbs = [] if cbs is None else list(cbs)
-    metrics = list(metrics) if is_iter(metrics) else [metrics]
+    if metrics is None:
+        metrics = [fun_rmse]
+    transforms = list(transforms) if transforms else []
+    augmentations = list(augmentations) if augmentations else []
+    aux_losses = list(aux_losses) if aux_losses else []
 
     _batch = dls.one_batch()
     inp = _batch[0].shape[-1]
@@ -635,11 +632,11 @@ def FranSysLearner(
     if attach_output:
         model = FranSys(inp, out, init_sz, **kwargs)
 
-        # if PredictionCallback is not in cbs, add it
-        if not any(isinstance(cb, PredictionCallback) for cb in cbs):
-            cbs.append(PredictionCallback(0))
+        # Add prediction_concat transform if not already present
+        if not any(isinstance(t, prediction_concat) for t in transforms):
+            transforms.insert(0, prediction_concat(t_offset=0))
 
-        # Input will be [u, y] after PredictionCallback concatenation
+        # Input will be [u, y] after prediction_concat
         combined_input_stats = norm_u + norm_y
     else:
         model = FranSys(inp - out, out, init_sz, **kwargs)
@@ -653,18 +650,23 @@ def FranSysLearner(
         out_scaler = output_norm.from_stats(norm_y) if output_norm is not None else None
         model = NormalizedModel(model, in_scaler, out_scaler)
 
-    # for long sequences, add a TruncateSequenceCallback
+    # For long sequences, add truncate_sequence augmentation
     seq_len = _batch[0].shape[1]
     LENGTH_THRESHOLD = 300
     if seq_len > init_sz + LENGTH_THRESHOLD:
-        if not any(isinstance(cb, CB_TruncateSequence) for cb in cbs):
-            INITIAL_SEQ_LEN = 100  # initial sequence length for truncation, increases during training
-            cbs.append(CB_TruncateSequence(init_sz + INITIAL_SEQ_LEN))
+        if not any(isinstance(a, truncate_sequence) for a in augmentations):
+            INITIAL_SEQ_LEN = 100
+            augmentations.append(truncate_sequence(init_sz + INITIAL_SEQ_LEN))
 
-    skip = partial(SkipNLoss, n_skip=init_sz)
-
-    metrics = [skip(f) for f in metrics]
-    loss_func = skip(loss_func)
-
-    lrn = Learner(dls, model, loss_func=loss_func, metrics=metrics, cbs=cbs, opt_func=opt_func, lr=lr)
-    return lrn
+    return Learner(
+        model,
+        dls,
+        loss_func=loss_func,
+        metrics=metrics,
+        n_skip=init_sz,
+        opt_func=opt_func,
+        lr=lr,
+        transforms=transforms,
+        augmentations=augmentations,
+        aux_losses=aux_losses,
+    )

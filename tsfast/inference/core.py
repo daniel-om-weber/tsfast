@@ -1,38 +1,56 @@
-"""NumPy-in/NumPy-out inference for trained fastai Learners."""
+"""NumPy-in/NumPy-out inference for trained Learners."""
 
 __all__ = ["InferenceWrapper"]
 
-from ..data.loader import reset_model_state
 import warnings
-from ..prediction.core import PredictionCallback
-from fastai.learner import Learner
+
 import numpy as np
 import torch
 
+from ..data.loader import reset_model_state
+from ..training.transforms import prediction_concat
+
+
+def _find_prediction_concat(learner):
+    """Find a prediction_concat transform in either old or new Learner."""
+    # New tsfast.training.Learner — check transforms list
+    if hasattr(learner, "transforms"):
+        for t in learner.transforms:
+            if isinstance(t, prediction_concat):
+                return t
+
+    # Old fastai Learner — check callbacks
+    if hasattr(learner, "cbs"):
+        from ..prediction.core import PredictionCallback
+
+        for cb in learner.cbs:
+            if isinstance(cb, PredictionCallback):
+                return cb
+
+    return None
+
 
 class InferenceWrapper:
-    """NumPy-in/NumPy-out inference for trained fastai Learners.
+    """NumPy-in/NumPy-out inference for trained Learners.
 
-    Reconstructs the training-time input pipeline (including PredictionCallback
+    Reconstructs the training-time input pipeline (including prediction_concat
     concatenation) so models get the same input format they saw during training.
 
     Args:
-        learner: trained fastai Learner with model and dls
+        learner: trained Learner (tsfast.training.Learner or fastai Learner) with model and dls
         device: device for inference ('cpu', 'cuda')
     """
 
     def __init__(
         self,
-        learner: Learner,
+        learner,
         device: str | torch.device = "cpu",
     ):
-        if not isinstance(learner, Learner) or not hasattr(learner, "model") or not hasattr(learner, "dls"):
-            raise TypeError("Input 'learner' must be a valid fastai Learner with model and dls.")
+        if not hasattr(learner, "model") or not hasattr(learner, "dls"):
+            raise TypeError("Input 'learner' must be a valid Learner with model and dls.")
         self.device = torch.device(device)
         self.model = learner.model.to(self.device).eval()
-        self._pred_cb: PredictionCallback | None = next(
-            (cb for cb in learner.cbs if isinstance(cb, PredictionCallback)), None
-        )
+        self._pred_cb = _find_prediction_concat(learner)
 
     def _prepare_tensor(self, np_array: np.ndarray, name: str) -> torch.Tensor:
         "Converts numpy array to a 3D tensor [batch, seq_len, features] on the correct device."
