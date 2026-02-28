@@ -126,6 +126,124 @@ class TestBlocks:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+#  Alternative blocks: CSVSignals, FilenameScalar
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestAltBlocks:
+    def test_csv_signals_read(self, tmp_path):
+        from tsfast.tsdata.blocks import CSVSignals
+
+        csv_file = tmp_path / "data.csv"
+        csv_file.write_text("voltage,current\n1.0,2.0\n3.0,4.0\n5.0,6.0\n")
+        block = CSVSignals(["voltage", "current"])
+        arr = block.read(str(csv_file), 0, 2)
+        assert arr.shape == (2, 2)
+        np.testing.assert_allclose(arr, [[1.0, 2.0], [3.0, 4.0]])
+
+    def test_csv_signals_file_len(self, tmp_path):
+        from tsfast.tsdata.blocks import CSVSignals
+
+        csv_file = tmp_path / "data.csv"
+        csv_file.write_text("a,b\n1,2\n3,4\n5,6\n7,8\n")
+        block = CSVSignals(["a", "b"])
+        assert block.file_len(str(csv_file)) == 4
+        # Second call uses cache
+        assert str(csv_file) in block._len_cache
+        assert block.file_len(str(csv_file)) == 4
+
+    def test_csv_signals_n_features(self):
+        from tsfast.tsdata.blocks import CSVSignals
+
+        block = CSVSignals(["x", "y", "z"])
+        assert block.n_features == 3
+
+    def test_csv_signals_with_dataset(self, tmp_path):
+        from tsfast.tsdata.blocks import CSVSignals
+        from tsfast.tsdata.dataset import FileEntry, WindowedDataset
+
+        csv_file = tmp_path / "signals.csv"
+        lines = ["u,y"] + [f"{i * 0.1},{i * 0.2}" for i in range(100)]
+        csv_file.write_text("\n".join(lines) + "\n")
+
+        block_u = CSVSignals(["u"])
+        block_y = CSVSignals(["y"])
+        entries = [FileEntry(path=str(csv_file))]
+        ds = WindowedDataset(entries, block_u, block_y, win_sz=10, stp_sz=10)
+        assert len(ds) == 10  # (100 - 10) // 10 + 1
+        xb, yb = ds[0]
+        assert xb.shape == (10, 1)
+        assert yb.shape == (10, 1)
+        assert isinstance(xb, torch.Tensor)
+
+    def test_csv_signals_custom_delimiter(self, tmp_path):
+        from tsfast.tsdata.blocks import CSVSignals
+
+        csv_file = tmp_path / "data.csv"
+        csv_file.write_text("a;b\n1.5;2.5\n3.5;4.5\n")
+        block = CSVSignals(["a", "b"], delimiter=";")
+        arr = block.read(str(csv_file), 0, 2)
+        assert arr.shape == (2, 2)
+        np.testing.assert_allclose(arr, [[1.5, 2.5], [3.5, 4.5]])
+
+    def test_filename_scalar_single_group(self, tmp_path):
+        from tsfast.tsdata.blocks import FilenameScalar
+
+        f = tmp_path / "test_25C.csv"
+        f.touch()
+        block = FilenameScalar(r"(\d+)C")
+        arr = block.read(str(f))
+        assert arr.shape == (1,)
+        assert arr[0] == 25.0
+
+    def test_filename_scalar_multi_group(self, tmp_path):
+        from tsfast.tsdata.blocks import FilenameScalar
+
+        f = tmp_path / "test_25C_100Hz.csv"
+        f.touch()
+        block = FilenameScalar(r"(\d+)C_(\d+)Hz")
+        arr = block.read(str(f))
+        assert arr.shape == (2,)
+        np.testing.assert_allclose(arr, [25.0, 100.0])
+
+    def test_filename_scalar_no_match(self, tmp_path):
+        from tsfast.tsdata.blocks import FilenameScalar
+
+        f = tmp_path / "nodata.csv"
+        f.touch()
+        block = FilenameScalar(r"(\d+)C")
+        with pytest.raises(ValueError, match="did not match"):
+            block.read(str(f))
+
+    def test_filename_scalar_n_features(self):
+        from tsfast.tsdata.blocks import FilenameScalar
+
+        assert FilenameScalar(r"(\d+)C").n_features == 1
+        assert FilenameScalar(r"(\d+)C_(\d+)Hz").n_features == 2
+        assert FilenameScalar(r"(\d+)_(\d+)_(\d+)").n_features == 3
+
+    def test_mixed_csv_filename_dataset(self, tmp_path):
+        from tsfast.tsdata.blocks import CSVSignals, FilenameScalar
+        from tsfast.tsdata.dataset import FileEntry, WindowedDataset
+
+        csv_file = tmp_path / "trial_25C.csv"
+        lines = ["u,y"] + [f"{i * 0.1},{i * 0.2}" for i in range(50)]
+        csv_file.write_text("\n".join(lines) + "\n")
+
+        block_u = CSVSignals(["u"])
+        block_y = CSVSignals(["y"])
+        block_temp = FilenameScalar(r"(\d+)C")
+        entries = [FileEntry(path=str(csv_file))]
+        ds = WindowedDataset(entries, block_u, (block_y, block_temp), win_sz=10, stp_sz=10)
+        assert len(ds) == 5  # (50 - 10) // 10 + 1
+        xb, (yb, temp) = ds[0]
+        assert xb.shape == (10, 1)
+        assert yb.shape == (10, 1)
+        assert temp.shape == (1,)
+        assert temp.item() == 25.0
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 #  dataset.py
 # ──────────────────────────────────────────────────────────────────────────────
 
