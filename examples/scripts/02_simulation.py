@@ -31,7 +31,6 @@
 # ## Setup
 
 # %%
-import numpy as np
 from tsfast.tsdata.benchmark import create_dls_silverbox, create_dls_wh
 from tsfast.models.rnn import RNNLearner
 from tsfast.inference import InferenceWrapper

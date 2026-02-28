@@ -35,7 +35,7 @@
 # %%
 from pathlib import Path
 
-from torch.utils.data import DataLoader, RandomSampler
+from torch.utils.data import DataLoader
 
 from tsfast.tsdata import (
     WindowedDataset, HDF5Signals, FileEntry, DataLoaders,
