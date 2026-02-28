@@ -1,6 +1,6 @@
 """Pure-PyTorch data pipeline for time series datasets."""
 
-from .blocks import HDF5Attrs, HDF5Signals, Resampled
+from .blocks import CSVSignals, FilenameScalar, HDF5Attrs, HDF5Signals, Resampled
 from .dataset import FileEntry, WindowedDataset
 from .norm import NormPair, NormStats, compute_stats, compute_stats_from_files
 from .pipeline import DataLoaders, create_dls, create_dls_from_blocks

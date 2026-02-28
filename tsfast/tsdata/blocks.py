@@ -1,6 +1,9 @@
-"""HDF5 signal readers for time series data blocks."""
+"""Signal reader blocks for time series data."""
 
+import csv
 import math
+import re
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -123,3 +126,67 @@ class Resampled:
     @property
     def n_features(self) -> int:
         return self.block.n_features
+
+
+class CSVSignals:
+    """Temporal block: reads named columns from CSV files.
+
+    Args:
+        columns: column names to extract
+        delimiter: CSV delimiter character
+    """
+
+    def __init__(self, columns: list[str], delimiter: str = ","):
+        self.columns = columns
+        self.delimiter = delimiter
+        self._data_cache: dict[str, np.ndarray] = {}
+        self._len_cache: dict[str, int] = {}
+
+    def _load(self, path: str) -> np.ndarray:
+        """Load CSV file and cache the result as [rows, n_columns] array."""
+        if path not in self._data_cache:
+            with open(path, newline="") as f:
+                reader = csv.DictReader(f, delimiter=self.delimiter)
+                rows = [[float(row[col]) for col in self.columns] for row in reader]
+            arr = np.array(rows, dtype=np.float32)
+            self._data_cache[path] = arr
+            self._len_cache[path] = arr.shape[0]
+        return self._data_cache[path]
+
+    def read(self, path: str, l_slc: int, r_slc: int) -> np.ndarray:
+        """Read columns and slice -> [seq_len, n_features]."""
+        return self._load(path)[l_slc:r_slc]
+
+    def file_len(self, path: str) -> int:
+        """Row count excluding header. Cached per path."""
+        if path not in self._len_cache:
+            self._load(path)
+        return self._len_cache[path]
+
+    @property
+    def n_features(self) -> int:
+        return len(self.columns)
+
+
+class FilenameScalar:
+    """Scalar block: extracts numbers from filenames via regex.
+
+    Args:
+        pattern: regex with capture groups to extract from the filename stem
+    """
+
+    def __init__(self, pattern: str = r"(\d+\.?\d*)"):
+        self._pattern = re.compile(pattern)
+        self._n_features = self._pattern.groups
+
+    def read(self, path: str) -> np.ndarray:
+        """Search filename stem and return captured groups as float32 array."""
+        stem = Path(path).stem
+        m = self._pattern.search(stem)
+        if m is None:
+            raise ValueError(f"Pattern {self._pattern.pattern!r} did not match filename {stem!r}")
+        return np.array([float(g) for g in m.groups()], dtype=np.float32)
+
+    @property
+    def n_features(self) -> int:
+        return self._n_features
