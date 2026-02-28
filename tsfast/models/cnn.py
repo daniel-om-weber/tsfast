@@ -101,7 +101,6 @@ class CausalConv1d(torch.nn.Conv1d):
         dilation: Dilation factor for the kernel.
         groups: Number of blocked connections from input to output channels.
         bias: Whether to add a learnable bias.
-        stateful: Whether to carry internal state across forward calls.
     """
 
     def __init__(
@@ -113,7 +112,6 @@ class CausalConv1d(torch.nn.Conv1d):
         dilation: int = 1,
         groups: int = 1,
         bias: bool = True,
-        stateful: bool = False,
     ):
         super().__init__(
             in_channels,
@@ -126,27 +124,10 @@ class CausalConv1d(torch.nn.Conv1d):
             bias=bias,
         )
         self.__init_size = (kernel_size - 1) * dilation
-        self.x_init = None
-        self.stateful = stateful
 
     def forward(self, x: Tensor) -> Tensor:
-        if self.x_init is not None and self.x_init.shape[0] != x.shape[0]:
-            self.x_init = None
-
-        if self.x_init is None or not self.stateful:
-            self.x_init = torch.zeros((x.shape[0], x.shape[1], self.__init_size), device=x.device)
-
-        x = torch.cat([self.x_init, x], dim=-1)
-
-        out = super().forward(x)
-
-        if self.stateful:
-            self.x_init = x[..., -self.__init_size :].detach()
-
-        return out
-
-    def reset_state(self) -> None:
-        self.x_init = None
+        padding = torch.zeros((x.shape[0], x.shape[1], self.__init_size), device=x.device)
+        return super().forward(torch.cat([padding, x], dim=-1))
 
 
 def CConv1D(
@@ -188,7 +169,6 @@ class TCN_Block(nn.Module):
         activation: Activation function class, or None to disable.
         wn: Whether to apply weight normalization.
         bn: Whether to apply batch normalization.
-        stateful: Whether causal convolutions carry state across calls.
         **kwargs: Additional arguments passed to ``CausalConv1d``.
     """
 
@@ -200,14 +180,13 @@ class TCN_Block(nn.Module):
         activation: type[nn.Module] | None = Mish,
         wn: bool = True,
         bn: bool = False,
-        stateful: bool = False,
         **kwargs,
     ):
         super().__init__()
 
         layers = []
         for _ in range(num_layers):
-            conv = CausalConv1d(input_size, output_size, 2, stateful=stateful, **kwargs)
+            conv = CausalConv1d(input_size, output_size, 2, **kwargs)
             if wn:
                 conv = weight_norm(conv)
             act = activation() if activation is not None else None
@@ -234,7 +213,6 @@ class TCN(nn.Module):
         hl_width: Number of channels in each hidden TCN block.
         act: Activation function class.
         bn: Whether to apply batch normalization.
-        stateful: Whether causal convolutions carry state across calls.
     """
 
     def __init__(
@@ -245,7 +223,6 @@ class TCN(nn.Module):
         hl_width: int = 10,
         act: type[nn.Module] = Mish,
         bn: bool = False,
-        stateful: bool = False,
     ):
         super().__init__()
 
@@ -256,7 +233,6 @@ class TCN(nn.Module):
                 dilation=2 ** (i),
                 bn=bn,
                 activation=act,
-                stateful=stateful,
             )
             for i in range(hl_depth)
         ]
@@ -317,7 +293,6 @@ class SeperateTCN(nn.Module):
         hl_width: Total hidden width split evenly across branches.
         act: Activation function class.
         bn: Whether to apply batch normalization.
-        stateful: Whether to carry state across forward calls.
         final_layer: Number of hidden layers in the final linear head.
     """
 
@@ -329,7 +304,6 @@ class SeperateTCN(nn.Module):
         hl_width: int = 10,
         act: type[nn.Module] = Mish,
         bn: bool = False,
-        stateful: bool = False,
         final_layer: int = 3,
     ):
         super().__init__()
@@ -345,35 +319,15 @@ class SeperateTCN(nn.Module):
         ]
         self.layers = nn.ModuleList([nn.Sequential(*layer) for layer in layers])
 
-        self.rec_field = (2**hl_depth) - 1
         self.final = SeqLinear(tcn_width * len(input_list), output_size, hidden_size=hl_width, hidden_layer=final_layer)
-        self.x_init = None
-        self.stateful = stateful
 
     def forward(self, x: Tensor) -> Tensor:
-        if self.x_init is not None:
-            if self.x_init.shape[0] != x.shape[0]:
-                self.x_init = None
-            elif self.stateful:
-                x = torch.cat([self.x_init, x], dim=1)
-
         tcn_out = [
             layer(x[..., self.input_list[i] : self.input_list[i + 1]].transpose(1, 2))
             for i, layer in enumerate(self.layers)
         ]
         out = torch.cat(tcn_out, dim=1).transpose(1, 2)
-
-        out = self.final(out)
-
-        if self.stateful:
-            if self.x_init is not None:
-                out = out[:, self.rec_field :]
-            self.x_init = x[:, -self.rec_field :].detach()
-
-        return out
-
-    def reset_state(self) -> None:
-        self.x_init = None
+        return self.final(out)
 
 
 class CRNN(nn.Module):
@@ -391,7 +345,6 @@ class CRNN(nn.Module):
         input_p: Dropout probability on RNN inputs.
         weight_p: Weight dropout probability for RNN parameters.
         rnn_type: RNN cell type (``"gru"`` or ``"lstm"``).
-        stateful: Whether both CNN and RNN carry state across calls.
     """
 
     def __init__(
@@ -407,10 +360,9 @@ class CRNN(nn.Module):
         input_p: float = 0,
         weight_p: float = 0,
         rnn_type: str = "gru",
-        stateful: bool = False,
     ):
         super().__init__()
-        self.cnn = TCN(input_size, num_ft, num_cnn_layers, hs_cnn, act=nn.ReLU, stateful=stateful)
+        self.cnn = TCN(input_size, num_ft, num_cnn_layers, hs_cnn, act=nn.ReLU)
         self.rnn = SimpleRNN(
             num_ft,
             output_size,
@@ -420,7 +372,6 @@ class CRNN(nn.Module):
             input_p=input_p,
             weight_p=weight_p,
             rnn_type=rnn_type,
-            stateful=stateful,
         )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -521,7 +472,6 @@ class SeperateCRNN(nn.Module):
         input_p: Dropout probability on RNN inputs.
         weight_p: Weight dropout probability for RNN parameters.
         rnn_type: RNN cell type (``"gru"`` or ``"lstm"``).
-        stateful: Whether both CNN and RNN carry state across calls.
     """
 
     def __init__(
@@ -537,12 +487,9 @@ class SeperateCRNN(nn.Module):
         input_p: float = 0,
         weight_p: float = 0,
         rnn_type: str = "gru",
-        stateful: bool = False,
     ):
         super().__init__()
-        self.cnn = SeperateTCN(
-            input_list, num_ft, num_cnn_layers, hs_cnn, act=nn.ReLU, stateful=stateful, final_layer=0
-        )
+        self.cnn = SeperateTCN(input_list, num_ft, num_cnn_layers, hs_cnn, act=nn.ReLU, final_layer=0)
         self.rnn = SimpleRNN(
             num_ft,
             output_size,
@@ -552,7 +499,6 @@ class SeperateCRNN(nn.Module):
             input_p=input_p,
             weight_p=weight_p,
             rnn_type=rnn_type,
-            stateful=stateful,
         )
 
     def forward(self, x: Tensor) -> Tensor:

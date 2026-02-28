@@ -109,7 +109,7 @@ class RNN(nn.Module):
         weight_p: weight dropout probability applied within each RNN cell.
         rnn_type: recurrent cell type, one of ``'gru'``, ``'lstm'``, or ``'rnn'``.
         ret_full_hidden: if True, return stacked hidden outputs from all layers.
-        stateful: if True, persist hidden state across forward calls.
+        stateful: if True, enable per-timestep batch normalization layers.
         normalization: normalization between layers (``''``, ``'layernorm'``, or ``'batchnorm'``).
         **kwargs: additional keyword arguments forwarded to the underlying ``nn.RNN``/``nn.GRU``/``nn.LSTM``.
     """
@@ -137,7 +137,6 @@ class RNN(nn.Module):
         self.weight_p = weight_p
         self.rnn_type = rnn_type
         self.ret_full_hidden = ret_full_hidden
-        self.stateful = stateful
         self.normalization = normalization
 
         self.rnns = nn.ModuleList(

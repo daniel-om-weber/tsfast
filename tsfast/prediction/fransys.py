@@ -29,7 +29,6 @@ class Diag_RNN(nn.Module):
         hidden_size: number of hidden units in the RNN
         rnn_layer: number of RNN layers
         linear_layer: number of linear layers in the output head
-        stateful: whether to maintain hidden state across batches
     """
 
     def __init__(
@@ -40,13 +39,12 @@ class Diag_RNN(nn.Module):
         hidden_size: int = 100,
         rnn_layer: int = 1,
         linear_layer: int = 1,
-        stateful: bool = False,
         **kwargs,
     ):
         super().__init__()
         self.output_size = output_size
 
-        self.rnn = RNN(input_size, hidden_size, rnn_layer, stateful=stateful, ret_full_hidden=False, **kwargs)
+        self.rnn = RNN(input_size, hidden_size, rnn_layer, ret_full_hidden=False, **kwargs)
         self.final = SeqLinear(hidden_size, int(output_size * output_layer), hidden_layer=linear_layer - 1)
 
     def forward(self, x: torch.Tensor, init_state: list | None = None) -> tuple[torch.Tensor, list]:
@@ -73,7 +71,6 @@ class Diag_RNN_raw(nn.Module):
         hidden_size: number of hidden units in the RNN
         rnn_layer: number of RNN layers
         linear_layer: number of linear layers (unused, kept for API compatibility)
-        stateful: whether to maintain hidden state across batches
     """
 
     def __init__(
@@ -84,11 +81,10 @@ class Diag_RNN_raw(nn.Module):
         hidden_size: int = 100,
         rnn_layer: int = 1,
         linear_layer: int = 1,
-        stateful: bool = False,
     ):
         super().__init__()
 
-        self.rnn = RNN(input_size, output_size, output_layer, stateful=stateful, ret_full_hidden=True)
+        self.rnn = RNN(input_size, output_size, output_layer, ret_full_hidden=True)
 
     def forward(self, x: torch.Tensor, init_state: list | None = None):
         return self.rnn(x, init_state)

@@ -101,9 +101,9 @@ class BatchNorm_1D_Stateful(nn.Module):
             self.register_parameter("running_var", None)
             self.register_parameter("num_batches_tracked", None)
         self.reset_parameters()
-        self.reset_state()
+        self.reset_seq_idx()
 
-    def reset_state(self):
+    def reset_seq_idx(self):
         self.seq_idx = 0
 
     def reset_parameters(self):
@@ -347,7 +347,6 @@ class AR_Model(nn.Module):
     Args:
         model: inner model to wrap
         ar: if ``True``, default to autoregressive mode in forward
-        stateful: if ``True``, carry the last output across forward calls
         model_has_state: if ``True``, the inner model accepts and returns hidden state
         return_state: if ``True``, return ``(output, hidden_state)`` tuple
         out_sz: output feature size, used to initialize autoregressive seed
@@ -357,7 +356,6 @@ class AR_Model(nn.Module):
         self,
         model: nn.Module,
         ar: bool = True,
-        stateful: bool = False,
         model_has_state: bool = False,
         return_state: bool = False,
         out_sz: int | None = None,
@@ -365,13 +363,11 @@ class AR_Model(nn.Module):
         super().__init__()
         self.model = model
         self.ar = ar
-        self.stateful = stateful
         self.model_has_state = model_has_state
         self.return_state = return_state
         self.out_sz = out_sz
         if return_state and not model_has_state:
             raise ValueError("return_state=True requires model_has_state=True")
-        self.y_init = None
 
     def forward(self, inp: torch.Tensor, state=None, ar: bool | None = None):
         if ar is None:
@@ -380,13 +376,13 @@ class AR_Model(nn.Module):
         # Unpack state — accept dict, list (legacy), or None
         match state:
             case {"h": h_init, **rest}:
-                y_prev = rest.get("y_init", self.y_init)
+                y_prev = rest.get("y_init", None)
             case list():
                 h_init = state
-                y_prev = self.y_init
+                y_prev = None
             case _:
                 h_init = None
-                y_prev = self.y_init
+                y_prev = None
 
         if ar:
             y_e = []
@@ -413,14 +409,8 @@ class AR_Model(nn.Module):
                 y_e = self.model(inp)
                 h0 = None
 
-        if self.stateful:
-            self.y_init = y_e[:, -1:].detach()
-
         new_state = {"h": h0, "y_init": y_e[:, -1:].detach()}
         return y_e if not self.return_state else (y_e, new_state)
-
-    def reset_state(self):
-        self.y_init = None
 
 
 class NormalizedModel(nn.Module):
