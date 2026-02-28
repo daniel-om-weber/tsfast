@@ -54,7 +54,6 @@ from tsfast.training import (
 
 # %%
 dls = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
-dls.show_batch(max_n=2)
 
 # %% [markdown]
 # ## The Default: MAE Loss
@@ -68,6 +67,9 @@ dls.show_batch(max_n=2)
 
 # %%
 lrn_mae = RNNLearner(dls, rnn_type='lstm', loss_func=nn.L1Loss(), metrics=[fun_rmse])
+lrn_mae.show_batch(max_n=2)
+
+# %%
 lrn_mae.fit_flat_cos(n_epoch=5, lr=3e-3)
 
 # %% [markdown]

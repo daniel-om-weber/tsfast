@@ -100,7 +100,6 @@ dls_standard = create_dls(
     win_sz=200, stp_sz=50,
     bs=32,
 )
-dls_standard.show_batch(max_n=2)
 
 # %% [markdown]
 # ## Building a Custom Pipeline Step by Step

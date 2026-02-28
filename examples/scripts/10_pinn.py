@@ -167,9 +167,6 @@ dls = create_dls(
     bs=32, n_batches_train=300,
 )
 
-# %%
-dls.show_batch(max_n=4)
-
 # %% [markdown]
 # ## Approach 1: Basic RNN with Collocation Points
 #
