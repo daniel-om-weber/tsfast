@@ -14,7 +14,7 @@ from contextlib import contextmanager
 import torch
 from torch import Tensor, nn
 from torch.optim.lr_scheduler import LambdaLR
-from tqdm.auto import tqdm
+from tqdm import tqdm
 
 from .viz import layout_samples, plot_sequence
 
