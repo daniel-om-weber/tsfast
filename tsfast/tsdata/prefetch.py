@@ -67,6 +67,10 @@ class PrefetchLoader:
     def __len__(self):
         return len(self._dl)
 
+    def one_batch(self) -> tuple:
+        """Return one batch from this loader."""
+        return next(iter(self))
+
     def __getattr__(self, name):
         return getattr(self._dl, name)
 

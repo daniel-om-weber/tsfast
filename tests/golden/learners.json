@@ -37,7 +37,7 @@
   },
   "FranSysLearner": {
     "val_loss_1epoch": 0.20031538605690002,
-    "param_count": 3141,
+    "param_count": 3261,
     "output_shape": [
       64,
       100,

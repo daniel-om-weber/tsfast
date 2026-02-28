@@ -268,6 +268,10 @@ def RNNLearner(
     opt_func=torch.optim.Adam,
     input_norm: type | None = StandardScaler1D,
     output_norm: type | None = None,
+    augmentations: list | None = None,
+    transforms: list | None = None,
+    aux_losses: list | None = None,
+    grad_clip: float | None = None,
     **kwargs,
 ):
     """Create a Learner with a SimpleRNN model and standard training setup.
@@ -284,6 +288,10 @@ def RNNLearner(
         opt_func: optimizer constructor.
         input_norm: scaler class for input normalization, or None to disable.
         output_norm: scaler class for output denormalization, or None to disable.
+        augmentations: list of augmentation transforms (train only).
+        transforms: list of transforms (train + valid).
+        aux_losses: list of auxiliary loss functions.
+        grad_clip: max gradient norm for clipping, or None to disable.
         **kwargs: additional keyword arguments forwarded to ``SimpleRNN``.
     """
     if metrics is None:
@@ -295,7 +303,12 @@ def RNNLearner(
 
     cls = TbpttLearner if stateful else Learner
     extra = {"sub_seq_len": sub_seq_len or 100} if stateful else {}
-    return cls(model, dls, loss_func=loss_func, metrics=metrics, n_skip=n_skip, opt_func=opt_func, lr=3e-3, **extra)
+    return cls(
+        model, dls, loss_func=loss_func, metrics=metrics, n_skip=n_skip,
+        opt_func=opt_func, lr=3e-3, augmentations=augmentations,
+        transforms=transforms, aux_losses=aux_losses, grad_clip=grad_clip,
+        **extra,
+    )
 
 
 def AR_RNNLearner(

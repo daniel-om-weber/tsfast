@@ -34,9 +34,9 @@
 
 # %%
 from tsfast.tsdata.benchmark import create_dls_cascaded_tanks
-from tsfast.prediction.fransys import FranSysLearner, FranSysRegularizer
+from tsfast.prediction.fransys import FranSysLearner
 from tsfast.models.layers import unwrap_model
-from tsfast.training import fun_rmse, TimeSeriesRegularizerLoss
+from tsfast.training import fun_rmse, FranSysRegularizer, TimeSeriesRegularizerLoss
 
 # %% [markdown]
 # ## The Diagnosis/Prognosis Concept

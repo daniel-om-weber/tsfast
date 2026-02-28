@@ -167,7 +167,7 @@ def capture_learners() -> dict:
         ),
         "AR_RNNLearner": lambda: _create_ar_rnn(dls_sim),
         "FranSysLearner": lambda: FranSysLearner(
-            dls_pred, init_sz=50, hidden_size=20, rnn_layer=1,
+            dls_pred, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True,
         ),
         "PIRNNLearner": lambda: PIRNNLearner(
             dls_pinn_pred, init_sz=20, hidden_size=20, rnn_layer=1,

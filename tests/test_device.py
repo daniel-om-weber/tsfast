@@ -42,7 +42,7 @@ class TestHookCallbackDevices:
         from tsfast.training import FranSysRegularizer
         from tsfast.models.layers import unwrap_model
 
-        lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1)
+        lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
         lrn.model.to(device)
         model = unwrap_model(lrn.model)
         lrn.add_aux_loss(FranSysRegularizer(

@@ -14,6 +14,7 @@ import os
 import tempfile
 from collections.abc import Callable
 from multiprocessing.managers import SharedMemoryManager
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -228,6 +229,25 @@ class HPOptimizer:
         self.dls = dls
         self.analysis = None
 
+    @staticmethod
+    def _find_project_root() -> str | None:
+        """Find the project root containing pyproject.toml."""
+        cwd = Path.cwd()
+        for p in [cwd, *cwd.parents]:
+            if (p / "pyproject.toml").exists():
+                return str(p)
+        return None
+
+    def _ensure_ray(self):
+        """Initialize Ray if not already running, setting working_dir to the project root."""
+        if ray.is_initialized():
+            return
+        project_root = self._find_project_root()
+        kwargs = {}
+        if project_root and project_root != str(Path.cwd()):
+            kwargs["runtime_env"] = {"working_dir": project_root}
+        ray.init(**kwargs)
+
     def start_ray(self, **kwargs):
         """Initialize Ray runtime."""
         ray.shutdown()
@@ -253,6 +273,7 @@ class HPOptimizer:
             resources_per_trial: resource dict per trial (e.g. GPU/CPU counts).
             verbose: Ray Tune verbosity level.
         """
+        self._ensure_ray()
         config["create_lrn"] = ray.put(self.create_lrn)
         # dls are large objects, letting ray handle the copying process makes it much faster
         _prepare_dls_for_serialization(self.dls)
@@ -291,6 +312,7 @@ class HPOptimizer:
         """
         self.mut_conf = mut_conf
 
+        self._ensure_ray()
         config["create_lrn"] = ray.put(self.create_lrn)
         # dls are large objects, letting ray handle the copying process makes it much faster
         _prepare_dls_for_serialization(self.dls)

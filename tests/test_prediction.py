@@ -29,7 +29,7 @@ class TestFranSys:
     @pytest.mark.slow
     def test_fransys_learner_prediction_mode(self, dls_prediction):
         from tsfast.prediction.fransys import FranSysLearner
-        lrn = FranSysLearner(dls_prediction, init_sz=50)
+        lrn = FranSysLearner(dls_prediction, init_sz=50, attach_output=True)
         lrn.fit(1, lr=3e-3)
         assert not math.isnan(lrn.recorder.values[-1][1])
 
@@ -54,7 +54,7 @@ class TestFranSysRegularization:
     def test_fransys_sync_types(self, dls_prediction, sync_type):
         from tsfast.prediction.fransys import FranSysLearner
         from tsfast.training import FranSysRegularizer
-        lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1)
+        lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
         model = self._get_model(lrn)
         lrn.add_aux_loss(FranSysRegularizer(
             modules=[model.rnn_diagnosis, model.rnn_prognosis],
@@ -67,7 +67,7 @@ class TestFranSysRegularization:
     def test_fransys_diag_loss(self, dls_prediction):
         from tsfast.prediction.fransys import FranSysLearner
         from tsfast.training import FranSysRegularizer
-        lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1)
+        lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
         model = self._get_model(lrn)
         lrn.add_aux_loss(FranSysRegularizer(
             modules=[model.rnn_diagnosis, model.rnn_prognosis],
@@ -80,7 +80,7 @@ class TestFranSysRegularization:
     def test_fransys_osp_loss(self, dls_prediction):
         from tsfast.prediction.fransys import FranSysLearner
         from tsfast.training import FranSysRegularizer
-        lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1)
+        lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
         model = self._get_model(lrn)
         lrn.add_aux_loss(FranSysRegularizer(
             modules=[model.rnn_diagnosis, model.rnn_prognosis],
@@ -93,7 +93,7 @@ class TestFranSysRegularization:
     def test_fransys_tar_loss(self, dls_prediction):
         from tsfast.prediction.fransys import FranSysLearner
         from tsfast.training import FranSysRegularizer
-        lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1)
+        lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
         model = self._get_model(lrn)
         lrn.add_aux_loss(FranSysRegularizer(
             modules=[model.rnn_diagnosis, model.rnn_prognosis],
@@ -118,7 +118,7 @@ class TestFranSysRegularization:
         from tsfast.models.layers import StandardScaler1D
         lrn = FranSysLearner(
             dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1,
-            output_norm=StandardScaler1D,
+            attach_output=True, output_norm=StandardScaler1D,
         )
         model = self._get_model(lrn)
         lrn.add_aux_loss(FranSysRegularizer(
@@ -136,7 +136,7 @@ class TestFranSysRegularization:
         from tsfast.models.layers import StandardScaler1D
         lrn = FranSysLearner(
             dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1,
-            output_norm=StandardScaler1D,
+            attach_output=True, output_norm=StandardScaler1D,
         )
         model = self._get_model(lrn)
         lrn.add_aux_loss(FranSysRegularizer(
@@ -154,7 +154,7 @@ class TestFranSysRegularization:
 
         lrn = FranSysLearner(
             dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1,
-            output_norm=StandardScaler1D,
+            attach_output=True, output_norm=StandardScaler1D,
         )
         assert isinstance(lrn.model, NormalizedModel)
         assert lrn.model.output_norm is not None
@@ -176,7 +176,7 @@ class TestFranSysRegularization:
         from tsfast.training import FranSysRegularizer
         from tsfast.models.layers import NormalizedModel
 
-        lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1)
+        lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
         assert isinstance(lrn.model, NormalizedModel)
         assert lrn.model.output_norm is None
 
@@ -195,7 +195,7 @@ class TestFranSysRegularization:
         from tsfast.prediction.fransys import FranSysLearner
         from tsfast.models.layers import NormalizedModel, unwrap_model
 
-        lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1)
+        lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
         wrapper = lrn.model
         assert isinstance(wrapper, NormalizedModel), "Test requires NormalizedModel wrapping"
         inner = unwrap_model(wrapper)
