@@ -124,6 +124,57 @@ class TestBlocks:
         arr = resampled.read(path, 0, 200, factor=2.0)
         assert arr.shape == (200, 1)
 
+    def test_hdf5signals_mmap_contiguous(self):
+        """Contiguous datasets use mmap path and produce correct results."""
+        import h5py as h5
+
+        from tsfast.tsdata.blocks import HDF5Signals
+
+        block = HDF5Signals(["u", "x", "v"])
+        path = str(PINN_PATH / "train" / "trajectory_sine_1hz.h5")
+        arr = block.read(path, 0, 100)
+        assert arr.shape == (100, 3)
+        # Verify mmap info was populated with actual offsets
+        assert path in block._mmap_info
+        for name in ["u", "x", "v"]:
+            assert block._mmap_info[path][name] is not None
+        # Verify values match direct h5py read
+        with h5.File(path, "r") as f:
+            expected = np.stack([f["u"][:100], f["x"][:100], f["v"][:100]], axis=-1)
+        np.testing.assert_array_equal(arr, expected)
+
+    def test_hdf5signals_fallback_chunked(self):
+        """Chunked datasets fall back to h5py and still return correct results."""
+        import h5py as h5
+
+        from tsfast.tsdata.blocks import HDF5Signals
+
+        block = HDF5Signals(["u", "y"])
+        path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
+        arr = block.read(path, 0, 100)
+        assert arr.shape == (100, 2)
+        # Chunked datasets should have None in mmap_info
+        assert path in block._mmap_info
+        for name in ["u", "y"]:
+            assert block._mmap_info[path][name] is None
+        # Verify values match direct h5py read
+        with h5.File(path, "r") as f:
+            expected = np.stack([f["u"][:100], f["y"][:100]], axis=-1)
+        np.testing.assert_array_equal(arr, expected)
+
+    def test_hdf5signals_pickle_roundtrip(self):
+        """Block survives pickle (simulating multiprocessing worker spawn)."""
+        import pickle
+
+        from tsfast.tsdata.blocks import HDF5Signals
+
+        block = HDF5Signals(["u", "x"])
+        path = str(PINN_PATH / "train" / "trajectory_sine_1hz.h5")
+        arr1 = block.read(path, 0, 50)
+        block2 = pickle.loads(pickle.dumps(block))
+        arr2 = block2.read(path, 0, 50)
+        np.testing.assert_array_equal(arr1, arr2)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Alternative blocks: CSVSignals, FilenameScalar

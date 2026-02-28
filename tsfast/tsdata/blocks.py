@@ -3,6 +3,7 @@
 import csv
 import math
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 import h5py
@@ -13,8 +14,20 @@ from scipy.signal import resample as fft_resample
 from .signal import resample_interp
 
 
+@dataclass
+class _MmapInfo:
+    """Byte-level metadata for a single contiguous HDF5 dataset."""
+
+    offset: int
+    dtype: np.dtype
+    shape: tuple[int, ...]
+
+
 class HDF5Signals:
     """Temporal block: reads named 1-D datasets from HDF5 files.
+
+    Uses np.memmap for contiguous datasets (~2x faster than h5py),
+    falls back to h5py for chunked/compressed datasets.
 
     Args:
         names: dataset column names to extract
@@ -35,20 +48,58 @@ class HDF5Signals:
         self.fs_idx = fs_idx
         self.dt_idx = dt_idx
         self._len_cache: dict[str, int] = {}
+        self._mmap_info: dict[str, dict[str, _MmapInfo | None]] = {}
+
+    def _probe(self, path: str) -> None:
+        """Probe HDF5 datasets for contiguous layout; cache byte offsets."""
+        if path in self._mmap_info:
+            return
+        info = {}
+        with h5py.File(path, "r") as f:
+            ds = f if self.dataset is None else f[self.dataset]
+            for name in self.names:
+                dataset = ds[name]
+                if dataset.chunks is not None:
+                    info[name] = None
+                    continue
+                byte_offset = dataset.id.get_offset()
+                if byte_offset is None or byte_offset == 0:
+                    info[name] = None
+                    continue
+                info[name] = _MmapInfo(
+                    offset=byte_offset,
+                    dtype=dataset.dtype,
+                    shape=dataset.shape,
+                )
+            if path not in self._len_cache:
+                self._len_cache[path] = ds[self.names[0]].shape[0]
+        self._mmap_info[path] = info
 
     def read(self, path: str, l_slc: int, r_slc: int) -> np.ndarray:
         """Read columns and stack -> [seq_len, n_features]."""
-        with h5py.File(path, "r") as f:
-            ds = f if self.dataset is None else f[self.dataset]
-            arrays = [ds[name][l_slc:r_slc] for name in self.names]
-        return np.stack(arrays, axis=-1)
+        self._probe(path)
+        path_info = self._mmap_info[path]
+        arrays = []
+        h5py_names = []
+        for name in self.names:
+            mi = path_info[name]
+            if mi is not None:
+                mm = np.memmap(path, dtype=mi.dtype, mode="r", offset=mi.offset, shape=mi.shape)
+                arrays.append((name, np.array(mm[l_slc:r_slc])))
+            else:
+                h5py_names.append(name)
+        if h5py_names:
+            with h5py.File(path, "r") as f:
+                ds = f if self.dataset is None else f[self.dataset]
+                for name in h5py_names:
+                    arrays.append((name, ds[name][l_slc:r_slc]))
+        arrays.sort(key=lambda pair: self.names.index(pair[0]))
+        return np.stack([a for _, a in arrays], axis=-1)
 
     def file_len(self, path: str) -> int:
         """Length of first named dataset. Cached per path."""
         if path not in self._len_cache:
-            with h5py.File(path, "r") as f:
-                ds = f if self.dataset is None else f[self.dataset]
-                self._len_cache[path] = ds[self.names[0]].shape[0]
+            self._probe(path)
         return self._len_cache[path]
 
     @property
