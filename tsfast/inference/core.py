@@ -7,8 +7,14 @@ import warnings
 import numpy as np
 import torch
 
-from ..data.loader import reset_model_state
 from ..training.transforms import prediction_concat
+
+
+def _reset_model_state(model):
+    """Reset stateful modules (BN seq_idx, RNN compat state) before inference."""
+    for m in model.modules():
+        if hasattr(m, "reset_state"):
+            m.reset_state()
 
 
 def _find_prediction_concat(learner):
@@ -122,7 +128,7 @@ class InferenceWrapper:
         else:
             final_input = u_tensor
 
-        reset_model_state(self.model)
+        _reset_model_state(self.model)
         model_output = self.model(final_input)
         output_tensor = model_output[0] if isinstance(model_output, tuple) else model_output
         if not isinstance(output_tensor, torch.Tensor):

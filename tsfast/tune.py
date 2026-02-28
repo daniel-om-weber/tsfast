@@ -6,7 +6,6 @@ __all__ = [
     "stop_shared_memory_managers",
     "learner_optimize",
     "sample_config",
-    "CBRayReporter",
     "HPOptimizer",
 ]
 
@@ -25,11 +24,6 @@ from ray import tune
 from ray.tune import Checkpoint
 from ray.tune.experiment.trial import ExportFormat
 from ray.tune.schedulers import PopulationBasedTraining
-
-from fastcore.meta import delegates
-
-from fastai.callback.core import Callback
-from fastai.learner import Learner, save_model
 
 
 def _worker_device() -> torch.device:
@@ -57,7 +51,7 @@ def log_uniform(min_bound: float, max_bound: float, base: float = 10) -> Callabl
 
 
 class LearnerTrainable(tune.Trainable):
-    """Ray Tune Trainable wrapper for fastai Learners.
+    """Ray Tune Trainable wrapper for Learners.
 
     Args:
         config: Ray Tune config dict containing 'create_lrn' and 'dls' references.
@@ -65,15 +59,19 @@ class LearnerTrainable(tune.Trainable):
 
     def setup(self, config: dict):
         self.create_lrn = ray.get(config["create_lrn"])
-        self.dls = ray.get(config["dls"]).to(_worker_device())
+        dls = ray.get(config["dls"])
+        self.dls = dls.to(_worker_device()) if hasattr(dls, "to") else dls
 
         self.lrn = self.create_lrn(self.dls, config)
 
     def step(self) -> dict:
         with self.lrn.no_bar():
             self.lrn.fit(1)
-        train_loss, valid_loss, rmse = self.lrn.recorder.values[-1]
-        result = {"train_loss": train_loss, "valid_loss": valid_loss, "mean_loss": rmse}
+        row = self.lrn.recorder.values[-1]
+        result = {"train_loss": row[0], "valid_loss": row[1]}
+        metric_names = [getattr(m, "__name__", type(m).__name__) for m in self.lrn.metrics]
+        for name, val in zip(metric_names, row[2:]):
+            result[name] = val
         return result
 
     def save_checkpoint(self, tmp_checkpoint_dir: str) -> str:
@@ -153,7 +151,8 @@ def learner_optimize(config: dict):
     """
     try:
         create_lrn = ray.get(config["create_lrn"])
-        dls = ray.get(config["dls"]).to(_worker_device())
+        dls = ray.get(config["dls"])
+        dls = dls.to(_worker_device()) if hasattr(dls, "to") else dls
 
         # Scheduling Parameters for training the Model
         lrn_kwargs = {"n_epoch": 100, "pct_start": 0.5}
@@ -171,9 +170,13 @@ def learner_optimize(config: dict):
 
         lr = config["lr"] if "lr" in config else 3e-3
         lrn.lr = lr() if callable(lr) else lr
-        lrn.add_cb(CBRayReporter() if "reporter" not in config else ray.get(config["reporter"])())
+        _attach_ray_reporter(lrn)
+        fit_method = ray.get(config["fit_method"]) if "fit_method" in config else None
         with lrn.no_bar():
-            ray.get(config["fit_method"])(lrn, **lrn_kwargs)
+            if fit_method is not None:
+                fit_method(lrn, **lrn_kwargs)
+            else:
+                lrn.fit_flat_cos(**lrn_kwargs)
     finally:
         # cleanup shared memory even when earlystopping occurs
         if "lrn" in locals():
@@ -194,30 +197,22 @@ def sample_config(config: dict) -> dict:
     return ret_conf
 
 
-class CBRayReporter(Callback):
-    """Report training metrics and checkpoints to Ray Tune after each epoch."""
+def _attach_ray_reporter(lrn):
+    """Patch ``_log_epoch`` on a Learner to report metrics and checkpoints to Ray Tune.
 
-    order = 70  # order has to be >50, to be executed after the recorder callback
+    The new Learner calls ``self._log_epoch(epoch, train_loss, val_loss, metrics, pbar)``
+    after each epoch.  Assigning a plain function to the instance attribute overrides
+    the method without ``self`` being passed, so the signature matches directly.
+    """
 
-    def after_epoch(self):
-        # train_loss,valid_loss,rmse = self.learn.recorder.values[-1]
-        # metrics = {
-        #     'train_loss': train_loss,
-        #     'valid_loss': valid_loss,
-        #     'mean_loss': rmse,
-        # }
-        scores = self.learn.recorder.values[-1]
-        metrics = {"train_loss": scores[0], "valid_loss": scores[1]}
-        for metric, value in zip(self.learn.metrics, scores[2:]):
-            m_name = metric.name if hasattr(metric, "name") else str(metric)
-            metrics[m_name] = value
+    def _ray_log_epoch(epoch, train_loss, val_loss, metrics, pbar):
+        result = {"train_loss": train_loss, "valid_loss": val_loss}
+        result.update(metrics)
+        with tempfile.TemporaryDirectory() as d:
+            torch.save(lrn.model.state_dict(), os.path.join(d, "model.pth"))
+            ray.tune.report(result, checkpoint=Checkpoint.from_directory(d))
 
-        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-            file = os.path.join(temp_checkpoint_dir, "model.pth")
-            # the model has to be saved to the checkpoint directory on creation
-            # that is why a seperate callback for model saving is not trivial
-            save_model(file, self.learn.model, opt=None)
-            ray.tune.report(metrics, checkpoint=Checkpoint.from_directory(temp_checkpoint_dir))
+    lrn._log_epoch = _ray_log_epoch
 
 
 class HPOptimizer:
@@ -233,7 +228,6 @@ class HPOptimizer:
         self.dls = dls
         self.analysis = None
 
-    @delegates(ray.init)
     def start_ray(self, **kwargs):
         """Initialize Ray runtime."""
         ray.shutdown()
@@ -243,7 +237,6 @@ class HPOptimizer:
         """Shut down Ray runtime."""
         ray.shutdown()
 
-    @delegates(tune.run, keep=True)
     def optimize(
         self,
         config: dict,
@@ -264,15 +257,12 @@ class HPOptimizer:
         # dls are large objects, letting ray handle the copying process makes it much faster
         _prepare_dls_for_serialization(self.dls)
         config["dls"] = ray.put(self.dls)
-        if "fit_method" not in config:
-            config["fit_method"] = ray.put(Learner.fit_flat_cos)
 
         self.analysis = tune.run(
             optimize_func, config=config, resources_per_trial=resources_per_trial, verbose=verbose, **kwargs
         )
         return self.analysis
 
-    @delegates(tune.run, keep=True)
     def optimize_pbt(
         self,
         opt_name: str,

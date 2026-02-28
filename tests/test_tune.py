@@ -35,7 +35,7 @@ def test_learner_optimize_cpu_only(dls_silverbox):
     """
     from tsfast.models.rnn import RNNLearner
     from tsfast.tune import HPOptimizer
-    from tsfast.learner.losses import fun_rmse
+    from tsfast.training import fun_rmse
 
     def create_learner(dls, config):
         return RNNLearner(
@@ -77,7 +77,7 @@ def test_learner_optimize_callable_lr(dls_silverbox):
     """
     from tsfast.models.rnn import RNNLearner
     from tsfast.tune import HPOptimizer, log_uniform
-    from tsfast.learner.losses import fun_rmse
+    from tsfast.training import fun_rmse
 
     def create_learner(dls, config):
         return RNNLearner(

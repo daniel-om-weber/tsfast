@@ -6,7 +6,6 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from fastai.learner import Learner
 
 from ..models.layers import AR_Model
 
@@ -30,7 +29,7 @@ def _get_dummy_input(learner, seq_len: int | None = None):
 
 
 def export_onnx(
-    learner: Learner,  # trained fastai Learner
+    learner,  # trained Learner with .model and .dls
     path: str | Path,  # output .onnx file path
     opset_version: int = 17,  # ONNX opset version
     seq_len: int | None = None,  # override sequence length for dummy input (default: from dls)
