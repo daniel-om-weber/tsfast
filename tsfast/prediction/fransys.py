@@ -284,8 +284,11 @@ class ARProg_Init(nn.Module):
         else:
             out_diag, _ = self.rnn_diagnosis(inp[:, : self.init_sz])
         h_init = self.rnn_diagnosis.output_to_hidden(out_diag, self.init_sz - 1)
-        self.rnn_prognosis.y_init = y_x[:, self.init_sz : self.init_sz + 1]
-        out_prog = self.rnn_prognosis(u[:, self.init_sz :], h_init=h_init, ar=True)
+        prog_state = {
+            "h": h_init,
+            "y_init": y_x[:, self.init_sz : self.init_sz + 1],
+        }
+        out_prog = self.rnn_prognosis(u[:, self.init_sz :], state=prog_state, ar=True)
 
         result = torch.cat([torch.zeros(inp.shape[0], self.init_sz, y_x.shape[2], device=inp.device), out_prog], 1)
 

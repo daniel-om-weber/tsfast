@@ -45,9 +45,13 @@ class ARProg(nn.Module):
         u = x[..., : self.n_u]
 
         inp_tf = torch.cat([u[:, : self.init_sz], y_x[:, : self.init_sz]], dim=-1)
-        out_init, h = self.rnn_model(inp_tf, ar=False)
-        self.rnn_model.y_init = y_x[:, self.init_sz : self.init_sz + 1]
-        out_prog, _ = self.rnn_model(u[:, self.init_sz :], h_init=h, ar=True)
+        out_init, returned_state = self.rnn_model(inp_tf, ar=False)
+
+        prog_state = {
+            "h": returned_state["h"],
+            "y_init": y_x[:, self.init_sz : self.init_sz + 1],
+        }
+        out_prog, _ = self.rnn_model(u[:, self.init_sz :], state=prog_state, ar=True)
 
         result = torch.cat([out_init, out_prog], 1)
 

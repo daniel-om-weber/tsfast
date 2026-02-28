@@ -374,18 +374,25 @@ class AR_Model(nn.Module):
             raise ValueError("return_state=True requires model_has_state=True")
         self.y_init = None
 
-    def forward(self, inp: torch.Tensor, h_init=None, ar: bool | None = None):
+    def forward(self, inp: torch.Tensor, state=None, ar: bool | None = None):
         if ar is None:
             ar = self.ar
 
-        if ar:  # autoregressive mode
+        # Unpack state — accept dict, list (legacy), or None
+        match state:
+            case {"h": h_init, **rest}:
+                y_prev = rest.get("y_init", self.y_init)
+            case list():
+                h_init = state
+                y_prev = self.y_init
+            case _:
+                h_init = None
+                y_prev = self.y_init
+
+        if ar:
             y_e = []
+            y_next = y_prev if y_prev is not None else torch.zeros(inp.shape[0], 1, self.out_sz, device=inp.device)
 
-            y_next = (
-                self.y_init if self.y_init is not None else torch.zeros(inp.shape[0], 1, self.out_sz).to(inp.device)
-            )
-
-            # two loops in the if clause to avoid the if inside the loop
             if self.model_has_state:
                 h0 = h_init
                 for u_in in inp.split(1, dim=1):
@@ -399,17 +406,19 @@ class AR_Model(nn.Module):
                     y_e.append(y_next)
 
             y_e = torch.cat(y_e, dim=1)
-
-        else:  # teacherforcing mode
+            h0 = h0 if self.model_has_state else None
+        else:
             if self.model_has_state:
                 y_e, h0 = self.model(inp, h_init)
             else:
                 y_e = self.model(inp)
+                h0 = None
 
         if self.stateful:
             self.y_init = y_e[:, -1:].detach()
 
-        return y_e if not self.return_state else (y_e, h0)
+        new_state = {"h": h0, "y_init": y_e[:, -1:].detach()}
+        return y_e if not self.return_state else (y_e, new_state)
 
     def reset_state(self):
         self.y_init = None
@@ -477,10 +486,15 @@ class NormalizedModel(nn.Module):
 
     def forward(self, xb: torch.Tensor, **kwargs) -> torch.Tensor:
         xb = self.input_norm.normalize(xb)
-        out = self.model(xb, **kwargs)
+        result = self.model(xb, **kwargs)
+        if isinstance(result, tuple):
+            out, state = result
+            if self.output_norm is not None:
+                out = self.output_norm.denormalize(out)
+            return out, state
         if self.output_norm is not None:
-            out = self.output_norm.denormalize(out)
-        return out
+            result = self.output_norm.denormalize(result)
+        return result
 
 
 def _unwrap_ddp(model):
