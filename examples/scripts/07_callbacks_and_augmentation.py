@@ -53,7 +53,6 @@ from tsfast.training import (
 
 # %%
 dls = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
-dls.show_batch(max_n=2)
 
 # %% [markdown]
 # ## Data Augmentations

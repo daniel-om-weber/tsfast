@@ -82,13 +82,6 @@ from tsfast.training import fun_rmse
 # %%
 dls = create_dls_silverbox_prediction()
 
-# %%
-dls.show_batch(max_n=4)
-
-# %% [markdown]
-# Notice that the input now has **more channels** than in the simulation example.
-# The extra channels are the measured output values y(t-1) concatenated to u(t).
-
 # %% [markdown]
 # ## The FranSys Architecture
 #
@@ -121,6 +114,13 @@ dls.show_batch(max_n=4)
 
 # %%
 lrn = FranSysLearner(dls, init_sz=50, hidden_size=40, metrics=[fun_rmse])
+lrn.show_batch(max_n=4)
+
+# %% [markdown]
+# Notice that the input now has **more channels** than in the simulation example.
+# The extra channels are the measured output values y(t-1) concatenated to u(t).
+
+# %%
 lrn.fit_flat_cos(n_epoch=10, lr=3e-3)
 
 # %% [markdown]

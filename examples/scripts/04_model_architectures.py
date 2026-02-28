@@ -48,7 +48,6 @@ from tsfast.training import fun_rmse
 
 # %%
 dls = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
-dls.show_batch(max_n=2)
 
 # %% [markdown]
 # ## LSTM
@@ -66,6 +65,9 @@ dls.show_batch(max_n=2)
 
 # %%
 lrn_lstm = RNNLearner(dls, rnn_type='lstm', hidden_size=40, metrics=[fun_rmse])
+lrn_lstm.show_batch(max_n=2)
+
+# %%
 lrn_lstm.fit_flat_cos(n_epoch=10, lr=3e-3)
 
 # %%

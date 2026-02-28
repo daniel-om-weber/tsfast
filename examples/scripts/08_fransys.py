@@ -67,7 +67,6 @@ from tsfast.training import fun_rmse, TimeSeriesRegularizerLoss
 
 # %%
 dls = create_dls_cascaded_tanks()
-dls.show_batch(max_n=4)
 
 # %% [markdown]
 # ## Training a Basic FranSys Model
@@ -86,6 +85,9 @@ lrn = FranSysLearner(
     dls, init_sz=50, attach_output=True,
     hidden_size=40, metrics=[fun_rmse]
 )
+lrn.show_batch(max_n=4)
+
+# %%
 lrn.fit_flat_cos(n_epoch=10, lr=3e-3)
 
 # %% [markdown]

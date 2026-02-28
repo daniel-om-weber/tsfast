@@ -60,9 +60,6 @@ from tsfast.training import fun_rmse
 # %%
 dls = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
 
-# %%
-dls.show_batch(max_n=4)
-
 # %% [markdown]
 # ## Train an LSTM with n_skip
 #
@@ -80,6 +77,9 @@ dls.show_batch(max_n=4)
 
 # %%
 lrn = RNNLearner(dls, rnn_type='lstm', n_skip=50, hidden_size=40, metrics=[fun_rmse])
+lrn.show_batch(max_n=4)
+
+# %%
 lrn.fit_flat_cos(n_epoch=10, lr=3e-3)
 
 # %% [markdown]
