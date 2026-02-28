@@ -177,6 +177,100 @@ class TestBlocks:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+#  Cached wrapper
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestCached:
+    def test_cached_hdf5signals_matches_uncached(self):
+        from tsfast.tsdata.blocks import Cached, HDF5Signals
+
+        block = HDF5Signals(["u", "y"])
+        cached = Cached(HDF5Signals(["u", "y"]))
+        path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
+        arr = block.read(path, 10, 110)
+        arr_cached = cached.read(path, 10, 110)
+        np.testing.assert_array_equal(arr, arr_cached)
+
+    def test_cached_populates_data_cache(self):
+        from tsfast.tsdata.blocks import Cached, HDF5Signals
+
+        cached = Cached(HDF5Signals(["u"]))
+        path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
+        cached.read(path, 0, 100)
+        assert path in cached._data_cache
+        assert cached._data_cache[path].shape == (80000, 1)
+
+    def test_cached_delegates_n_features(self):
+        from tsfast.tsdata.blocks import Cached, HDF5Signals
+
+        cached = Cached(HDF5Signals(["u", "y"]))
+        assert cached.n_features == 2
+
+    def test_cached_delegates_file_len(self):
+        from tsfast.tsdata.blocks import Cached, HDF5Signals
+
+        cached = Cached(HDF5Signals(["u"]))
+        path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
+        assert cached.file_len(path) == 80000
+
+    def test_cached_hdf5attrs(self):
+        from tsfast.tsdata.blocks import Cached, HDF5Attrs
+
+        cached = Cached(HDF5Attrs(["mass", "spring_constant"]))
+        path = str(PINN_PATH / "train" / "trajectory_sine_1hz.h5")
+        arr = cached.read(path)
+        assert arr.shape == (2,)
+        np.testing.assert_allclose(arr, [1.0, 1.0], rtol=1e-5)
+        assert path in cached._data_cache
+
+    def test_cached_scalar_no_file_len(self):
+        from tsfast.tsdata.blocks import Cached, HDF5Attrs
+
+        cached = Cached(HDF5Attrs(["mass"]))
+        assert not hasattr(cached, "file_len")
+
+    def test_cached_with_resampled(self):
+        from tsfast.tsdata.blocks import Cached, HDF5Signals, Resampled
+
+        cached = Cached(HDF5Signals(["u"]))
+        resampled = Resampled(cached)
+        path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
+        arr = resampled.read(path, 0, 100, factor=1.0)
+        assert arr.shape == (100, 1)
+        # Inner block should be cached
+        assert path in cached._data_cache
+
+    def test_cached_with_windowed_dataset(self):
+        from tsfast.tsdata.blocks import Cached, HDF5Signals
+        from tsfast.tsdata.dataset import FileEntry, WindowedDataset
+
+        cached_u = Cached(HDF5Signals(["u"]))
+        cached_y = Cached(HDF5Signals(["y"]))
+        path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
+        entries = [FileEntry(path=path)]
+        ds = WindowedDataset(entries, cached_u, cached_y, win_sz=100, stp_sz=100)
+        xb, yb = ds[0]
+        assert xb.shape == (100, 1)
+        assert yb.shape == (100, 1)
+        # Both blocks should be cached after first access
+        assert path in cached_u._data_cache
+        assert path in cached_y._data_cache
+
+    def test_create_dls_with_cache(self):
+        from tsfast.tsdata import create_dls
+
+        dls = create_dls(
+            u=["u"], y=["y"], dataset=WH_PATH,
+            win_sz=100, stp_sz=100, num_workers=0,
+            n_batches_train=2, cache=True,
+        )
+        batch = dls.one_batch()
+        assert list(batch[0].shape) == [64, 100, 1]
+        assert list(batch[1].shape) == [64, 100, 1]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 #  Alternative blocks: CSVSignals, FilenameScalar
 # ──────────────────────────────────────────────────────────────────────────────
 

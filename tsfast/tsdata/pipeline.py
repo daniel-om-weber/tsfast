@@ -5,7 +5,7 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 
-from .blocks import HDF5Signals, Resampled
+from .blocks import Cached, HDF5Signals, Resampled
 from .dataset import FileEntry, WindowedDataset
 from .norm import (
     NormStats,
@@ -144,6 +144,13 @@ def _wrap_resampled(blocks):
     return tuple(_wrap_one(b) for b in blocks)
 
 
+def _wrap_cached(blocks):
+    """Wrap blocks in Cached, leave already-cached blocks untouched."""
+    if not isinstance(blocks, tuple):
+        return blocks if isinstance(blocks, Cached) else Cached(blocks)
+    return tuple(b if isinstance(b, Cached) else Cached(b) for b in blocks)
+
+
 def create_dls_from_blocks(
     inputs,
     targets,
@@ -159,6 +166,7 @@ def create_dls_from_blocks(
     n_batches_valid: int | None = None,
     targ_fs: list[float] | float | None = None,
     src_fs: float | str | None = None,
+    cache: bool = False,
 ) -> DataLoaders:
     """Create DataLoaders from user-provided blocks and file lists.
 
@@ -177,11 +185,16 @@ def create_dls_from_blocks(
         n_batches_valid: exact number of validation batches per epoch, None for all
         targ_fs: target sampling frequency/frequencies for resampling
         src_fs: source sampling frequency (number or HDF5 attribute name)
+        cache: cache file data in memory on first read for faster subsequent access
     """
     if valid_stp_sz is None:
         valid_stp_sz = win_sz
     if test_files is None:
         test_files = []
+
+    if cache:
+        inputs = _wrap_cached(inputs)
+        targets = _wrap_cached(targets)
 
     # Handle resampling
     if targ_fs is not None:
@@ -275,6 +288,7 @@ def create_dls(
     dls_id: str | None = None,
     targ_fs: list[float] | float | None = None,
     src_fs: float | str | None = None,
+    cache: bool = False,
 ) -> DataLoaders:
     """Create DataLoaders from HDF5 time-series files.
 
@@ -292,6 +306,7 @@ def create_dls(
         dls_id: cache id: when provided, computes exact stats from full training set and caches to disk
         targ_fs: target sampling frequency/frequencies for resampling
         src_fs: source sampling frequency (number or HDF5 attribute name)
+        cache: cache file data in memory on first read for faster subsequent access
     """
     # --- Resolve files ---
     if isinstance(dataset, dict):
@@ -340,6 +355,7 @@ def create_dls(
         n_batches_valid=n_batches_valid,
         targ_fs=targ_fs,
         src_fs=src_fs,
+        cache=cache,
     )
     dls._signal_names = (u, y)
     dls._dls_id = dls_id
