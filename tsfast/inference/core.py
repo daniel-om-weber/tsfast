@@ -18,20 +18,11 @@ def _reset_model_state(model):
 
 
 def _find_prediction_concat(learner):
-    """Find a prediction_concat transform in either old or new Learner."""
-    # New tsfast.training.Learner — check transforms list
+    """Find a prediction_concat transform in the Learner."""
     if hasattr(learner, "transforms"):
         for t in learner.transforms:
             if isinstance(t, prediction_concat):
                 return t
-
-    # Old fastai Learner — check callbacks
-    if hasattr(learner, "cbs"):
-        from ..prediction.core import PredictionCallback
-
-        for cb in learner.cbs:
-            if isinstance(cb, PredictionCallback):
-                return cb
 
     return None
 
@@ -43,7 +34,7 @@ class InferenceWrapper:
     concatenation) so models get the same input format they saw during training.
 
     Args:
-        learner: trained Learner (tsfast.training.Learner or fastai Learner) with model and dls
+        learner: trained Learner with model and dls
         device: device for inference ('cpu', 'cuda')
     """
 
@@ -96,7 +87,7 @@ class InferenceWrapper:
         Args:
             np_input: input time series (u)
             np_output_init: initial output series (y_init), required if trained
-                with PredictionCallback
+                with prediction_concat
         """
         input_ndim = np_input.ndim
         u_tensor = self._prepare_tensor(np_input, "np_input")
@@ -114,7 +105,7 @@ class InferenceWrapper:
 
         if self._pred_cb:
             if y_init_tensor is None:
-                raise ValueError("Model trained with PredictionCallback requires 'np_output_init'.")
+                raise ValueError("Model trained with prediction_concat requires 'np_output_init'.")
             if input_seq_len - self._pred_cb.t_offset <= 0:
                 raise ValueError(f"Input seq len ({input_seq_len}) too short for offset ({self._pred_cb.t_offset}).")
             if self._pred_cb.t_offset > 0:

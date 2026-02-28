@@ -8,7 +8,6 @@ import torch.nn.functional as F
 from collections.abc import Callable
 
 from ..training import Learner, fun_rmse, prediction_concat, truncate_sequence
-from ..datasets.core import ensure_norm_stats
 from ..models.layers import NormalizedModel, SeqLinear, StandardScaler1D
 from ..models.rnn import RNN
 from ..prediction.fransys import Diag_RNN
@@ -280,7 +279,6 @@ def PIRNNLearner(
     out = _batch[1].shape[-1]  # Supervised outputs from dataset
     n_y_total = out + n_aux_outputs  # Total outputs (supervised + auxiliary)
 
-    ensure_norm_stats(dls)
     norm_u, norm_y = dls.norm_stats
 
     if attach_output:

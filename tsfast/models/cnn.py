@@ -21,13 +21,11 @@ from torch import Tensor, nn
 from torch.nn import Mish
 from torch.nn.utils.parametrizations import weight_norm
 
-from fastcore.meta import delegates
 from ..training import Learner, TimeSeriesRegularizerLoss, ar_init, fun_rmse
 from .layers import AR_Model, NormalizedModel, Scaler, SeqLinear, StandardScaler1D
 from .rnn import SimpleRNN, _get_inp_out_size
 
 
-@delegates(nn.Conv1d, keep=True)
 def Conv1D(
     input_size: int,
     output_size: int,
@@ -151,7 +149,6 @@ class CausalConv1d(torch.nn.Conv1d):
         self.x_init = None
 
 
-@delegates(CausalConv1d, keep=True)
 def CConv1D(
     input_size: int,
     output_size: int,
@@ -181,7 +178,6 @@ def CConv1D(
     return nn.Sequential(*m)
 
 
-@delegates(CausalConv1d, keep=True)
 class TCN_Block(nn.Module):
     """Single TCN residual block with stacked causal convolutions.
 

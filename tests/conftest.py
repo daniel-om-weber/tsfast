@@ -31,14 +31,14 @@ def pinn_var_ic_path():
 @pytest.fixture(scope="session")
 def hdf_files(wh_path):
     """List of HDF5 files from WienerHammerstein dataset."""
-    from tsfast.data.core import get_hdf_files
+    from tsfast.tsdata import get_hdf_files
     return get_hdf_files(wh_path)
 
 
 @pytest.fixture(scope="session")
 def dls_simulation(wh_path):
     """DataLoaders for simulation mode (input-only normalization)."""
-    from tsfast.datasets.core import create_dls
+    from tsfast.tsdata import create_dls
     return create_dls(
         u=["u"], y=["y"], dataset=wh_path,
         win_sz=100, stp_sz=100, num_workers=0,
@@ -48,12 +48,12 @@ def dls_simulation(wh_path):
 
 @pytest.fixture(scope="session")
 def dls_prediction(wh_path):
-    """DataLoaders for prediction mode (input+output concatenated)."""
-    from tsfast.datasets.core import create_dls
+    """DataLoaders for prediction mode (Learner adds prediction_concat transform)."""
+    from tsfast.tsdata import create_dls
     return create_dls(
         u=["u"], y=["y"], dataset=wh_path,
         win_sz=100, stp_sz=100, num_workers=0,
-        n_batches_train=2, prediction=True,
+        n_batches_train=2,
     )
 
 
@@ -76,7 +76,7 @@ def orientation_path():
 @pytest.fixture(scope="session")
 def dls_pinn(pinn_path):
     """DataLoaders for PINN dataset in simulation mode (u -> x,v)."""
-    from tsfast.datasets.core import create_dls
+    from tsfast.tsdata import create_dls
     return create_dls(
         u=["u"], y=["x", "v"], dataset=pinn_path,
         win_sz=100, stp_sz=100, num_workers=0,
@@ -86,10 +86,10 @@ def dls_pinn(pinn_path):
 
 @pytest.fixture(scope="session")
 def dls_pinn_prediction(pinn_path):
-    """DataLoaders for PINN dataset in prediction mode."""
-    from tsfast.datasets.core import create_dls
+    """DataLoaders for PINN dataset in prediction mode (Learner adds prediction_concat)."""
+    from tsfast.tsdata import create_dls
     return create_dls(
         u=["u"], y=["x", "v"], dataset=pinn_path,
         win_sz=100, stp_sz=100, num_workers=0,
-        n_batches_train=2, prediction=True,
+        n_batches_train=2,
     )

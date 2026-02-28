@@ -6,7 +6,6 @@ Skipped when only CPU is available.
 import math
 import pytest
 import torch
-from torch import nn
 
 
 def _get_accelerator() -> torch.device | None:
@@ -38,22 +37,6 @@ class TestHookCallbackDevices:
     """HookCallback subclasses must keep hooked tensors on the model device."""
 
     @pytest.mark.slow
-    def test_time_series_regularizer(self, dls_simulation, device):
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.learner.callbacks import TimeSeriesRegularizer
-        from fastai.basics import Learner
-
-        model = SimpleRNN(1, 1, hidden_size=20).to(device)
-        lrn = Learner(
-            dls_simulation, model, loss_func=nn.MSELoss(),
-            cbs=TimeSeriesRegularizer(alpha=0.1, beta=0.1, modules=[model.rnn]),
-        )
-        lrn.fit(1)
-        final_valid_loss = lrn.recorder.values[-1][1]
-        assert final_valid_loss < float("inf")
-        assert not math.isnan(final_valid_loss)
-
-    @pytest.mark.slow
     def test_fransys_callback(self, dls_prediction, device):
         from tsfast.prediction.fransys import FranSysLearner
         from tsfast.training import FranSysRegularizer
@@ -68,38 +51,6 @@ class TestHookCallbackDevices:
         ))
         lrn.fit(1, 3e-3)
         assert not math.isnan(lrn.recorder.values[-1][1])
-
-    @pytest.mark.slow
-    def test_quaternion_regularizer(self, dls_simulation, device):
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.quaternions import QuaternionRegularizer
-        from fastai.basics import Learner
-
-        # SimpleRNN with output_size=4 to mimic quaternion output
-        model = SimpleRNN(1, 4, hidden_size=20).to(device)
-        lrn = Learner(
-            dls_simulation, model, loss_func=nn.MSELoss(),
-            cbs=QuaternionRegularizer(reg_unit=0.1, modules=[model.rnn]),
-        )
-        lrn.fit(1)
-        final_valid_loss = lrn.recorder.values[-1][1]
-        assert final_valid_loss < float("inf")
-        assert not math.isnan(final_valid_loss)
-
-
-@requires_accelerator
-class TestTransformDevices:
-    """Data transforms must sync internal tensors to the input device."""
-
-    def test_seq_noise_injection_grouped(self, device):
-        from tsfast.data.transforms import SeqNoiseInjection_Grouped
-        from tsfast.data.core import TensorSequencesInput
-
-        tfm = SeqNoiseInjection_Grouped(std_std=[0.1, 0.2], std_idx=[0, 1, 0])
-        x = TensorSequencesInput(torch.randn(2, 50, 3)).to(device)
-        # Should not raise a device mismatch error
-        out = tfm(x)
-        assert out.device == x.device
 
 
 @requires_accelerator

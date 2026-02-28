@@ -2,7 +2,6 @@
 
 __all__ = [
     "RNN",
-    "Sequential_RNN",
     "SimpleRNN",
     "RNNLearner",
     "AR_RNNLearner",
@@ -14,14 +13,88 @@ __all__ = [
     "SeperateRNN",
 ]
 
+import warnings
+
 import torch
+import torch.nn.functional as F
 from torch import Tensor, nn
 
-from fastcore.meta import delegates
-from fastai.imports import noop
-from fastai.text.models.awdlstm import RNNDropout, WeightDropout
 from ..training import Learner, TbpttLearner, TimeSeriesRegularizerLoss, ar_init, fun_rmse
 from .layers import AR_Model, BatchNorm_1D_Stateful, NormalizedModel, SeqLinear, StandardScaler1D
+
+
+def _dropout_mask(x: Tensor, sz: list, p: float) -> Tensor:
+    """Return a multiplicative dropout mask with probability ``p`` to zero an element."""
+    return x.new_empty(*sz).bernoulli_(1 - p).div_(1 - p)
+
+
+class RNNDropout(nn.Module):
+    """Dropout with probability ``p`` that is consistent on the seq_len dimension (variational dropout)."""
+
+    def __init__(self, p: float = 0.5):
+        super().__init__()
+        self.p = p
+
+    def forward(self, x: Tensor) -> Tensor:
+        if not self.training or self.p == 0.0:
+            return x
+        return x * _dropout_mask(x.data, (x.size(0), 1, *x.shape[2:]), self.p)
+
+
+class WeightDropout(nn.Module):
+    """A module that wraps another layer in which some weights will be replaced by 0 during training.
+
+    Args:
+        module: wrapped RNN module.
+        weight_p: weight dropout probability.
+        layer_names: name(s) of the parameters to apply dropout to.
+    """
+
+    def __init__(
+        self,
+        module: nn.Module,
+        weight_p: float,
+        layer_names: str | list[str] = "weight_hh_l0",
+    ):
+        super().__init__()
+        self.module = module
+        self.weight_p = weight_p
+        self.layer_names = [layer_names] if isinstance(layer_names, str) else list(layer_names)
+        for layer in self.layer_names:
+            # Makes a copy of the weights of the selected layers.
+            w = getattr(self.module, layer)
+            delattr(self.module, layer)
+            self.register_parameter(f"{layer}_raw", nn.Parameter(w.data))
+            setattr(self.module, layer, w.clone())
+            if isinstance(self.module, (nn.RNNBase, nn.modules.rnn.RNNBase)):
+                self.module.flatten_parameters = self._do_nothing
+
+    def _setweights(self):
+        """Apply dropout to the raw weights."""
+        for layer in self.layer_names:
+            raw_w = getattr(self, f"{layer}_raw")
+            if self.training:
+                w = F.dropout(raw_w, p=self.weight_p)
+            else:
+                w = raw_w.clone()
+            setattr(self.module, layer, w)
+
+    def forward(self, *args):
+        self._setweights()
+        with warnings.catch_warnings():
+            # To avoid the warning that comes because the weights aren't flattened.
+            warnings.simplefilter("ignore", category=UserWarning)
+            return self.module(*args)
+
+    def reset(self):
+        for layer in self.layer_names:
+            raw_w = getattr(self, f"{layer}_raw")
+            setattr(self.module, layer, raw_w.clone())
+        if hasattr(self.module, "reset"):
+            self.module.reset()
+
+    def _do_nothing(self):
+        pass
 
 
 class RNN(nn.Module):
@@ -92,7 +165,6 @@ class RNN(nn.Module):
             )
         else:
             raise ValueError("Invalid value for normalization")
-        self._compat_state = None
 
     def forward(self, inp: Tensor, state: list | None = None):
         bs, seq_len, _ = inp.shape
@@ -135,10 +207,6 @@ class RNN(nn.Module):
             raise Exception
         return rnn
 
-    def reset_state(self) -> None:
-        """Compatibility shim for TbpttResetCB."""
-        self._compat_state = None
-
 
 class Sequential_RNN(RNN):
     """RNN variant that returns only the output tensor, discarding hidden state."""
@@ -160,7 +228,6 @@ class SimpleRNN(nn.Module):
         **kwargs: additional keyword arguments forwarded to ``RNN``.
     """
 
-    @delegates(RNN, keep=True)
     def __init__(
         self,
         input_size: int,
@@ -285,12 +352,13 @@ class ResidualBlock_RNN(nn.Module):
         **kwargs: additional keyword arguments forwarded to ``RNN``.
     """
 
-    @delegates(RNN, keep=True)
     def __init__(self, input_size: int, hidden_size: int, **kwargs):
         super().__init__()
         self.rnn1 = RNN(input_size, hidden_size, num_layers=1, **kwargs)
         self.rnn2 = RNN(hidden_size, hidden_size, num_layers=1, **kwargs)
-        self.residual = SeqLinear(input_size, hidden_size, hidden_layer=0) if hidden_size != input_size else noop
+        self.residual = (
+            SeqLinear(input_size, hidden_size, hidden_layer=0) if hidden_size != input_size else nn.Identity()
+        )
 
     def forward(self, x: Tensor):
         out, _ = self.rnn1(x)
@@ -309,7 +377,6 @@ class SimpleResidualRNN(nn.Sequential):
         **kwargs: additional keyword arguments forwarded to ``ResidualBlock_RNN``.
     """
 
-    @delegates(ResidualBlock_RNN, keep=True)
     def __init__(self, input_size: int, output_size: int, num_blocks: int = 1, hidden_size: int = 100, **kwargs):
         super().__init__()
         for i in range(num_blocks):
@@ -329,7 +396,6 @@ class DenseLayer_RNN(nn.Module):
         **kwargs: additional keyword arguments forwarded to ``RNN``.
     """
 
-    @delegates(RNN, keep=True)
     def __init__(self, input_size: int, hidden_size: int, **kwargs):
         super().__init__()
         self.rnn1 = RNN(input_size, hidden_size, num_layers=1, **kwargs)
@@ -351,7 +417,6 @@ class DenseBlock_RNN(nn.Sequential):
         **kwargs: additional keyword arguments forwarded to ``DenseLayer_RNN``.
     """
 
-    @delegates(DenseLayer_RNN, keep=True)
     def __init__(self, num_layers: int, num_input_features: int, growth_rate: int, **kwargs):
         super().__init__()
         for i in range(num_layers):
@@ -372,7 +437,6 @@ class DenseNet_RNN(nn.Sequential):
         **kwargs: additional keyword arguments forwarded to ``RNN``.
     """
 
-    @delegates(RNN, keep=True)
     def __init__(
         self,
         input_size: int,
@@ -410,7 +474,6 @@ class SeperateRNN(nn.Module):
         **kwargs: additional keyword arguments forwarded to ``RNN``.
     """
 
-    @delegates(RNN, keep=True)
     def __init__(
         self,
         input_list: list[list[int]],

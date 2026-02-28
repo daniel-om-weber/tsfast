@@ -21,9 +21,6 @@ import torch
 from torch import nn
 from torch.nn import Mish, Parameter
 
-import fastai.callback.progress  # noqa: F401  — side-effect import activates progress bar
-import fastai.callback.schedule  # noqa: F401  — side-effect import patches fit_flat_cos onto Learner
-
 
 def _detach_state(state):
     """Recursively detach tensors from the computation graph."""
@@ -474,9 +471,6 @@ class NormalizedModel(nn.Module):
         """
         if input_norm is None:
             return model
-        from ..datasets.core import ensure_norm_stats
-
-        ensure_norm_stats(dls)
         norm_u, norm_y = dls.norm_stats
         if autoregressive:
             in_scaler = input_norm.from_stats(norm_u + norm_y)

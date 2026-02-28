@@ -1,8 +1,6 @@
-"""Quaternion math, loss functions, augmentations, and data blocks."""
+"""Quaternion math, loss functions, and augmentations."""
 
 __all__ = [
-    "TensorQuaternionInclination",
-    "TensorQuaternionAngle",
     "rad2deg",
     "multiplyQuat",
     "norm_quaternion",
@@ -42,53 +40,18 @@ __all__ = [
     "QuaternionRegularizer",
     "augmentation_groups",
     "QuaternionAugmentation",
-    "Quaternion_ResamplingModel",
-    "HDF2Quaternion",
-    "QuaternionBlock",
-    "TensorInclination",
-    "HDF2Inclination",
-    "InclinationBlock",
     "plot_scalar_inclination",
     "plot_quaternion_inclination",
     "plot_quaternion_rel_angle",
-    "show_results",
-    "show_batch",
 ]
 
-import math
 import warnings
 
-import h5py
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-from fastai.callback.core import TrainEvalCallback
-from fastai.callback.hook import HookCallback
-from fastai.data.block import TransformBlock
-from fastai.data.transforms import Normalize
-from fastai.torch_basics import Transform, tensor
-from fastcore.meta import delegates
-from fastai.data.core import show_batch, show_results
-from scipy.signal import resample
 
-from .data.block import pad_sequence
-from .data.core import (
-    HDF2Sequence,
-    TensorSequences,
-    TensorSequencesOutput,
-    plot_seqs_multi_figures,
-    plot_seqs_single_figure,
-)
-from .learner.losses import fun_rmse
-
-
-class TensorQuaternionInclination(TensorSequences):
-    pass
-
-
-class TensorQuaternionAngle(TensorSequences):
-    pass
+from .training import fun_rmse
 
 
 _pi = torch.Tensor([3.14159265358979323846])
@@ -113,7 +76,7 @@ def norm_quaternion(q: torch.Tensor) -> torch.Tensor:
     return q / q.norm(p=2, dim=-1)[..., None]
 
 
-_conjugate_quaternion = tensor([1, -1, -1, -1])
+_conjugate_quaternion = torch.tensor([1, -1, -1, -1])
 
 
 def conjQuat(q: torch.Tensor) -> torch.Tensor:
@@ -202,7 +165,7 @@ def pitchAngle(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
     return torch.asin(t2)
 
 
-_unit_quaternion = tensor([1.0, 0, 0, 0])
+_unit_quaternion = torch.tensor([1.0, 0, 0, 0])
 
 
 def inclinationAngleAbs(q: torch.Tensor) -> torch.Tensor:
@@ -277,7 +240,7 @@ def quatInterp(quat: torch.Tensor, ind: torch.Tensor, extend: bool = False) -> t
     q_1_0 = diffQuat(q0, q1)
 
     # normalize the quaternion for positive w component to ensure
-    # that the angle will be [0, 180°]
+    # that the angle will be [0, 180deg]
     invert_sign_ind = q_1_0[..., 0] < 0
     q_1_0[invert_sign_ind] = -q_1_0[invert_sign_ind]
 
@@ -428,36 +391,45 @@ def deg_rmse(inp: torch.Tensor, targ: torch.Tensor) -> torch.Tensor:
     return rad2deg(fun_rmse(inp, targ))
 
 
-@delegates()
-class QuaternionRegularizer(HookCallback):
-    """Regularize quaternion output toward unit norm.
+class QuaternionRegularizer:
+    """Regularization loss that penalizes non-unit quaternion outputs.
 
     Args:
+        modules: list of nn.Module instances whose outputs are captured via hooks.
         reg_unit: weight for the unit-norm regularization term.
-        detach: whether to detach the hook output from the computation graph.
     """
 
-    run_before = TrainEvalCallback
-
-    def __init__(self, reg_unit: float = 0.0, detach: bool = False, **kwargs):
-        super().__init__(detach=detach, cpu=False, **kwargs)
+    def __init__(self, modules: list, reg_unit: float = 0.0):
+        self.modules = modules
         self.reg_unit = reg_unit
+        self._hooks: list = []
+        self._captured: torch.Tensor | None = None
 
-    def hook(self, m, i, o):
-        if type(o) is torch.Tensor:
-            self.out = o
+    def _hook_fn(self, module, input, output):
+        if type(output) is torch.Tensor:
+            self._captured = output
         else:
-            self.out = o[0]
+            self._captured = output[0]
 
-    def after_loss(self):
-        if not self.training:
-            return
-        h = self.out.float()
+    def setup(self, trainer):
+        """Register forward hooks on the target modules."""
+        for m in self.modules:
+            self._hooks.append(m.register_forward_hook(self._hook_fn))
 
-        if self.reg_unit != 0.0:
-            l_a = float(self.reg_unit) * ((1 - h.norm(dim=-1)) ** 2).mean()
-            #             import pdb; pdb.set_trace()
-            self.learn.loss_grad += l_a
+    def teardown(self, trainer):
+        """Remove all registered hooks."""
+        for h in self._hooks:
+            h.remove()
+        self._hooks.clear()
+
+    def __call__(self, pred: torch.Tensor, yb: torch.Tensor, xb: torch.Tensor) -> torch.Tensor:
+        """Compute unit-norm regularization loss from captured hook output."""
+        if self._captured is None or self.reg_unit == 0.0:
+            return torch.tensor(0.0, device=pred.device)
+
+        h = self._captured.float()
+        l_a = float(self.reg_unit) * ((1 - h.norm(dim=-1)) ** 2).mean()
+        return l_a
 
 
 def augmentation_groups(u_groups: list[int]) -> list[list[int]]:
@@ -470,95 +442,45 @@ def augmentation_groups(u_groups: list[int]) -> list[list[int]]:
     return [[u_groups[i], u_groups[i + 1] - 1] for i in range(len(u_groups) - 1)]
 
 
-class QuaternionAugmentation(Transform):
-    """Apply random quaternion rotation to grouped signals.
+class QuaternionAugmentation:
+    """Apply random quaternion rotation to grouped signals during training.
 
-    Only applied to training data. Each call samples a new random quaternion
-    and applies it to all specified signal groups.
+    Each call samples a new random quaternion and applies it to all specified
+    signal groups.  Groups of size 4 are rotated as quaternions, groups of
+    size 3 are rotated as vectors.
 
     Args:
         inp_groups: list of [start, end] index pairs defining signal groups
             (groups of size 4 are rotated as quaternions, size 3 as vectors).
     """
 
-    split_idx = 0
-
-    def __init__(self, inp_groups: list[list[int]], **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, inp_groups: list[list[int]]):
         self.inp_groups = inp_groups
-        self.r_quat = None
         for g in inp_groups:
             group_len = g[1] - g[0] + 1
             if group_len != 4 and group_len != 3:
                 raise AttributeError
 
-    def __call__(self, b, split_idx=None, **kwargs):
-        # import pdb; pdb.set_trace()
-        self.r_quat = rand_quat()
-        return super().__call__(b, split_idx=split_idx, **kwargs)
+    def __call__(self, xb: torch.Tensor, yb: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Apply random quaternion rotation augmentation.
 
-    def encodes(self, x: (TensorSequences)):
-        # import pdb; pdb.set_trace()
+        Returns:
+            Tuple of (augmented xb, augmented yb).
+        """
+        r_quat = rand_quat()
+
+        # Augment input groups
         for g in self.inp_groups:
-            tmp = x[..., g[0] : g[1] + 1]
+            tmp = xb[..., g[0] : g[1] + 1]
             if tmp.shape[-1] == 3:
-                x[..., g[0] : g[1] + 1] = rot_vec(tmp, self.r_quat)
+                xb[..., g[0] : g[1] + 1] = rot_vec(tmp, r_quat)
             else:
-                x[..., g[0] : g[1] + 1] = multiplyQuat(tmp, self.r_quat)
-        return x
+                xb[..., g[0] : g[1] + 1] = multiplyQuat(tmp, r_quat)
 
-    def encodes(self, x: TensorQuaternionInclination):
-        return multiplyQuat(x, self.r_quat)
+        # Augment target (quaternion rotation)
+        yb = multiplyQuat(yb, r_quat)
 
-    def encodes(self, x: TensorQuaternionAngle):
-        return multiplyQuat(x, self.r_quat)
-
-
-class Quaternion_ResamplingModel(nn.Module):
-    """Resample signals before and after model prediction.
-
-    Useful for applying models to datasets with different sampling rates.
-
-    Args:
-        model: wrapped prediction model.
-        fs_targ: target sampling frequency for resampling.
-        fs_mean: mean used for denormalizing the sampling frequency input.
-        fs_std: std used for denormalizing the sampling frequency input.
-        quaternion_sampling: use quaternion Slerp interpolation for output
-            resampling instead of linear interpolation.
-    """
-
-    def __init__(
-        self, model: nn.Module, fs_targ: float, fs_mean: float = 0, fs_std: float = 1, quaternion_sampling: bool = True
-    ):
-        super().__init__()
-        self.model = model
-        self.fs_targ = fs_targ
-        self.register_buffer("fs_mean", tensor(fs_mean))
-        self.register_buffer("fs_std", tensor(fs_std))
-        self.quaternion_sampling = quaternion_sampling
-
-    def forward(self, x):
-        dt = (x[0, 0, -1] * self.fs_std) + self.fs_mean
-        fs_src = 1 / dt
-        x_len = x.shape[1]
-        res_len = int(x.shape[1] * self.fs_targ / (fs_src + 10))
-        x_raw = x[..., :-1]
-        if x_len == res_len:
-            res = self.model(x_raw)
-        else:
-            #             x_new = nn.functional.interpolate(x_raw.transpose(1,2), size=res_len, mode='linear',align_corners=False).transpose(1,2)
-            #             import pdb;pdb.set_trace()
-            x_new = tensor(resample(x_raw.detach().cpu().numpy(), res_len, axis=1)).to(x_raw.device)
-            res = self.model(x_new)
-            if self.quaternion_sampling:
-                res = quatInterp(res.transpose(0, 1), torch.linspace(0, res.shape[1] - 1, x_len)).transpose(0, 1)
-            else:
-                res = nn.functional.interpolate(
-                    res.transpose(1, 2), size=x_len, mode="linear", align_corners=False
-                ).transpose(1, 2)
-
-        return res
+        return xb, yb
 
 
 def relativeQuat_np(q1: np.ndarray, q2: np.ndarray) -> np.ndarray:
@@ -693,7 +615,7 @@ def quatInterp_np(quat: np.ndarray, ind: np.ndarray, extend: bool = True) -> np.
     q_1_0 = relativeQuat_np(q0, q1)
 
     # normalize the quaternion for positive w component to ensure
-    # that the angle will be [0, 180°]
+    # that the angle will be [0, 180deg]
     invert_sign_ind = q_1_0[:, 0] < 0
     q_1_0[invert_sign_ind] = -q_1_0[invert_sign_ind]
 
@@ -719,125 +641,6 @@ def quatInterp_np(quat: np.ndarray, ind: np.ndarray, extend: bool = True) -> np.
     return quat_out
 
 
-class HDF2Quaternion(HDF2Sequence):
-    """Extract quaternion sequences from HDF5 files with Slerp resampling."""
-
-    def _hdf_extract_sequence(
-        self,
-        hdf_path,
-        dataset=None,
-        l_slc=None,
-        r_slc=None,
-        resampling_factor=None,
-        fs_idx=None,
-        dt_idx=False,
-        fast_resample=True,
-    ):
-        if resampling_factor is not None:
-            seq_len = (
-                r_slc - l_slc if l_slc is not None and r_slc is not None else None
-            )  # calculate seq_len for later slicing, necesary because of rounding errors in resampling
-            if l_slc is not None:
-                l_slc = math.floor(l_slc / resampling_factor)
-            if r_slc is not None:
-                r_slc = math.ceil(r_slc / resampling_factor)
-
-        with h5py.File(hdf_path, "r") as f:
-            ds = f if dataset is None else f[dataset]
-            l_array = [(ds[n][l_slc:r_slc]) for n in self.clm_names]
-            seq = np.stack(l_array, axis=-1)
-
-        if resampling_factor is not None:
-            #             res_seq = resample_interp(seq,resampling_factor)
-            res_seq = quatInterp_np(seq, np.linspace(0, seq.shape[0] - 1, int(seq.shape[0] * resampling_factor)))
-            if fs_idx is not None:
-                res_seq[:, fs_idx] = seq[0, fs_idx] * resampling_factor
-            if dt_idx is not None:
-                res_seq[:, dt_idx] = seq[0, dt_idx] / resampling_factor
-            seq = res_seq
-
-            if seq_len is not None:
-                seq = seq[
-                    :seq_len
-                ]  # cut the part of the sequence that is too long because of resampling rounding errors
-
-        return seq
-
-
-class QuaternionBlock(TransformBlock):
-    """TransformBlock for quaternion sequence data with normalization.
-
-    Args:
-        seq_extract: transform that extracts the quaternion sequence.
-        padding: whether to pad sequences of different lengths.
-    """
-
-    def __init__(self, seq_extract: Transform, padding: bool = False):
-        return super().__init__(
-            type_tfms=[seq_extract],
-            batch_tfms=[Normalize(axes=[0, 1])],
-            dls_kwargs={} if not padding else {"before_batch": pad_sequence},
-        )
-
-    @classmethod
-    @delegates(HDF2Quaternion, keep=True)
-    def from_hdf(
-        cls, clm_names: list[str], seq_cls: type = TensorQuaternionInclination, padding: bool = False, **kwargs
-    ):
-        """Create a QuaternionBlock from HDF5 files.
-
-        Args:
-            clm_names: column/dataset names to extract.
-            seq_cls: tensor class for the extracted quaternion sequences.
-            padding: whether to pad sequences of different lengths.
-        """
-        return cls(HDF2Quaternion(clm_names, to_cls=seq_cls, **kwargs), padding)
-
-
-class TensorInclination(TensorSequences):
-    pass
-
-
-class HDF2Inclination(HDF2Sequence):
-    """Extract inclination angle sequences from HDF5 quaternion data."""
-
-    def _hdf_extract_sequence(self, hdf_path, dataset=None, l_slc=None, r_slc=None, down_s=None):
-        with h5py.File(hdf_path, "r") as f:
-            ds = f if dataset is None else f[dataset]
-            l_array = [ds[n][l_slc:r_slc] for n in self.clm_names]
-            seq = np.vstack(l_array).T
-            seq = np.array(inclinationAngleAbs(tensor(seq))[:, None])
-            return seq
-
-
-class InclinationBlock(TransformBlock):
-    """TransformBlock for inclination angle sequence data.
-
-    Args:
-        seq_extract: transform that extracts the inclination sequence.
-        padding: whether to pad sequences of different lengths.
-    """
-
-    def __init__(self, seq_extract: Transform, padding: bool = False):
-        return super().__init__(
-            type_tfms=[seq_extract],
-            batch_tfms=[Normalize(axes=[0, 1])],
-            dls_kwargs={} if not padding else {"before_batch": pad_sequence},
-        )
-
-    @classmethod
-    @delegates(HDF2Inclination, keep=True)
-    def from_hdf(cls, clm_names: list[str], seq_cls: type = TensorInclination, padding: bool = False, **kwargs):
-        """Create an InclinationBlock from HDF5 files.
-
-        Args:
-            clm_names: column/dataset names to extract.
-            seq_cls: tensor class for the extracted inclination sequences.
-            padding: whether to pad sequences of different lengths.
-        """
-        return cls(HDF2Inclination(clm_names, to_cls=seq_cls, **kwargs), padding)
-
-
 def plot_scalar_inclination(
     axs: list, in_sig: torch.Tensor, targ_sig: torch.Tensor, out_sig: torch.Tensor | None = None, **kwargs
 ):
@@ -851,14 +654,14 @@ def plot_scalar_inclination(
     """
     axs[0].plot(rad2deg(targ_sig).detach().cpu().numpy())
     axs[0].label_outer()
-    axs[0].set_ylabel("inclination[°]")
+    axs[0].set_ylabel("inclination[deg]")
 
     if out_sig is not None:
         axs[0].plot(rad2deg(out_sig).detach().cpu().numpy())
-        axs[0].legend(["y", "ŷ"])
+        axs[0].legend(["y", "y-hat"])
         axs[1].plot(rad2deg(targ_sig - out_sig).detach().cpu().numpy())
         axs[1].label_outer()
-        axs[1].set_ylabel("error[°]")
+        axs[1].set_ylabel("error[deg]")
 
     axs[-1].plot(in_sig)
 
@@ -877,19 +680,19 @@ def plot_quaternion_inclination(
     axs[0].plot(rad2deg(inclinationAngleAbs(targ_sig)).detach().cpu().numpy())
     axs[0].label_outer()
     axs[0].legend(["y"])
-    axs[0].set_ylabel("inclination[°]")
+    axs[0].set_ylabel("inclination[deg]")
 
     if out_sig is not None:
         axs[0].plot(rad2deg(inclinationAngleAbs(out_sig)).detach().cpu().numpy())
-        axs[0].legend(["y", "ŷ"])
+        axs[0].legend(["y", "y-hat"])
         axs[1].plot(rad2deg(inclinationAngle(out_sig, targ_sig)).detach().cpu().numpy())
         axs[1].label_outer()
-        axs[1].set_ylabel("error[°]")
+        axs[1].set_ylabel("error[deg]")
         if "ref" in kwargs:
             #             axs[0].plot(rad2deg(inclinationAngleAbs(kwargs['ref'])))
-            #             axs[0].legend(['y','ŷ','y_ref'])
+            #             axs[0].legend(['y','y-hat','y_ref'])
             axs[1].plot(rad2deg(inclinationAngle(targ_sig, kwargs["ref"])).detach().cpu().numpy())
-            axs[1].legend(["ŷ", "y_ref"])
+            axs[1].legend(["y-hat", "y_ref"])
 
     axs[-1].plot(in_sig)
 
@@ -909,99 +712,13 @@ def plot_quaternion_rel_angle(
     axs[0].plot(rad2deg(relativeAngle(first_targ, targ_sig)).detach().cpu().numpy())
     axs[0].label_outer()
     axs[0].legend(["y"])
-    axs[0].set_ylabel("angle[°]")
+    axs[0].set_ylabel("angle[deg]")
 
     if out_sig is not None:
         axs[0].plot(rad2deg(relativeAngle(first_targ, out_sig)).detach().cpu().numpy())
-        axs[0].legend(["y", "ŷ"])
+        axs[0].legend(["y", "y-hat"])
         axs[1].plot(rad2deg(relativeAngle(out_sig, targ_sig)).detach().cpu().numpy())
         axs[1].label_outer()
-        axs[1].set_ylabel("error[°]")
+        axs[1].set_ylabel("error[deg]")
 
     axs[-1].plot(in_sig)
-
-
-@show_results.dispatch
-def show_results(x: TensorSequences, y: TensorInclination, samples, outs, *, ctxs=None, max_n=2, **kwargs):
-    """Show prediction results for scalar inclination targets."""
-    n_samples = min(len(samples), max_n)
-    n_targ = 2
-    if n_samples > 3:
-        # if there are more then 3 samples to plot then put them in a single figure
-        plot_seqs_single_figure(n_samples, n_targ, samples, plot_scalar_inclination, outs, **kwargs)
-    else:
-        # if there are less then 3 samples to plot then put each in its own figure
-        plot_seqs_multi_figures(n_samples, n_targ, samples, plot_scalar_inclination, outs, **kwargs)
-    return ctxs
-
-
-@show_batch.dispatch
-def show_batch(x: TensorSequences, y: TensorInclination, samples, *, ctxs=None, max_n=6, **kwargs):
-    """Show a batch of scalar inclination samples."""
-    n_samples = min(len(samples), max_n)
-    n_targ = 1
-    if n_samples > 3:
-        # if there are more then 3 samples to plot then put them in a single figure
-        plot_seqs_single_figure(n_samples, n_targ, samples, plot_scalar_inclination, **kwargs)
-    else:
-        # if there are less then 3 samples to plot then put each in its own figure
-        plot_seqs_multi_figures(n_samples, n_targ, samples, plot_scalar_inclination, **kwargs)
-    return ctxs
-
-
-@show_results.dispatch
-def show_results(x: TensorSequences, y: TensorQuaternionInclination, samples, outs, *, ctxs=None, max_n=2, **kwargs):
-    """Show prediction results for quaternion inclination targets."""
-    if "quat" in kwargs:
-        return show_results(x, TensorSequencesOutput(y), samples, outs, ctxs=ctxs, max_n=max_n, **kwargs)
-    n_samples = min(len(samples), max_n)
-    n_targ = 2
-    if n_samples > 3:
-        # if there are more then 3 samples to plot then put them in a single figure
-        plot_seqs_single_figure(n_samples, n_targ, samples, plot_quaternion_inclination, outs, **kwargs)
-    else:
-        # if there are less then 3 samples to plot then put each in its own figure
-        plot_seqs_multi_figures(n_samples, n_targ, samples, plot_quaternion_inclination, outs, **kwargs)
-    return ctxs
-
-
-@show_batch.dispatch
-def show_batch(x: TensorSequences, y: TensorQuaternionInclination, samples, *, ctxs=None, max_n=6, **kwargs):
-    """Show a batch of quaternion inclination samples."""
-    n_samples = min(len(samples), max_n)
-    n_targ = 1
-    if n_samples > 3:
-        # if there are more then 3 samples to plot then put them in a single figure
-        plot_seqs_single_figure(n_samples, n_targ, samples, plot_quaternion_inclination)
-    else:
-        # if there are less then 3 samples to plot then put each in its own figure
-        plot_seqs_multi_figures(n_samples, n_targ, samples, plot_quaternion_inclination)
-    return ctxs
-
-
-@show_results.dispatch
-def show_results(x: TensorSequences, y: TensorQuaternionAngle, samples, outs, *, ctxs=None, max_n=2, **kwargs):
-    """Show prediction results for quaternion angle targets."""
-    n_samples = min(len(samples), max_n)
-    n_targ = 2
-    if n_samples > 3:
-        # if there are more then 3 samples to plot then put them in a single figure
-        plot_seqs_single_figure(n_samples, n_targ, samples, plot_quaternion_rel_angle, outs, **kwargs)
-    else:
-        # if there are less then 3 samples to plot then put each in its own figure
-        plot_seqs_multi_figures(n_samples, n_targ, samples, plot_quaternion_rel_angle, outs, **kwargs)
-    return ctxs
-
-
-@show_batch.dispatch
-def show_batch(x: TensorSequences, y: TensorQuaternionAngle, samples, *, ctxs=None, max_n=6, **kwargs):
-    """Show a batch of quaternion angle samples."""
-    n_samples = min(len(samples), max_n)
-    n_targ = 1
-    if n_samples > 3:
-        # if there are more then 3 samples to plot then put them in a single figure
-        plot_seqs_single_figure(n_samples, n_targ, samples, plot_quaternion_rel_angle, **kwargs)
-    else:
-        # if there are less then 3 samples to plot then put each in its own figure
-        plot_seqs_multi_figures(n_samples, n_targ, samples, plot_quaternion_rel_angle, **kwargs)
-    return ctxs
