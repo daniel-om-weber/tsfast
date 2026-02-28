@@ -167,7 +167,7 @@ def _create_learner(name: str):
 
         case "FranSysLearner":
             from tsfast.prediction.fransys import FranSysLearner
-            return FranSysLearner(dls_pred, init_sz=50, hidden_size=20, rnn_layer=1)
+            return FranSysLearner(dls_pred, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
 
         case "PIRNNLearner":
             from tsfast.pinn.pirnn import PIRNNLearner
