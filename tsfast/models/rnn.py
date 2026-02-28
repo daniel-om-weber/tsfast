@@ -29,7 +29,7 @@ from fastai.text.models.awdlstm import RNNDropout, WeightDropout
 from ..data.loader import TbpttResetCB, get_inp_out_size
 from ..learner.callbacks import ARInitCB, SkipFirstNCallback, TimeSeriesRegularizer
 from ..learner.losses import SkipNLoss, fun_rmse
-from .layers import AR_Model, BatchNorm_1D_Stateful, NormalizedModel, SeqLinear, StandardScaler1D, _detach_state
+from .layers import AR_Model, BatchNorm_1D_Stateful, NormalizedModel, SeqLinear, StandardScaler1D
 
 
 class RNN(nn.Module):
@@ -74,7 +74,6 @@ class RNN(nn.Module):
         self.ret_full_hidden = ret_full_hidden
         self.stateful = stateful
         self.normalization = normalization
-        self.bs = 1
 
         self.rnns = nn.ModuleList(
             [
@@ -101,18 +100,17 @@ class RNN(nn.Module):
             )
         else:
             raise ValueError("Invalid value for normalization")
-        self.reset_state()
+        self._compat_state = None
 
-    def forward(self, inp: Tensor, h_init: list | None = None):
+    def forward(self, inp: Tensor, state: list | None = None):
         bs, seq_len, _ = inp.shape
-        if h_init is None and self.stateful:
-            h_init = self._get_hidden(bs)
-
         r_input = self.input_dp(inp) if self.input_p > 0 else inp
         full_hid, new_hidden = [], []
-        #         import pdb; pdb.set_trace()
         for layer_idx, (rnn, hid_dp, nrm) in enumerate(zip(self.rnns, self.hidden_dps, self.norm_layers)):
-            r_output, h = rnn(r_input.contiguous(), h_init[layer_idx] if h_init is not None else None)
+            r_output, h = rnn(
+                r_input.contiguous(),
+                state[layer_idx] if state is not None else None,
+            )
 
             if self.normalization != "":
                 r_output = nrm(r_output)
@@ -124,22 +122,9 @@ class RNN(nn.Module):
             new_hidden.append(h)
             r_input = r_output
 
-        if self.stateful:
-            self.hidden = _detach_state(new_hidden)
-            self.bs = bs
         output = r_output if not self.ret_full_hidden else torch.stack(full_hid, 0)
 
         return output, new_hidden
-
-    def _get_hidden(self, bs):
-        if self.hidden is None:
-            return None
-        if bs != self.bs:
-            return None
-        if self.hidden[0][0].device != next(self.parameters()).device:
-            return None
-            #         import pdb; pdb.set_trace()
-        return self.hidden
 
     def _one_rnn(self, n_in, n_out, weight_p, rnn_type, **kwargs):
         if rnn_type == "gru":
@@ -159,15 +144,15 @@ class RNN(nn.Module):
         return rnn
 
     def reset_state(self) -> None:
-        """Clear the stored hidden state."""
-        self.hidden = None
+        """Compatibility shim for TbpttResetCB."""
+        self._compat_state = None
 
 
 class Sequential_RNN(RNN):
     """RNN variant that returns only the output tensor, discarding hidden state."""
 
-    def forward(self, inp: Tensor, h_init: list | None = None):
-        return super().forward(inp, h_init)[0]
+    def forward(self, inp: Tensor, state: list | None = None):
+        return super().forward(inp, state)[0]
 
 
 class SimpleRNN(nn.Module):
@@ -201,8 +186,8 @@ class SimpleRNN(nn.Module):
             hidden_size, output_size, hidden_size=hidden_size, hidden_layer=linear_layers, act=nn.LeakyReLU
         )
 
-    def forward(self, x: Tensor, h_init: list | None = None):
-        out, h = self.rnn(x, h_init)
+    def forward(self, x: Tensor, state: list | None = None):
+        out, h = self.rnn(x, state)
         out = self.final(out)
         return out if not self.return_state else (out, h)
 
