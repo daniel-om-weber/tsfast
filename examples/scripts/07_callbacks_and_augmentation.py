@@ -45,7 +45,7 @@ from tsfast.models.layers import unwrap_model
 from tsfast.training import (
     fun_rmse,
     TimeSeriesRegularizerLoss,
-    noise, bias, vary_seq_len, truncate_sequence,
+    noise, vary_seq_len, truncate_sequence,
 )
 
 # %% [markdown]
