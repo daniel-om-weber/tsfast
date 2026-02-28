@@ -81,9 +81,6 @@ class Diag_RNN(nn.Module):
         hidden = [h.contiguous() for h in hidden]
         return hidden
 
-    def _get_hidden(self, bs):
-        return self.rnn._get_hidden(bs)
-
 
 class Diag_RNN_raw(nn.Module):
     """Raw RNN diagnosis model that returns full hidden states directly.
@@ -172,9 +169,6 @@ class DiagLSTM(nn.Module):
         # split in tuples for the lstm
         lst_hidden = [tuple([h_split.contiguous() for h_split in h.split(h.shape[0] // 2, dim=0)]) for h in lst_hidden]
         return lst_hidden
-
-    def _get_hidden(self, bs):
-        return self.rnn._get_hidden(bs)
 
 
 class Diag_TCN(nn.Module):
