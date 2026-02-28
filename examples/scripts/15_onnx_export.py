@@ -17,7 +17,7 @@
 # # Example 15: ONNX Export and Deployment
 #
 # Once you have trained a model, you often want to deploy it without requiring
-# the full PyTorch/fastai stack. ONNX (Open Neural Network Exchange) is an open
+# the full PyTorch stack. ONNX (Open Neural Network Exchange) is an open
 # format that lets you run models with lightweight runtimes like ONNX Runtime.
 # This example exports a trained model to ONNX and verifies numerical agreement
 # with the PyTorch version.
@@ -38,11 +38,11 @@
 
 # %%
 import numpy as np
-from tsfast.datasets.benchmark import create_dls_silverbox
+from tsfast.tsdata.benchmark import create_dls_silverbox
 from tsfast.models.rnn import RNNLearner
 from tsfast.inference import InferenceWrapper
 from tsfast.inference.onnx import export_onnx, OnnxInferenceWrapper
-from tsfast.learner.losses import fun_rmse
+from tsfast.training import fun_rmse
 
 # %% [markdown]
 # ## Train a Model
@@ -91,7 +91,7 @@ print(f"Output shape: {y_pytorch.shape}")
 #
 # Parameters:
 #
-# - **`lrn`** -- the trained fastai Learner to export
+# - **`lrn`** -- the trained Learner to export
 # - **`path`** -- output file path (a `.onnx` suffix is added if missing)
 # - **`opset_version=17`** (default) -- ONNX operator set version. Higher
 #   versions support more operations; 17 is a safe default for most runtimes.
@@ -152,7 +152,7 @@ print("Outputs match within tolerance!")
 # - **`OnnxInferenceWrapper` provides the same numpy interface** as
 #   `InferenceWrapper`, making it a drop-in replacement for deployment.
 # - **ONNX Runtime is lightweight** -- deploy your models without installing
-#   PyTorch or fastai.
+#   PyTorch.
 # - **Always verify numerical agreement** between PyTorch and ONNX outputs to
 #   catch export issues early.
 # - **Autoregressive models cannot be exported** due to their sequential
