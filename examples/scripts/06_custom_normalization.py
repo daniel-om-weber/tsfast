@@ -33,10 +33,10 @@
 # %%
 import torch
 
-from tsfast.datasets.benchmark import create_dls_silverbox
+from tsfast.tsdata.benchmark import create_dls_silverbox
 from tsfast.models.rnn import RNNLearner
 from tsfast.models.layers import Scaler, StandardScaler1D, MinMaxScaler1D, MaxAbsScaler1D
-from tsfast.learner.losses import fun_rmse
+from tsfast.training import fun_rmse
 
 # %% [markdown]
 # ## Why Normalization Matters

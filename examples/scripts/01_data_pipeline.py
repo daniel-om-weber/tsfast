@@ -34,8 +34,8 @@
 # %%
 import identibench as idb
 
-from tsfast.datasets import create_dls
-from tsfast.datasets.benchmark import create_dls_silverbox
+from tsfast.tsdata import create_dls
+from tsfast.tsdata.benchmark import create_dls_silverbox
 from tsfast.models.rnn import RNNLearner
 
 # %% [markdown]

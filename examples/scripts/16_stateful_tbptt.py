@@ -33,9 +33,9 @@
 # ## Setup
 
 # %%
-from tsfast.datasets.benchmark import create_dls_silverbox
+from tsfast.tsdata.benchmark import create_dls_silverbox
 from tsfast.models.rnn import RNNLearner
-from tsfast.learner.losses import fun_rmse
+from tsfast.training import fun_rmse
 
 # %% [markdown]
 # ## The Memory Problem

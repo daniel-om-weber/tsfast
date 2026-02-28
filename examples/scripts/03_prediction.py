@@ -32,9 +32,9 @@
 # ## Setup
 
 # %%
-from tsfast.datasets.benchmark import create_dls_silverbox_prediction
+from tsfast.tsdata.benchmark import create_dls_silverbox_prediction
 from tsfast.prediction.fransys import FranSysLearner
-from tsfast.learner.losses import fun_rmse
+from tsfast.training import fun_rmse
 
 # %% [markdown]
 # ## Simulation vs. Prediction
