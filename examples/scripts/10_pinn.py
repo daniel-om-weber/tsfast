@@ -186,8 +186,8 @@ dls = create_dls(
 # - **`generate_excitation_signals`** creates random input signals (sines,
 #   steps, chirps, etc.). `amplitude_range` and `frequency_range` control
 #   the signal characteristics.
-# - **`num_workers=1`** -- number of parallel workers for collocation point
-#   generation. Must be at least 1 (0 is not supported).
+# - Collocation points are generated in a background thread by default,
+#   overlapping generation with GPU compute.
 
 # %%
 learn = RNNLearner(
@@ -202,7 +202,6 @@ learn.add_aux_loss(CollocationLoss(
     ),
     physics_loss_func=spring_damper_physics,
     weight=1.0,
-    num_workers=1,
 ))
 
 learn.fit_flat_cos(10, 3e-3)
@@ -278,7 +277,6 @@ learn.add_aux_loss(CollocationLoss(
     weight=0.5,
     init_mode='state_encoder',
     output_ranges=[(-1.0, 1.0), (-2.0, 2.0)],
-    num_workers=1,
 ))
 
 learn.fit_flat_cos(10, 3e-3)

@@ -706,7 +706,7 @@ class CollocationLoss:
         physics_loss_func: Callable,
         weight: float = 1.0,
         loss_weights: dict | None = None,
-        num_workers: int = 2,
+        num_workers: int = 0,
         init_mode: str = "none",
         output_ranges: list | None = None,
         hidden_std: float = 0.1,
@@ -732,15 +732,31 @@ class CollocationLoss:
 
         self.inner_model = unwrap_model(trainer.model)
 
+    def teardown(self, trainer):
+        """Clean up the collocation DataLoader iterator."""
+        if self.loader_iter is not None:
+            if hasattr(self.loader_iter, "_stop"):
+                self.loader_iter._stop.set()
+            elif hasattr(self.loader_iter, "_workers_done_event"):
+                from ..tsdata.safe_iter import drain_worker_queue
+
+                drain_worker_queue(self.loader_iter)
+            self.loader_iter = None
+
     def _prepare_loader(self, u_real):
-        """Create DataLoader with worker processes that continuously generate collocation points."""
-        loader = torch.utils.data.DataLoader(
-            _CollocationDataset(self.generate_pinn_input, u_real.shape[0], u_real.shape[1]),
-            batch_size=None,
-            num_workers=self.num_workers,
-            prefetch_factor=2,
-        )
-        return loader
+        """Create DataLoader for collocation point generation."""
+        ds = _CollocationDataset(self.generate_pinn_input, u_real.shape[0], u_real.shape[1])
+        if self.num_workers > 0:
+            return torch.utils.data.DataLoader(
+                ds,
+                batch_size=None,
+                num_workers=self.num_workers,
+                prefetch_factor=2,
+            )
+        from ..tsdata.prefetch import PrefetchLoader
+
+        dl = torch.utils.data.DataLoader(ds, batch_size=None, num_workers=0)
+        return PrefetchLoader(dl, prefetch=2)
 
     def __call__(self, pred: torch.Tensor, yb: torch.Tensor, xb: torch.Tensor) -> torch.Tensor:
         """Compute physics-informed loss on collocation points."""
@@ -748,11 +764,7 @@ class CollocationLoss:
         batch_size = xb.shape[0]
 
         if self.loader_iter is None:
-            import warnings
-
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", message=".*fork.*deadlock.*", category=DeprecationWarning)
-                self.loader_iter = iter(self._prepare_loader(xb))
+            self.loader_iter = iter(self._prepare_loader(xb))
 
         u_coloc = next(self.loader_iter).to(device)
 
