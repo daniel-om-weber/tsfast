@@ -292,7 +292,7 @@ class DataLoaders:
     train: DataLoader
     valid: DataLoader
     test: DataLoader | None
-    blocks: tuple[Block, ...]
+    # blocks not stored — no downstream consumer yet; add when needed
 
     @functools.cache
     def stats(self, n_batches: int = 10) -> list[NormStats]:
@@ -991,7 +991,7 @@ a new subpackage that never imports from the rest of `tsfast`.
    - `resample_interp()`, `running_mean()`, `downsample_mean()`
    - Filtering utilities (Butterworth lowpass for anti-aliasing)
 5. `tsfast/tsdata/norm.py` — normalization (from `data/core.py` + `datasets/core.py`)
-   - `NormStats` frozen dataclass (mean, std, min, max per channel)
+   - `NormPair` frozen dataclass (mean, std, min, max per channel), `NormStats` NamedTuple of `(u, y)` NormPairs
    - `compute_stats(dl, n_batches)` — on-demand stats from DataLoader batches
    - `compute_stats_from_files(files, signals)` — exact stats via streaming HDF5 scan
    - Disk caching via `cache_id` at `.tsfast_cache/{cache_id}.pkl`

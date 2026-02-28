@@ -5,6 +5,8 @@ import math
 import h5py
 import numpy as np
 
+from scipy.signal import resample as fft_resample
+
 from .signal import resample_interp
 
 
@@ -43,7 +45,7 @@ class HDF5Signals:
         if path not in self._len_cache:
             with h5py.File(path, "r") as f:
                 ds = f if self.dataset is None else f[self.dataset]
-                self._len_cache[path] = max(ds[self.names[0]].shape)
+                self._len_cache[path] = ds[self.names[0]].shape[0]
         return self._len_cache[path]
 
     @property
@@ -102,7 +104,10 @@ class Resampled:
         r_orig = min(math.ceil(r_slc / factor) + 2, self.file_len(path))
         raw = self.block.read(path, l_orig, r_orig)
 
-        resampled = resample_interp(raw, factor)
+        if self.fast_resample:
+            resampled = resample_interp(raw, factor)
+        else:
+            resampled = fft_resample(raw, int(raw.shape[0] * factor), window=("kaiser", 14.0))
 
         if hasattr(self.block, "fs_idx") and self.block.fs_idx is not None:
             resampled[:, self.block.fs_idx] = raw[0, self.block.fs_idx] * factor

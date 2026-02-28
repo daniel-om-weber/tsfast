@@ -48,9 +48,10 @@ class WindowedDataset(Dataset):
         self._single_target = not isinstance(targets, tuple)
         self.win_sz = win_sz
         self.stp_sz = stp_sz
+        self._ref_block = self._find_temporal(*self._inputs, *self._targets)
 
         if win_sz is not None:
-            ref_block = self._find_temporal(*self._inputs, *self._targets)
+            ref_block = self._ref_block
             counts = []
             for e in entries:
                 raw_len = ref_block.file_len(e.path)
@@ -68,8 +69,7 @@ class WindowedDataset(Dataset):
     def __getitem__(self, idx: int) -> tuple:
         if self.win_sz is None:
             entry = self.entries[idx]
-            ref = self._find_temporal(*self._inputs, *self._targets)
-            eff_len = int(ref.file_len(entry.path) * entry.resampling_factor)
+            eff_len = int(self._ref_block.file_len(entry.path) * entry.resampling_factor)
             l_slc, r_slc = 0, eff_len
         else:
             entry_idx = int(np.searchsorted(self._cumsum, idx, side="right"))

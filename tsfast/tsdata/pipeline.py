@@ -67,8 +67,9 @@ class DataLoaders:
                 return cached
         if self._signal_names is None or self._train_files is None:
             raise ValueError(
-                "File-based stats require train_files and signal_names. "
-                "Use create_dls() or set _train_files and _signal_names manually."
+                "File-based stats require signal_names and train_files. "
+                "Use create_dls() which sets these automatically, or after "
+                "create_dls_from_blocks() set dls._signal_names = (u_names, y_names)."
             )
         u_names, y_names = self._signal_names
         norm_u = compute_stats_from_files(self._train_files, u_names)
@@ -212,8 +213,8 @@ def create_dls_from_blocks(
         train_sampler = RandomSampler(train_ds)
 
     if n_batches_valid is not None:
-        n_samples_valid = n_batches_valid * bs
-        valid_sampler = RandomSampler(valid_ds, replacement=True, num_samples=n_samples_valid)
+        n_samples_valid = min(n_batches_valid * bs, len(valid_ds))
+        valid_sampler = SequentialSampler(range(n_samples_valid))
     else:
         valid_sampler = SequentialSampler(valid_ds)
 
