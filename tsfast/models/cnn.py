@@ -28,8 +28,6 @@ from fastai.callback.tracker import EarlyStoppingCallback
 from fastai.data.core import DataLoaders
 from fastai.learner import Learner
 from fastai.optimizer import Adam
-from fastai.torch_basics import to_detach
-
 from ..data.loader import get_inp_out_size
 from ..learner.callbacks import ARInitCB, TimeSeriesRegularizer
 from ..learner.losses import SkipNLoss, fun_rmse
@@ -153,7 +151,7 @@ class CausalConv1d(torch.nn.Conv1d):
         out = super().forward(x)
 
         if self.stateful:
-            self.x_init = to_detach(x[..., -self.__init_size :], cpu=False, gather=False)
+            self.x_init = x[..., -self.__init_size :].detach()
 
         return out
 
@@ -388,7 +386,7 @@ class SeperateTCN(nn.Module):
         if self.stateful:
             if self.x_init is not None:
                 out = out[:, self.rec_field :]
-            self.x_init = x[:, -self.rec_field :]
+            self.x_init = x[:, -self.rec_field :].detach()
 
         return out
 
