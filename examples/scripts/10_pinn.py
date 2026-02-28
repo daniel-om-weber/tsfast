@@ -44,16 +44,16 @@
 # %%
 from pathlib import Path
 
-from tsfast.datasets.core import create_dls
+from tsfast.tsdata import create_dls
 from tsfast.models.rnn import RNNLearner
 from tsfast.pinn.core import (
-    CollocationPointsCB,
-    PhysicsLossCallback,
+    CollocationLoss,
+    PhysicsLoss,
     generate_excitation_signals,
     diff1_forward,
 )
 from tsfast.pinn.pirnn import PIRNNLearner
-from tsfast.learner.losses import fun_rmse, zero_loss
+from tsfast.training import fun_rmse, zero_loss
 
 # %% [markdown]
 # ## The Spring-Damper System
@@ -158,7 +158,6 @@ path = _root / "test_data" / "pinn"
 #   between windows for more training data
 # - **`n_batches_train=300`** -- fixed number of training batches per epoch,
 #   important for PINN training where we want many gradient steps per epoch
-# - **`.cpu()`** -- PINN training is lightweight, CPU is sufficient
 
 # %%
 dls = create_dls(
@@ -166,7 +165,7 @@ dls = create_dls(
     dataset=path,
     win_sz=100, stp_sz=1, valid_stp_sz=1,
     bs=32, n_batches_train=300,
-).cpu()
+)
 
 # %%
 dls.show_batch(max_n=4)
@@ -185,7 +184,7 @@ dls.show_batch(max_n=4)
 # - **`zero_loss`** as the data loss: returns 0 for every batch. Physics is
 #   the **only** training signal. The model does not try to fit any specific
 #   trajectory.
-# - **`CollocationPointsCB`** generates random excitation signals each batch
+# - **`CollocationLoss`** generates random excitation signals each batch
 #   and computes the physics loss on the model's response to those signals.
 # - **`generate_excitation_signals`** creates random input signals (sines,
 #   steps, chirps, etc.). `amplitude_range` and `frequency_range` control
@@ -199,7 +198,7 @@ learn = RNNLearner(
     loss_func=zero_loss, metrics=[fun_rmse],
 )
 
-learn.add_cb(CollocationPointsCB(
+learn.add_aux_loss(CollocationLoss(
     generate_pinn_input=lambda bs, sl, dev: generate_excitation_signals(
         bs, sl, n_inputs=1, dt=DT, device=dev,
         amplitude_range=(0.5, 2.0), frequency_range=(0.1, 3.0),
@@ -233,11 +232,11 @@ learn.show_results(max_n=3, ds_idx=1)
 #   directly to the RNN hidden state, enabling variable initial conditions
 #   at inference without needing a full initialization sequence
 #
-# Two callbacks enforce physics:
+# Two auxiliary losses enforce physics:
 #
-# - **`PhysicsLossCallback`**: computes the physics loss on actual training
+# - **`PhysicsLoss`**: computes the physics loss on actual training
 #   data batches
-# - **`CollocationPointsCB`**: computes the physics loss on randomly
+# - **`CollocationLoss`**: computes the physics loss on randomly
 #   generated input signals for better generalization
 #
 # Key parameters:
@@ -251,7 +250,7 @@ learn.show_results(max_n=3, ds_idx=1)
 # - **`loss_weights`** -- relative importance of each physics loss
 #   component. `initial` is weighted 10x higher to anchor predictions to
 #   measured initial conditions.
-# - **`init_mode='state_encoder'`** -- tells the collocation callback to
+# - **`init_mode='state_encoder'`** -- tells the collocation loss to
 #   initialize the model via the StateEncoder with random physical states
 # - **`output_ranges`** -- physical ranges for random state generation,
 #   one (min, max) tuple per output channel
@@ -265,7 +264,7 @@ learn = PIRNNLearner(
 )
 
 # Physics on training data
-learn.add_cb(PhysicsLossCallback(
+learn.add_aux_loss(PhysicsLoss(
     physics_loss_func=spring_damper_physics,
     weight=1.0,
     loss_weights={'physics': 1.0, 'derivative': 1.0, 'initial': 10.0},
@@ -273,7 +272,7 @@ learn.add_cb(PhysicsLossCallback(
 ))
 
 # Physics on collocation points with StateEncoder initialization
-learn.add_cb(CollocationPointsCB(
+learn.add_aux_loss(CollocationLoss(
     generate_pinn_input=lambda bs, sl, dev: generate_excitation_signals(
         bs, sl, n_inputs=1, dt=DT, device=dev,
         amplitude_range=(0.5, 2.0), frequency_range=(0.1, 3.0),
@@ -307,9 +306,9 @@ learn.show_results(max_n=3, ds_idx=1)
 # - **Approach 2 (PIRNN)** combines data fitting with physics constraints
 #   for better accuracy and generalization.
 # - **`zero_loss`** is used when physics is the only training signal -- it
-#   returns 0 so the physics callbacks provide 100% of the gradient.
-# - **`PhysicsLossCallback`** enforces physics on real training data;
-#   **`CollocationPointsCB`** enforces physics on randomly generated
+#   returns 0 so the physics auxiliary losses provide 100% of the gradient.
+# - **`PhysicsLoss`** enforces physics on real training data;
+#   **`CollocationLoss`** enforces physics on randomly generated
 #   excitation signals for broader coverage.
 # - **`StateEncoder`** maps a physical state vector to an RNN hidden state,
 #   enabling variable initial conditions without a full initialization
