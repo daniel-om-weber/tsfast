@@ -26,12 +26,10 @@ from fastai.imports import noop
 from fastai.learner import Learner
 from fastai.optimizer import Adam
 from fastai.text.models.awdlstm import RNNDropout, WeightDropout
-from fastai.torch_basics import one_param, to_detach
-
 from ..data.loader import TbpttResetCB, get_inp_out_size
 from ..learner.callbacks import ARInitCB, SkipFirstNCallback, TimeSeriesRegularizer
 from ..learner.losses import SkipNLoss, fun_rmse
-from .layers import AR_Model, BatchNorm_1D_Stateful, NormalizedModel, SeqLinear, StandardScaler1D
+from .layers import AR_Model, BatchNorm_1D_Stateful, NormalizedModel, SeqLinear, StandardScaler1D, _detach_state
 
 
 class RNN(nn.Module):
@@ -127,7 +125,7 @@ class RNN(nn.Module):
             r_input = r_output
 
         if self.stateful:
-            self.hidden = to_detach(new_hidden, cpu=False, gather=False)
+            self.hidden = _detach_state(new_hidden)
             self.bs = bs
         output = r_output if not self.ret_full_hidden else torch.stack(full_hid, 0)
 
@@ -138,7 +136,7 @@ class RNN(nn.Module):
             return None
         if bs != self.bs:
             return None
-        if self.hidden[0][0].device != one_param(self).device:
+        if self.hidden[0][0].device != next(self.parameters()).device:
             return None
             #         import pdb; pdb.set_trace()
         return self.hidden

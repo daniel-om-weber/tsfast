@@ -1,6 +1,7 @@
 """Reusable model layers, scalers, and wrappers for normalization and aggregation."""
 
 __all__ = [
+    "_detach_state",
     "BatchNorm_1D_Stateful",
     "SeqLinear",
     "Scaler",
@@ -22,7 +23,19 @@ from torch.nn import Mish, Parameter
 
 import fastai.callback.progress  # noqa: F401  — side-effect import activates progress bar
 import fastai.callback.schedule  # noqa: F401  — side-effect import patches fit_flat_cos onto Learner
-from fastai.torch_basics import to_detach
+
+
+def _detach_state(state):
+    """Recursively detach tensors from the computation graph."""
+    if state is None:
+        return None
+    if isinstance(state, torch.Tensor):
+        return state.detach()
+    if isinstance(state, (list, tuple)):
+        return type(state)(_detach_state(s) for s in state)
+    if isinstance(state, dict):
+        return {k: _detach_state(v) for k, v in state.items()}
+    return state
 
 
 class BatchNorm_1D_Stateful(nn.Module):
@@ -394,7 +407,7 @@ class AR_Model(nn.Module):
                 y_e = self.model(inp)
 
         if self.stateful:
-            self.y_init = to_detach(y_e[:, -1:], cpu=False, gather=False)
+            self.y_init = y_e[:, -1:].detach()
 
         return y_e if not self.return_state else (y_e, h0)
 
