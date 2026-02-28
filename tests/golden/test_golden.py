@@ -59,19 +59,9 @@ DLS_CONFIGS = {
         u=["u"], y=["y"], dataset=WH_PATH,
         win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2,
     ),
-    "wh_prediction": dict(
-        u=["u"], y=["y"], dataset=WH_PATH,
-        win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2,
-        prediction=True,
-    ),
     "pinn_simulation": dict(
         u=["u"], y=["x", "v"], dataset=PINN_PATH,
         win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2,
-    ),
-    "pinn_prediction": dict(
-        u=["u"], y=["x", "v"], dataset=PINN_PATH,
-        win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2,
-        prediction=True,
     ),
 }
 
@@ -83,7 +73,7 @@ DLS_CONFIGS = {
 class TestDataPipelineGolden:
     @pytest.mark.parametrize("config_name", list(DLS_CONFIGS.keys()))
     def test_batch_shapes(self, data_golden, config_name):
-        from tsfast.datasets.core import create_dls
+        from tsfast.tsdata import create_dls
 
         golden = data_golden[config_name]
         dls = create_dls(**DLS_CONFIGS[config_name])
@@ -94,7 +84,7 @@ class TestDataPipelineGolden:
 
     @pytest.mark.parametrize("config_name", list(DLS_CONFIGS.keys()))
     def test_dataloader_lengths(self, data_golden, config_name):
-        from tsfast.datasets.core import create_dls
+        from tsfast.tsdata import create_dls
 
         golden = data_golden[config_name]
         dls = create_dls(**DLS_CONFIGS[config_name])
@@ -109,7 +99,7 @@ class TestDataPipelineGolden:
         Values use a loose tolerance because estimate_norm_stats() samples
         shuffled training batches, so exact values vary across runs.
         """
-        from tsfast.datasets.core import create_dls
+        from tsfast.tsdata import create_dls
 
         golden = data_golden[config_name]
         dls = create_dls(**DLS_CONFIGS[config_name])
@@ -131,16 +121,14 @@ class TestDataPipelineGolden:
 
 def _create_shared_dls():
     """Create shared DLS objects matching capture_baselines.py pattern."""
-    from tsfast.datasets.core import create_dls
+    from tsfast.tsdata import create_dls
 
     dls_sim = create_dls(u=["u"], y=["y"], dataset=WH_PATH,
                          win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2)
     dls_pred = create_dls(u=["u"], y=["y"], dataset=WH_PATH,
-                          win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2,
-                          prediction=True)
+                          win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2)
     dls_pinn_pred = create_dls(u=["u"], y=["x", "v"], dataset=PINN_PATH,
-                               win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2,
-                               prediction=True)
+                               win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2)
     return dls_sim, dls_pred, dls_pinn_pred
 
 
@@ -183,7 +171,8 @@ def _create_learner(name: str):
 
         case "PIRNNLearner":
             from tsfast.pinn.pirnn import PIRNNLearner
-            return PIRNNLearner(dls_pinn_pred, init_sz=20, hidden_size=20, rnn_layer=1)
+            return PIRNNLearner(dls_pinn_pred, init_sz=20, hidden_size=20, rnn_layer=1,
+                                attach_output=True)
 
         case _:
             raise ValueError(f"Unknown learner: {name}")

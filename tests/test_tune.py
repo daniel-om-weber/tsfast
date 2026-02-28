@@ -18,7 +18,7 @@ def ray_init_shutdown():
 @pytest.fixture(scope="module")
 def dls_silverbox():
     """Small Silverbox DataLoaders for tune tests."""
-    from tsfast.datasets.benchmark import create_dls_silverbox
+    from tsfast.tsdata.benchmark import create_dls_silverbox
 
     return create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
 

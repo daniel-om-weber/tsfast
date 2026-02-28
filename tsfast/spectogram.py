@@ -1,55 +1,15 @@
-"""Spectrogram transforms and data blocks for frequency-domain analysis."""
+"""Spectrogram transforms for frequency-domain analysis."""
 
 __all__ = [
-    "TensorSpectrogram",
-    "TensorSpectrogramInput",
-    "TensorSpectrogramOutput",
-    "Sequence2Spectrogram",
-    "SpectrogramBlock",
+    "Spectrogram",
+    "spectrogram",
+    "complex_norm",
 ]
 
 from collections.abc import Callable
 
-import matplotlib.pyplot as plt
 import torch
 from torch import Tensor
-
-from fastcore.meta import delegates
-from fastcore.basics import ifnone
-from fastai.torch_basics import TensorBase, Transform
-from fastai.data.block import TransformBlock
-
-from .data.core import HDF2Sequence
-from .data.block import pad_sequence
-
-
-class TensorSpectrogram(TensorBase):
-    """Base tensor type for spectrogram data with plotting support."""
-
-    def show(self, ctx=None, ax=None, title: str = "", **kwargs):
-        ax = ifnone(ax, ctx)
-        if ax is None:
-            _, ax = plt.subplots()
-        ax.axis(False)
-        n_channels = self.shape[0]
-        for i, channel in enumerate(self):
-            ia = ax.inset_axes((i / n_channels, 0.2, 1 / n_channels, 0.7))
-            #             ia = ax.inset_axes((i / n_channels, 0, 1 / n_channels, 1))
-
-            ia.imshow(channel.cpu().numpy(), aspect="auto", origin="lower")
-            if i > 0:
-                ia.set_yticks([])
-            ia.set_title(f"Channel {i}")
-        ax.set_title(title)
-        return ax
-
-
-class TensorSpectrogramInput(TensorSpectrogram):
-    pass
-
-
-class TensorSpectrogramOutput(TensorSpectrogram):
-    pass
 
 
 def complex_norm(complex_tensor: Tensor, power: float = 1.0) -> Tensor:
@@ -156,82 +116,4 @@ class Spectrogram(torch.nn.Module):
         """
         return spectrogram(
             waveform, self.pad, self.window, self.n_fft, self.hop_length, self.win_length, self.power, self.normalized
-        )
-
-
-@delegates(Spectrogram, keep=True)
-class Sequence2Spectrogram(Transform):
-    """Transform that computes a spectrogram from a time series sequence.
-
-    Args:
-        scaling: amplitude scaling mode ('log' for log10).
-    """
-
-    def __init__(self, scaling: str = "log", **kwargs):
-        self.scaling = scaling
-        self.tfm = Spectrogram(**kwargs)
-
-    def encodes(self, o: TensorSpectrogram):
-        if o.device != self.tfm.window.device:
-            self.tfm.window = self.tfm.window.to(o.device)
-            #         import pdb;pdb.set_trace()
-        spec = self.tfm(o.transpose(-1, -2).contiguous())
-        if self.scaling == "log":
-            spec = torch.log10(spec + 1e-10)
-        return spec
-
-
-class SpectrogramBlock(TransformBlock):
-    """TransformBlock that converts sequences to spectrograms via STFT.
-
-    Args:
-        seq_extract: transform that extracts the raw sequence.
-        padding: whether to pad sequences of different lengths.
-        n_fft: FFT size for the spectrogram transform.
-        hop_length: hop between STFT windows, or None for default.
-        normalized: whether to normalize the STFT output.
-    """
-
-    def __init__(
-        self,
-        seq_extract: Transform,
-        padding: bool = False,
-        n_fft: int = 100,
-        hop_length: int | None = None,
-        normalized: bool = False,
-    ):
-        return super().__init__(
-            type_tfms=[seq_extract],
-            batch_tfms=[Sequence2Spectrogram(n_fft=n_fft, hop_length=hop_length, normalized=normalized)],
-            dls_kwargs={} if not padding else {"before_batch": pad_sequence},
-        )
-
-    @classmethod
-    @delegates(HDF2Sequence, keep=True)
-    def from_hdf(
-        cls,
-        clm_names: list[str],
-        seq_cls: type = TensorSpectrogramInput,
-        padding: bool = False,
-        n_fft: int = 100,
-        hop_length: int | None = None,
-        normalized: bool = False,
-        **kwargs,
-    ):
-        """Create a SpectrogramBlock from HDF5 files.
-
-        Args:
-            clm_names: column/dataset names to extract from the HDF5 file.
-            seq_cls: tensor class for the extracted sequences.
-            padding: whether to pad sequences of different lengths.
-            n_fft: FFT size for the spectrogram transform.
-            hop_length: hop between STFT windows, or None for default.
-            normalized: whether to normalize the STFT output.
-        """
-        return cls(
-            HDF2Sequence(clm_names, to_cls=seq_cls, **kwargs),
-            padding,
-            n_fft=n_fft,
-            hop_length=hop_length,
-            normalized=normalized,
         )

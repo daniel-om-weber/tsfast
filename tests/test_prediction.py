@@ -9,8 +9,10 @@ class TestFranSys:
         from tsfast.prediction.fransys import FranSys
         batch = dls_prediction.one_batch()
         device = batch[0].device
+        # FranSys expects [u, y] concatenated input
+        inp = torch.cat([batch[0], batch[1]], dim=-1)
         model = FranSys(1, 1, init_sz=50, rnn_layer=2, hidden_size=50).to(device)
-        out = model(batch[0])
+        out = model(inp)
         assert out.shape[0] == batch[0].shape[0]
         assert out.shape[-1] == 1
 
@@ -18,8 +20,10 @@ class TestFranSys:
         from tsfast.prediction.fransys import ARProg_Init
         batch = dls_prediction.one_batch()
         device = batch[0].device
+        # ARProg_Init expects [u, y] concatenated input
+        inp = torch.cat([batch[0], batch[1]], dim=-1)
         model = ARProg_Init(1, 1, init_sz=50, rnn_layer=1, hidden_size=50).to(device)
-        out = model(batch[0])
+        out = model(inp)
         assert out.shape[-1] == 1
 
     @pytest.mark.slow
@@ -199,7 +203,8 @@ class TestFranSysRegularization:
         assert inner is wrapper.model, "unwrap_model should return the inner model"
 
         batch = dls_prediction.one_batch()
-        xb = batch[0]
+        # Manually apply prediction_concat: [u, y] concatenation
+        xb = torch.cat([batch[0], batch[1]], dim=-1)
 
         wrapper.to(xb.device).eval()
         with torch.no_grad():

@@ -137,12 +137,14 @@ class TestHigherOrderDerivatives:
 
 @pytest.mark.pinn
 class TestPIRNN:
-    def test_pirnn_forward_shape(self, dls_pinn_prediction):
+    def test_pirnn_forward_shape(self, dls_pinn):
         from tsfast.pinn.pirnn import PIRNN
-        batch = dls_pinn_prediction.one_batch()
+        batch = dls_pinn.one_batch()
         device = batch[0].device
+        # PIRNN expects [u, y] concatenated input; manually concatenate
+        inp = torch.cat([batch[0], batch[1]], dim=-1)  # [batch, seq, u+y]
         model = PIRNN(n_u=1, n_y=2, init_sz=20, hidden_size=20, rnn_layer=1).to(device)
-        out = model(batch[0])
+        out = model(inp)
         assert out.shape[0] == batch[1].shape[0]  # batch size
         assert out.shape[2] == 2  # n_y outputs
 
@@ -154,9 +156,10 @@ class TestPIRNN:
         assert states[0].shape == (1, 4, 20)  # (1, batch, hidden_size)
 
     @pytest.mark.slow
-    def test_pirnn_learner_fit(self, dls_pinn_prediction):
+    def test_pirnn_learner_fit(self, dls_pinn):
         from tsfast.pinn.pirnn import PIRNNLearner
-        lrn = PIRNNLearner(dls_pinn_prediction, init_sz=20, hidden_size=20, rnn_layer=1)
+        lrn = PIRNNLearner(dls_pinn, init_sz=20, hidden_size=20, rnn_layer=1,
+                            attach_output=True)
         lrn.fit(1, 3e-3)
         assert not math.isnan(lrn.recorder.values[-1][1])
 
@@ -171,29 +174,31 @@ class TestPIRNN:
 @pytest.mark.pinn
 class TestPINNCallbacks:
     @pytest.mark.slow
-    def test_transition_smoothness(self, dls_pinn_prediction):
+    def test_transition_smoothness(self, dls_pinn):
         from tsfast.prediction.fransys import FranSysLearner
         from tsfast.training import transition_smoothness
-        lrn = FranSysLearner(dls_pinn_prediction, init_sz=20, hidden_size=10, rnn_layer=1)
+        lrn = FranSysLearner(dls_pinn, init_sz=20, hidden_size=10, rnn_layer=1, attach_output=True)
         lrn.add_aux_loss(transition_smoothness(init_sz=20, weight=0.1))
         lrn.fit(1, 3e-3)
         assert not math.isnan(lrn.recorder.values[-1][1])
 
     @pytest.mark.slow
-    def test_alternating_encoder(self, dls_pinn_prediction):
+    def test_alternating_encoder(self, dls_pinn):
         from tsfast.pinn.pirnn import PIRNNLearner
         from tsfast.training import alternating_encoder
-        lrn = PIRNNLearner(dls_pinn_prediction, init_sz=20, hidden_size=20, rnn_layer=1)
+        lrn = PIRNNLearner(dls_pinn, init_sz=20, hidden_size=20, rnn_layer=1,
+                            attach_output=True)
         lrn.add_augmentation(alternating_encoder(p_state=0.3))
         lrn.fit(1, 3e-3)
         from tsfast.models.layers import unwrap_model
         assert unwrap_model(lrn.model).default_encoder_mode == 'sequence'
 
     @pytest.mark.slow
-    def test_consistency_callback(self, dls_pinn_prediction):
+    def test_consistency_callback(self, dls_pinn):
         from tsfast.pinn.pirnn import PIRNNLearner
         from tsfast.training import consistency_loss
-        lrn = PIRNNLearner(dls_pinn_prediction, init_sz=20, hidden_size=20, rnn_layer=1)
+        lrn = PIRNNLearner(dls_pinn, init_sz=20, hidden_size=20, rnn_layer=1,
+                            attach_output=True)
         lrn.add_aux_loss(consistency_loss(weight=0.1))
         lrn.fit(1, 3e-3)
         assert not math.isnan(lrn.recorder.values[-1][1])

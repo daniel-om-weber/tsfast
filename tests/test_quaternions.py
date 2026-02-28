@@ -83,32 +83,16 @@ class TestQuaternionAugmentation:
         assert groups == [[0, 2], [3, 6], [7, 9]]
 
     def test_quaternion_augmentation_modifies_input(self):
-        from tsfast.quaternions import QuaternionAugmentation, TensorQuaternionInclination, norm_quaternion
+        from tsfast.quaternions import QuaternionAugmentation, norm_quaternion
         tfm = QuaternionAugmentation(inp_groups=[[0, 3]])
-        q_raw = norm_quaternion(torch.rand(100, 4))
-        q = TensorQuaternionInclination(q_raw)
-        q_orig = q.clone()
-        # Use eager mode to avoid torch.compile issues with TensorBase
-        with torch.compiler.set_stance("force_eager"):
-            augmented = tfm(q, split_idx=0)
-        assert augmented.shape == q_orig.shape
+        xb = norm_quaternion(torch.rand(2, 100, 4))  # batch of quaternion sequences
+        yb = norm_quaternion(torch.rand(2, 100, 4))  # batch of quaternion targets
+        xb_orig, yb_orig = xb.clone(), yb.clone()
+        xb_aug, yb_aug = tfm(xb, yb)
+        assert xb_aug.shape == xb_orig.shape
+        assert yb_aug.shape == yb_orig.shape
         # Values should change (rotation applied)
-        assert not torch.allclose(augmented.as_subclass(torch.Tensor), q_orig.as_subclass(torch.Tensor), atol=1e-3)
-
-
-class TestQuaternionDataPipeline:
-    def test_hdf2quaternion_extraction(self, orientation_path):
-        from tsfast.quaternions import HDF2Quaternion
-        hdf_file = orientation_path / "experiment2_linear_medium_b0_v_results_myon.mat.hdf5"
-        seq = HDF2Quaternion(["opt_a", "opt_b", "opt_c", "opt_d"], cached=False)
-        result = seq(hdf_file)
-        assert result.shape == (54095, 4)
-
-    def test_quaternion_block_from_hdf(self):
-        from tsfast.quaternions import QuaternionBlock
-        block = QuaternionBlock.from_hdf(["opt_a", "opt_b", "opt_c", "opt_d"])
-        assert block is not None
-        assert hasattr(block, "type_tfms")
+        assert not torch.allclose(xb_aug, xb_orig, atol=1e-3)
 
 
 class TestNumpyQuaternionMath:

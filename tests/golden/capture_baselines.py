@@ -66,26 +66,16 @@ DLS_CONFIGS = {
         u=["u"], y=["y"], dataset=WH_PATH,
         win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2,
     ),
-    "wh_prediction": dict(
-        u=["u"], y=["y"], dataset=WH_PATH,
-        win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2,
-        prediction=True,
-    ),
     "pinn_simulation": dict(
         u=["u"], y=["x", "v"], dataset=PINN_PATH,
         win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2,
-    ),
-    "pinn_prediction": dict(
-        u=["u"], y=["x", "v"], dataset=PINN_PATH,
-        win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2,
-        prediction=True,
     ),
 }
 
 
 def capture_data_pipeline() -> dict:
     """Record create_dls() outputs for all configs."""
-    from tsfast.datasets.core import create_dls
+    from tsfast.tsdata import create_dls
 
     results = {}
     for name, kwargs in DLS_CONFIGS.items():
@@ -124,7 +114,7 @@ def _capture_learner(name: str, create_fn) -> dict:
     val_loss = float(lrn.recorder.values[-1][1])
 
     # Forward pass for output shape
-    batch = lrn.dls.valid.one_batch()
+    batch = next(iter(lrn.dls.valid))
     lrn.model.eval()
     with torch.no_grad():
         pred = lrn.model(batch[0].to(next(lrn.model.parameters()).device))
@@ -144,7 +134,7 @@ def _capture_learner(name: str, create_fn) -> dict:
 
 def capture_learners() -> dict:
     """Train each learner type for 1 epoch and record validation loss."""
-    from tsfast.datasets.core import create_dls
+    from tsfast.tsdata import create_dls
     from tsfast.models.rnn import RNNLearner
     from tsfast.models.cnn import TCNLearner, CRNNLearner
     from tsfast.prediction.fransys import FranSysLearner
@@ -158,12 +148,10 @@ def capture_learners() -> dict:
     dls_pred = create_dls(
         u=["u"], y=["y"], dataset=WH_PATH,
         win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2,
-        prediction=True,
     )
     dls_pinn_pred = create_dls(
         u=["u"], y=["x", "v"], dataset=PINN_PATH,
         win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2,
-        prediction=True,
     )
 
     learner_configs = {
@@ -183,6 +171,7 @@ def capture_learners() -> dict:
         ),
         "PIRNNLearner": lambda: PIRNNLearner(
             dls_pinn_pred, init_sz=20, hidden_size=20, rnn_layer=1,
+            attach_output=True,
         ),
     }
 

@@ -7,24 +7,14 @@ __all__ = [
     "Diag_TCN",
     "ARProg_Init",
     "FranSys",
-    "FranSysCallback",
-    "FranSysCallback_variable_init",
     "FranSysLearner",
 ]
 
-import numpy as np
 import torch
 from torch import nn
 
-from fastcore.meta import delegates
-
-from fastai.callback.core import Callback
-from fastai.callback.hook import HookCallback
-from fastai.metrics import mae
-
-from ..training import Learner, cos_sim_loss, cos_sim_loss_pow, fun_rmse, prediction_concat, truncate_sequence
+from ..training import Learner, fun_rmse, prediction_concat, truncate_sequence
 from ..models.cnn import TCN
-from ..datasets.core import ensure_norm_stats
 from ..models.layers import AR_Model, NormalizedModel, SeqLinear, StandardScaler1D
 from ..models.rnn import RNN, SimpleRNN
 
@@ -42,7 +32,6 @@ class Diag_RNN(nn.Module):
         stateful: whether to maintain hidden state across batches
     """
 
-    @delegates(RNN, keep=True)
     def __init__(
         self,
         input_size: int,
@@ -124,7 +113,6 @@ class DiagLSTM(nn.Module):
         linear_layer: number of linear layers in the output head
     """
 
-    @delegates(nn.LSTM, keep=True)
     def __init__(
         self,
         input_size: int,
@@ -174,7 +162,6 @@ class Diag_TCN(nn.Module):
         mlp_layers: number of additional MLP layers after the TCN
     """
 
-    @delegates(TCN, keep=True)
     def __init__(
         self, input_size: int, output_size: int, output_layer: int, hl_width: int, mlp_layers: int = 0, **kwargs
     ):
@@ -219,7 +206,6 @@ class ARProg_Init(nn.Module):
         final_layer: number of additional final layers (unused, reserved)
     """
 
-    @delegates(RNN, keep=True)
     def __init__(
         self,
         n_u: int,
@@ -303,7 +289,6 @@ class FranSys(nn.Module):
         final_layer: number of additional layers in the shared output head
     """
 
-    @delegates(RNN, keep=True)
     def __init__(
         self,
         n_u: int,
@@ -385,206 +370,6 @@ class FranSys(nn.Module):
         return result
 
 
-class FranSysCallback(HookCallback):
-    """Regularizes FranSys output by syncing diagnosis and prognosis hidden states.
-
-    Args:
-        modules: modules to hook into for capturing hidden states
-        p_state_sync: scaling factor for hidden state deviation between diagnosis
-            and prognosis modules
-        p_diag_loss: scaling factor for loss of diagnosis hidden state through
-            the final layer
-        p_osp_sync: scaling factor for hidden state deviation between one-step
-            prediction and diagnosis hidden states
-        p_osp_loss: scaling factor for one-step prediction loss of prognosis module
-        p_tar_loss: scaling factor for time activation regularization of combined
-            hidden states with target sequence length
-        sync_type: distance metric for state synchronization loss
-        targ_loss_func: loss function used for target-based regularization terms
-        osp_n_skip: number of elements to skip before one-step prediction is
-            applied, defaults to model.init_sz
-        model: explicit FranSys model reference, auto-detected if None
-        detach: whether to detach hooked outputs from the computation graph
-    """
-
-    def __init__(
-        self,
-        modules: list[nn.Module],
-        p_state_sync: float = 1e7,
-        p_diag_loss: float = 0.0,
-        p_osp_sync: float = 0,
-        p_osp_loss: float = 0,
-        p_tar_loss: float = 0,
-        sync_type: str = "mse",
-        targ_loss_func=mae,
-        osp_n_skip: int | None = None,
-        model: nn.Module | None = None,
-        detach: bool = False,
-        **kwargs,
-    ):
-        super().__init__(modules=modules, detach=detach, cpu=False, **kwargs)
-        self.p_state_sync = p_state_sync
-        self.p_diag_loss = p_diag_loss
-        self.p_osp_sync = p_osp_sync
-        self.p_osp_loss = p_osp_loss
-        self.p_tar_loss = p_tar_loss
-        self.sync_type = sync_type
-        self.targ_loss_func = targ_loss_func
-        self.osp_n_skip = osp_n_skip
-        self.inner_model = model
-        self.clear()
-
-    def before_fit(self):
-        from ..models.layers import NormalizedModel, _unwrap_ddp
-
-        wrapper = _unwrap_ddp(self.learn.model)
-        self._output_norm = wrapper.output_norm if isinstance(wrapper, NormalizedModel) else None
-        if self.inner_model is None:
-            from ..models.layers import unwrap_model
-
-            self.inner_model = unwrap_model(self.learn.model)
-        super().before_fit()
-
-    def clear(self):
-        """Reset captured diagnosis and prognosis outputs."""
-        self._out_diag = None
-        self._out_prog = None
-
-    def hook(self, m, i, o):
-        """Capture output of diagnosis and prognosis modules for regularization in after_loss."""
-        if "Diag" in type(m).__name__:
-            self._out_diag = o[0]
-        else:
-            self._out_prog = o[0]
-
-    def before_batch(self):
-        self.clear()
-
-    def after_loss(self):
-        if not self.training:
-            return
-        if self._out_diag is None or self._out_prog is None:
-            return
-
-        # redefine variables for convenience
-        diag = self._out_diag
-        prog = self._out_prog
-        self.clear()
-        model = self.inner_model
-        win_reg = self.osp_n_skip if self.osp_n_skip is not None else model.init_sz
-
-        diag_trunc = diag
-        if diag.shape[2] > prog.shape[2]:
-            diag_trunc = diag_trunc[:, :, -prog.shape[2] :]
-
-        # sync diag prog hidden states loss
-        if self.p_state_sync > 0:
-            # check if diag length has to be reduced to prog length
-
-            if self.sync_type == "mse":
-                hidden_loss = ((prog - diag_trunc) / (diag_trunc.norm())).pow(2).mean()
-            elif self.sync_type == "mae":
-                hidden_loss = ((prog - diag_trunc) / (diag_trunc.norm())).abs().mean()
-            elif self.sync_type == "mspe":
-                hidden_loss = (
-                    ((diag_trunc - prog) / torch.linalg.norm(diag_trunc, dim=(0, 1), keepdim=True)).pow(2).mean()
-                )
-            elif self.sync_type == "mape":
-                hidden_loss = (
-                    ((diag_trunc - prog) / torch.linalg.norm(diag_trunc, dim=(0, 1), keepdim=True)).abs().mean()
-                )
-            elif self.sync_type == "cos":
-                hidden_loss = cos_sim_loss(diag_trunc, prog)
-            elif self.sync_type == "cos_pow":
-                hidden_loss = cos_sim_loss_pow(diag_trunc, prog)
-
-            self.learn.loss_grad += self.p_state_sync * hidden_loss
-            self.learn.loss += self.p_state_sync * hidden_loss
-
-        # self.diag loss
-        if self.p_diag_loss > 0:
-            y_diag = model.final(diag_trunc[-1])
-            if self._output_norm is not None:
-                y_diag = self._output_norm.denormalize(y_diag)
-            hidden_loss = self.targ_loss_func(y_diag, self.yb[0][:, -y_diag.shape[1] :])
-            self.learn.loss_grad += self.p_diag_loss * hidden_loss
-            self.learn.loss += self.p_diag_loss * hidden_loss
-
-        # osp loss - one step prediction on every element of the sequence
-        if self.p_osp_loss > 0 or self.p_osp_sync > 0:
-            inp = self.xb[0][:, win_reg:]
-            bs, n, _ = inp.shape
-            # transform to a single batch of prediction length 1
-            # import pdb;pdb.set_trace()
-            inp = torch.flatten(inp[:, :, : model.n_u], start_dim=0, end_dim=1)[:, None, :]
-            h_init = torch.flatten(diag[:, :, win_reg - 1 : -1], start_dim=1, end_dim=2)[:, None]
-
-            out, _ = model.rnn_prognosis(inp, h_init)
-            # undo transform of hiddenstates to original sequence length
-            h_out = out[:, :, 0]  # the hidden state vector, 0 is the index of the single time step taken
-            out = out[-1].unflatten(0, (bs, n))[
-                :, :, 0
-            ]  # the single step batch transformed back to the batch of sequences
-
-            # osp hidden sync loss - deviation between diagnosis hidden state and one step prediction hidden state
-            h_out_targ = torch.flatten(diag[:, :, win_reg:], start_dim=1, end_dim=2)
-            hidden_loss = ((h_out_targ - h_out) / (h_out.norm() + h_out_targ.norm())).pow(2).mean()
-            # import pdb;pdb.set_trace()
-            self.learn.loss_grad += self.p_osp_sync * hidden_loss
-            self.learn.loss += self.p_osp_sync * hidden_loss
-
-            # osp target loss - one step prediction error on every timestep
-            y_osp = model.final(out)
-            if self._output_norm is not None:
-                y_osp = self._output_norm.denormalize(y_osp)
-            hidden_loss = self.targ_loss_func(y_osp, self.yb[0][:, -y_osp.shape[1] :])
-            # import pdb;pdb.set_trace()
-            self.learn.loss_grad += self.p_osp_loss * hidden_loss
-            self.learn.loss += self.p_osp_loss * hidden_loss
-
-        # tar hidden loss
-        if self.p_tar_loss > 0:
-            h = torch.cat([diag[:, :, : model.init_sz], prog], 2)
-            h_diff = h[:, :, 1:] - h[:, :, :-1]
-            hidden_loss = h_diff.pow(2).mean()
-
-            # import pdb;pdb.set_trace()
-            self.learn.loss_grad += self.p_tar_loss * hidden_loss
-            self.learn.loss += self.p_tar_loss * hidden_loss
-
-
-class FranSysCallback_variable_init(Callback):
-    """Randomizes the diagnosis initialization window size during training.
-
-    Args:
-        init_sz_min: minimum initialization window size
-        init_sz_max: maximum initialization window size (inclusive)
-        model: explicit FranSys model reference, auto-detected if None
-    """
-
-    def __init__(self, init_sz_min: int, init_sz_max: int, model: nn.Module | None = None, **kwargs):
-        super().__init__(**kwargs)
-        self.init_sz_valid = None
-        self.init_sz_min = init_sz_min
-        self.init_sz_max = init_sz_max
-        self.inner_model = model
-
-    def before_fit(self):
-        if self.inner_model is None:
-            from ..models.layers import unwrap_model
-
-            self.inner_model = unwrap_model(self.learn.model)
-
-    def before_batch(self):
-        if hasattr(self.inner_model, "init_sz"):
-            if self.init_sz_valid is None:
-                self.init_sz_valid = self.inner_model.init_sz
-            if self.training:
-                self.inner_model.init_sz = np.random.randint(self.init_sz_min, self.init_sz_max + 1)
-            else:
-                self.inner_model.init_sz = self.init_sz_valid
-
-
 def FranSysLearner(
     dls,
     init_sz: int,
@@ -626,7 +411,6 @@ def FranSysLearner(
     inp = _batch[0].shape[-1]
     out = _batch[1].shape[-1]
 
-    ensure_norm_stats(dls)
     norm_u, norm_y = dls.norm_stats
 
     if attach_output:

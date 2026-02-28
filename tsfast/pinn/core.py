@@ -1,4 +1,4 @@
-"""Physics-informed neural network callbacks and signal generation utilities."""
+"""Physics-informed neural network loss terms, augmentations, and signal generation utilities."""
 
 __all__ = [
     "DEFAULT_SIGNAL_TYPES",
@@ -14,21 +14,18 @@ __all__ = [
     "diff2_central_double",
     "diff3_forward",
     "diff3_central",
-    "PhysicsLossCallback",
-    "CollocationPointsCB",
-    "ConsistencyCallback",
-    "AlternatingEncoderCB",
-    "TransitionSmoothnessCallback",
+    "PhysicsLoss",
+    "CollocationLoss",
+    "ConsistencyLoss",
+    "AlternatingEncoder",
+    "TransitionSmoothness",
 ]
 
 from collections.abc import Callable
 
+import numpy as np
 import torch
 import torch.nn.functional as F
-
-import numpy as np
-from fastai.callback.hook import HookCallback
-from fastai.learner import Callback
 
 DEFAULT_SIGNAL_TYPES = ["sine", "multisine", "step", "ramp", "chirp", "noise", "prbs", "square", "doublet"]
 
@@ -620,8 +617,8 @@ def diff3_central(signal: torch.Tensor, dt: float) -> torch.Tensor:
     return torch.cat([d1, d2, interior, d_n1, d_n], dim=1)
 
 
-class PhysicsLossCallback(Callback):
-    """Callback that adds physics-informed loss using actual training data.
+class PhysicsLoss:
+    """Physics-informed loss term for PINN training.
 
     Args:
         physics_loss_func: function(u, y_pred, y_ref) returning dict of losses or single loss tensor
@@ -639,28 +636,23 @@ class PhysicsLossCallback(Callback):
         n_inputs: int | None = None,
         n_skip: int = 0,
     ):
+        self.physics_loss_func = physics_loss_func
         self.weight = weight
         self.loss_weights = loss_weights or {}
-        self.physics_loss_func = physics_loss_func
         self.n_inputs = n_inputs
         self.n_skip = n_skip
 
-    def after_loss(self):
-        """Compute physics-informed loss on training data and add to total loss"""
-        if not self.training:
-            return
-
-        x = self.xb[0]
-
+    def __call__(self, pred: torch.Tensor, yb: torch.Tensor, xb: torch.Tensor) -> torch.Tensor:
+        """Compute physics-informed loss on training data."""
         # Extract input part (if n_inputs specified, split concatenated input)
         if self.n_inputs is not None:
-            u = x[:, :, : self.n_inputs]
+            u = xb[:, :, : self.n_inputs]
         else:
-            u = x
+            u = xb
 
         # Get predictions and ground truth (already in raw physical space)
-        y_pred = self.pred
-        y_ref = self.yb[0]
+        y_pred = pred
+        y_ref = yb
 
         # Skip initial timesteps (e.g., init window for state encoder)
         if self.n_skip > 0:
@@ -677,9 +669,7 @@ class PhysicsLossCallback(Callback):
         else:
             physics_total = loss_dict
 
-        # Add weighted physics loss to main loss
-        self.learn.loss = self.learn.loss + self.weight * physics_total
-        self.learn.loss_grad = self.learn.loss_grad + self.weight * physics_total
+        return self.weight * physics_total
 
 
 class _CollocationDataset(torch.utils.data.IterableDataset):
@@ -695,8 +685,8 @@ class _CollocationDataset(torch.utils.data.IterableDataset):
             yield self.gen_fn(self.bs, self.seq_len, "cpu")
 
 
-class CollocationPointsCB(Callback):
-    """Callback that adds physics-informed loss using collocation points with user-defined physics.
+class CollocationLoss:
+    """Collocation-point physics loss for PINN training.
 
     Args:
         generate_pinn_input: function(batch_size, seq_len, device) returning tensor of collocation points
@@ -708,7 +698,6 @@ class CollocationPointsCB(Callback):
         output_ranges: list of (min, max) tuples for random state generation
         hidden_std: std for random hidden state initialization
         n_skip: number of initial timesteps to skip before computing physics loss
-        model: explicit inner model reference (auto-resolved via unwrap_model if None)
     """
 
     def __init__(
@@ -722,25 +711,26 @@ class CollocationPointsCB(Callback):
         output_ranges: list | None = None,
         hidden_std: float = 0.1,
         n_skip: int = 0,
-        model: torch.nn.Module | None = None,
     ):
-        self.weight = weight
-        self.loss_weights = loss_weights or {}
         self.generate_pinn_input = generate_pinn_input
         self.physics_loss_func = physics_loss_func
+        self.weight = weight
+        self.loss_weights = loss_weights or {}
         self.num_workers = num_workers
         self.loader_iter = None
         self.init_mode = init_mode
         self.output_ranges = output_ranges
         self.hidden_std = hidden_std
         self.n_skip = n_skip
-        self.inner_model = model
+        self.model = None
+        self.inner_model = None
 
-    def before_fit(self):
-        if self.inner_model is None:
-            from ..models.layers import unwrap_model
+    def setup(self, trainer):
+        """Resolve model references from the trainer."""
+        self.model = trainer.model
+        from ..models.layers import unwrap_model
 
-            self.inner_model = unwrap_model(self.learn.model)
+        self.inner_model = unwrap_model(trainer.model)
 
     def _prepare_loader(self, u_real):
         """Create DataLoader with worker processes that continuously generate collocation points."""
@@ -752,21 +742,17 @@ class CollocationPointsCB(Callback):
         )
         return loader
 
-    def after_loss(self):
-        """Compute physics-informed loss on collocation points and add to training loss"""
-        if not self.training:
-            return
-
-        u_real = self.xb[0]
-        device = u_real.device
-        batch_size = u_real.shape[0]
+    def __call__(self, pred: torch.Tensor, yb: torch.Tensor, xb: torch.Tensor) -> torch.Tensor:
+        """Compute physics-informed loss on collocation points."""
+        device = xb.device
+        batch_size = xb.shape[0]
 
         if self.loader_iter is None:
             import warnings
 
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", message=".*fork.*deadlock.*", category=DeprecationWarning)
-                self.loader_iter = iter(self._prepare_loader(u_real))
+                self.loader_iter = iter(self._prepare_loader(xb))
 
         u_coloc = next(self.loader_iter).to(device)
 
@@ -781,7 +767,7 @@ class CollocationPointsCB(Callback):
 
             if hasattr(self.inner_model, "encode_single_state"):
                 with torch.enable_grad():
-                    y_pred = self.learn.model(u_coloc, init_state=physical_states, encoder_mode="state")
+                    y_pred = self.model(u_coloc, init_state=physical_states, encoder_mode="state")
                 y_ref = physical_states.unsqueeze(1).expand(-1, u_coloc.shape[1], -1)
             else:
                 raise ValueError("Model must have encode_single_state method for init_mode='state_encoder'")
@@ -794,14 +780,14 @@ class CollocationPointsCB(Callback):
                     torch.randn(1, batch_size, hidden_size, device=device) * self.hidden_std for _ in range(rnn_layer)
                 ]
                 with torch.enable_grad():
-                    y_pred = self.learn.model(u_coloc, init_state=init_hidden, encoder_mode="none")
+                    y_pred = self.model(u_coloc, init_state=init_hidden, encoder_mode="none")
                 y_ref = None
             else:
                 raise ValueError("Model structure not compatible with init_mode='random_hidden'")
 
         else:
             with torch.enable_grad():
-                y_pred = self.learn.model(u_coloc)
+                y_pred = self.model(u_coloc)
             y_ref = None
 
         # Skip initial timesteps (e.g., init window for state encoder)
@@ -818,54 +804,55 @@ class CollocationPointsCB(Callback):
         else:
             physics_total = loss_dict
 
-        self.learn.loss = self.learn.loss + self.weight * physics_total
-        self.learn.loss_grad = self.learn.loss_grad + self.weight * physics_total
+        return self.weight * physics_total
 
 
-class ConsistencyCallback(HookCallback):
-    """Trains SequenceEncoder and StateEncoder compatibility on real data.
+class ConsistencyLoss:
+    """Consistency loss between sequence and state encoders.
 
     Args:
         weight: weight for consistency loss
         match_at_timestep: timestep to match hidden states (default: model.init_sz)
-        model: explicit inner model reference (auto-resolved via unwrap_model if None)
     """
 
     def __init__(
         self,
         weight: float = 1.0,
         match_at_timestep: int | None = None,
-        model: torch.nn.Module | None = None,
     ):
-        super().__init__(modules=[], cpu=False)
         self.weight = weight
         self.match_at_timestep = match_at_timestep
-        self._diag_out = None
-        self.inner_model = model
+        self._hook = None
+        self._diag_output = None
+        self.inner_model = None
+        self._has_modules = False
 
-    def before_fit(self):
-        """Set up hooks for diagnosis RNN if model supports it"""
-        if self.inner_model is None:
-            from ..models.layers import unwrap_model
+    def _capture_diag(self, module, input, output):
+        """Hook callback to capture diagnosis RNN output."""
+        self._diag_output = output[0]
 
-            self.inner_model = unwrap_model(self.learn.model)
-        self.modules.clear()
+    def setup(self, trainer):
+        """Register forward hook on rnn_diagnosis if model supports it."""
+        from ..models.layers import unwrap_model
+
+        self.inner_model = unwrap_model(trainer.model)
         if hasattr(self.inner_model, "rnn_diagnosis") and hasattr(self.inner_model, "encode_single_state"):
-            self.modules.append(self.inner_model.rnn_diagnosis)
-        super().before_fit()
+            self._hook = self.inner_model.rnn_diagnosis.register_forward_hook(self._capture_diag)
+            self._has_modules = True
 
-    def hook(self, m, i, o):
-        """Capture diagnosis RNN output"""
-        self._diag_out = o[0]
+    def teardown(self, trainer):
+        """Remove the forward hook."""
+        if self._hook is not None:
+            self._hook.remove()
+            self._hook = None
+        self._has_modules = False
 
-    def after_loss(self):
-        """Compute consistency loss between SequenceEncoder and StateEncoder"""
-        if not self.training:
-            return
-        if not self.modules:
-            return
-        if self._diag_out is None:
-            return
+    def __call__(self, pred: torch.Tensor, yb: torch.Tensor, xb: torch.Tensor) -> torch.Tensor:
+        """Compute consistency loss between SequenceEncoder and StateEncoder."""
+        if not self._has_modules:
+            return torch.tensor(0.0, device=pred.device)
+        if self._diag_output is None:
+            return torch.tensor(0.0, device=pred.device)
 
         timestep = self.match_at_timestep
         if timestep is None and hasattr(self.inner_model, "init_sz"):
@@ -873,59 +860,50 @@ class ConsistencyCallback(HookCallback):
         elif timestep is None:
             timestep = -1
 
-        h_sequence = self.inner_model.rnn_diagnosis.output_to_hidden(self._diag_out, timestep)
-        physical_state = self.yb[0][:, timestep, :]
+        h_sequence = self.inner_model.rnn_diagnosis.output_to_hidden(self._diag_output, timestep)
+        physical_state = yb[:, timestep, :]
         h_state = self.inner_model.encode_single_state(physical_state)
 
         consistency_loss = 0.0
         for h_seq, h_st in zip(h_sequence, h_state):
             consistency_loss += F.mse_loss(h_seq, h_st)
 
-        self.learn.loss += self.weight * consistency_loss
-        self.learn.loss_grad += self.weight * consistency_loss
+        self._diag_output = None
 
-        self._diag_out = None
+        return self.weight * consistency_loss
 
 
-class AlternatingEncoderCB(Callback):
-    """Randomly alternates between sequence and state encoder per training batch.
+class AlternatingEncoder:
+    """Randomly switch between sequence and state encoder during training.
 
     Args:
         p_state: probability of using state encoder per batch
-        model: explicit inner model reference (auto-resolved via unwrap_model if None)
     """
 
-    def __init__(
-        self,
-        p_state: float = 0.3,
-        model: torch.nn.Module | None = None,
-    ):
+    def __init__(self, p_state: float = 0.3):
         self.p_state = p_state
-        self.inner_model = model
+        self.inner_model = None
 
-    def before_fit(self):
-        """Resolve inner model reference"""
-        if self.inner_model is None:
-            from ..models.layers import unwrap_model
+    def setup(self, trainer):
+        """Resolve inner model reference."""
+        from ..models.layers import unwrap_model
 
-            self.inner_model = unwrap_model(self.learn.model)
+        self.inner_model = unwrap_model(trainer.model)
 
-    def before_batch(self):
-        """Switch encoder mode randomly before each training batch"""
-        if not self.training:
-            return
-        if not hasattr(self.inner_model, "default_encoder_mode"):
-            return
-        self.inner_model.default_encoder_mode = "state" if np.random.rand() < self.p_state else "sequence"
-
-    def after_fit(self):
-        """Reset to sequence encoder after training"""
+    def __call__(self, xb: torch.Tensor, yb: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Switch encoder mode randomly before each training batch."""
         if hasattr(self.inner_model, "default_encoder_mode"):
+            self.inner_model.default_encoder_mode = "state" if np.random.rand() < self.p_state else "sequence"
+        return xb, yb
+
+    def teardown(self, trainer):
+        """Reset to sequence encoder after training."""
+        if self.inner_model is not None and hasattr(self.inner_model, "default_encoder_mode"):
             self.inner_model.default_encoder_mode = "sequence"
 
 
-class TransitionSmoothnessCallback(Callback):
-    """Penalizes curvature at the init-to-prognosis transition boundary.
+class TransitionSmoothness:
+    """Penalizes discontinuities in predictions around the init_sz boundary.
 
     Args:
         init_sz: init window size (transition at this index)
@@ -946,21 +924,17 @@ class TransitionSmoothnessCallback(Callback):
         self.window = window
         self.dt = dt
 
-    def after_loss(self):
-        """Add curvature penalty around the transition boundary"""
-        if not self.training:
-            return
-        y = self.pred
+    def __call__(self, pred: torch.Tensor, yb: torch.Tensor, xb: torch.Tensor) -> torch.Tensor:
+        """Compute curvature penalty around the transition boundary."""
         start = max(0, self.init_sz - self.window)
-        end = min(y.shape[1], self.init_sz + self.window)
+        end = min(pred.shape[1], self.init_sz + self.window)
         if end - start < 3:
-            return  # Need at least 3 points for second derivative
+            return torch.tensor(0.0, device=pred.device)  # Need at least 3 points for second derivative
 
-        y_boundary = y[:, start:end, :]  # [batch, window_len, n_y]
+        y_boundary = pred[:, start:end, :]  # [batch, window_len, n_y]
         batch, wlen, ny = y_boundary.shape
         y_flat = y_boundary.permute(0, 2, 1).reshape(batch * ny, wlen)
         d2 = diff2_forward(y_flat, self.dt)
         smooth_loss = (d2**2).mean()
 
-        self.learn.loss += self.weight * smooth_loss
-        self.learn.loss_grad += self.weight * smooth_loss
+        return self.weight * smooth_loss

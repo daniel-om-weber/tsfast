@@ -5,10 +5,8 @@ __all__ = ["ARProg"]
 import torch
 from torch import Tensor, nn
 
-from fastcore.meta import delegates
-
 from ..models.layers import AR_Model
-from ..models.rnn import RNN, SimpleRNN
+from ..models.rnn import SimpleRNN
 
 
 class ARProg(nn.Module):
@@ -24,7 +22,6 @@ class ARProg(nn.Module):
         init_sz: number of time steps for teacher-forced initialization.
     """
 
-    @delegates(RNN, keep=True)
     def __init__(self, n_u: int, n_x: int, n_y: int, init_sz: int, **kwargs):
         super().__init__()
         self.n_u = n_u

@@ -132,15 +132,15 @@ class TestModelWrappers:
         out = model(batch[0])
         assert out.shape == batch[1].shape
 
-    def test_ar_model_teacher_forcing(self, dls_prediction):
+    def test_ar_model_teacher_forcing(self, dls_simulation):
         from tsfast.models.rnn import SimpleRNN
         from tsfast.models.layers import AR_Model
-        batch = dls_prediction.one_batch()
+        batch = dls_simulation.one_batch()
         device = batch[0].device
-        # prediction mode: input has u+y concatenated (2 channels), output is y (1 channel)
+        u = batch[0]  # (batch, seq, 1)
+        y = batch[1]  # (batch, seq, 1)
+        # AR_Model with teacher forcing: input is [u, y] concatenated (2 channels)
         model = AR_Model(SimpleRNN(2, 1), ar=False).to(device)
-        u = batch[0][:, :, :1]  # u only
-        y = batch[0][:, :, 1:]  # y from input
         out = model(torch.cat([u, y], dim=-1))
         assert out.shape == batch[1].shape
 
@@ -172,7 +172,7 @@ class TestModelWrappers:
 class TestScalers:
     @pytest.fixture
     def norm_pair(self):
-        from tsfast.datasets.core import NormPair
+        from tsfast.tsdata import NormPair
         return NormPair(
             mean=np.array([1.0, 2.0], dtype=np.float32),
             std=np.array([0.5, 1.0], dtype=np.float32),
@@ -244,26 +244,3 @@ class TestScalers:
         assert isinstance(lrn.model, NormalizedModel)
         assert isinstance(lrn.model.output_norm, StandardScaler1D)
 
-    def test_rnn_learner_custom_datablock_auto_norm(self, hdf_files):
-        """RNNLearner should auto-estimate norm_stats when dls lacks them."""
-        from fastai.data.block import DataBlock
-        from tsfast.data.block import SequenceBlock
-        from tsfast.data.core import CreateDict, DfHDFCreateWindows, TensorSequencesOutput
-        from tsfast.data.split import ParentSplitter
-        from tsfast.models.rnn import RNNLearner
-        from tsfast.models.layers import NormalizedModel
-
-        dblock = DataBlock(
-            blocks=(
-                SequenceBlock.from_hdf(["u"]),
-                SequenceBlock.from_hdf(["y"], seq_cls=TensorSequencesOutput),
-            ),
-            splitter=ParentSplitter(),
-            get_items=CreateDict([DfHDFCreateWindows(win_sz=100, stp_sz=100, clm="u")]),
-        )
-        dls = dblock.dataloaders(hdf_files, bs=16)
-        assert not hasattr(dls, "norm_stats")  # custom dls has no norm_stats
-
-        # Should not raise AttributeError; should auto-estimate norm_stats
-        lrn = RNNLearner(dls, rnn_type="gru", hidden_size=10)
-        assert isinstance(lrn.model, NormalizedModel)
