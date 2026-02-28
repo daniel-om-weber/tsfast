@@ -219,6 +219,31 @@ class CSVSignals:
         return len(self.columns)
 
 
+class Cached:
+    """Wrapper that caches full file data in memory on first read.
+
+    Args:
+        block: any signal reader block to wrap
+    """
+
+    def __init__(self, block):
+        self.block = block
+        self._data_cache: dict[str, np.ndarray] = {}
+
+    def read(self, path: str, l_slc: int | None = None, r_slc: int | None = None) -> np.ndarray:
+        if path not in self._data_cache:
+            if hasattr(self.block, "file_len"):
+                self._data_cache[path] = self.block.read(path, 0, self.block.file_len(path))
+            else:
+                self._data_cache[path] = self.block.read(path)
+        if l_slc is not None:
+            return self._data_cache[path][l_slc:r_slc]
+        return self._data_cache[path]
+
+    def __getattr__(self, name):
+        return getattr(self.block, name)
+
+
 class FilenameScalar:
     """Scalar block: extracts numbers from filenames via regex.
 
