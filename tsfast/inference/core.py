@@ -11,10 +11,10 @@ from ..training.transforms import prediction_concat
 
 
 def _reset_model_state(model):
-    """Reset stateful modules (BN seq_idx, RNN compat state) before inference."""
+    """Reset BatchNorm_1D_Stateful sequence counters before inference."""
     for m in model.modules():
-        if hasattr(m, "reset_state"):
-            m.reset_state()
+        if hasattr(m, "reset_seq_idx"):
+            m.reset_seq_idx()
 
 
 def _find_prediction_concat(learner):

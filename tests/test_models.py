@@ -150,7 +150,7 @@ class TestModelWrappers:
         x = torch.rand(4, 100, 10)
         out = bn(x)
         assert out.shape == x.shape
-        bn.reset_state()
+        bn.reset_seq_idx()
         out2 = bn(x)
         assert out2.shape == x.shape
 
