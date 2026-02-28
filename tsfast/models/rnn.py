@@ -14,21 +14,13 @@ __all__ = [
     "SeperateRNN",
 ]
 
-from functools import partial
-
 import torch
 from torch import Tensor, nn
 
 from fastcore.meta import delegates
-from fastai.callback.tracker import EarlyStoppingCallback
-from fastai.data.core import DataLoaders
 from fastai.imports import noop
-from fastai.learner import Learner
-from fastai.optimizer import Adam
 from fastai.text.models.awdlstm import RNNDropout, WeightDropout
-from ..data.loader import TbpttResetCB, get_inp_out_size
-from ..learner.callbacks import ARInitCB, SkipFirstNCallback, TimeSeriesRegularizer
-from ..learner.losses import SkipNLoss, fun_rmse
+from ..training import Learner, TbpttLearner, TimeSeriesRegularizerLoss, ar_init, fun_rmse
 from .layers import AR_Model, BatchNorm_1D_Stateful, NormalizedModel, SeqLinear, StandardScaler1D
 
 
@@ -192,99 +184,96 @@ class SimpleRNN(nn.Module):
         return out if not self.return_state else (out, h)
 
 
-@delegates(SimpleRNN, keep=True)
+def _get_inp_out_size(dls):
+    """Get input/output sizes from a DataLoaders batch."""
+    batch = dls.one_batch()
+    return batch[0].shape[-1], batch[1].shape[-1]
+
+
 def RNNLearner(
-    dls: DataLoaders,
+    dls,
     loss_func=nn.L1Loss(),
-    metrics: list | None = [fun_rmse],
+    metrics: list | None = None,
     n_skip: int = 0,
     num_layers: int = 1,
     hidden_size: int = 100,
     stateful: bool = False,
-    opt_func=Adam,
-    cbs: list | None = None,
+    sub_seq_len: int | None = None,
+    opt_func=torch.optim.Adam,
     input_norm: type | None = StandardScaler1D,
     output_norm: type | None = None,
     **kwargs,
 ):
-    """Create a fastai Learner with a SimpleRNN model and standard training setup.
+    """Create a Learner with a SimpleRNN model and standard training setup.
 
     Args:
-        dls: fastai DataLoaders providing training and validation data.
+        dls: DataLoaders providing training and validation data.
         loss_func: loss function for training.
         metrics: list of metric functions evaluated during validation.
         n_skip: number of initial timesteps to skip in loss and metric computation.
         num_layers: number of stacked RNN layers.
         hidden_size: number of hidden units per RNN layer.
-        stateful: if True, enable stateful training with TBPTT reset callbacks.
+        stateful: if True, enable stateful training with TBPTT.
+        sub_seq_len: sub-sequence length for TBPTT (defaults to 100).
         opt_func: optimizer constructor.
-        cbs: additional callbacks to include in the Learner.
         input_norm: scaler class for input normalization, or None to disable.
         output_norm: scaler class for output denormalization, or None to disable.
         **kwargs: additional keyword arguments forwarded to ``SimpleRNN``.
     """
-    if cbs is None:
-        cbs = []
+    if metrics is None:
+        metrics = [fun_rmse]
 
-    inp, out = get_inp_out_size(dls)
+    inp, out = _get_inp_out_size(dls)
     model = SimpleRNN(inp, out, num_layers, hidden_size, stateful=stateful, **kwargs)
     model = NormalizedModel.from_dls(model, dls, input_norm, output_norm)
 
-    skip = partial(SkipNLoss, n_skip=n_skip)
-
-    metrics = [skip(f) for f in metrics]
-
-    if stateful:
-        cbs.append(TbpttResetCB())
-        # if stateful apply n_skip with a callback for the first minibatch of a tbptt sequence
-        cbs.append(SkipFirstNCallback(n_skip))
-    else:
-        loss_func = skip(loss_func)
-
-    lrn = Learner(dls, model, loss_func=loss_func, opt_func=opt_func, metrics=metrics, cbs=cbs, lr=3e-3)
-    return lrn
+    cls = TbpttLearner if stateful else Learner
+    extra = {"sub_seq_len": sub_seq_len or 100} if stateful else {}
+    return cls(model, dls, loss_func=loss_func, metrics=metrics, n_skip=n_skip, opt_func=opt_func, lr=3e-3, **extra)
 
 
-@delegates(SimpleRNN, keep=True)
 def AR_RNNLearner(
-    dls: DataLoaders,
+    dls,
     alpha: float = 0,
     beta: float = 0,
-    early_stop: int = 0,
     metrics: list | None = None,
     n_skip: int = 0,
-    opt_func=Adam,
+    opt_func=torch.optim.Adam,
     input_norm: type | None = StandardScaler1D,
     **kwargs,
 ):
-    """Create a fastai Learner with an autoregressive RNN model.
+    """Create a Learner with an autoregressive RNN model.
 
     Args:
-        dls: fastai DataLoaders providing training and validation data.
+        dls: DataLoaders providing training and validation data.
         alpha: activation regularization penalty weight.
         beta: temporal activation regularization penalty weight.
-        early_stop: patience for early stopping; 0 disables early stopping.
         metrics: metric functions for validation, or None for default RMSE.
         n_skip: number of initial timesteps to skip in metric computation.
         opt_func: optimizer constructor.
         input_norm: scaler class for input normalization, or None to disable.
         **kwargs: additional keyword arguments forwarded to ``SimpleRNN``.
     """
-    inp, out = get_inp_out_size(dls)
+    if metrics is None:
+        metrics = [fun_rmse]
+
+    inp, out = _get_inp_out_size(dls)
     ar_model = AR_Model(SimpleRNN(inp + out, out, **kwargs), ar=False)
     rnn_module = ar_model.model.rnn
 
     model = NormalizedModel.from_dls(ar_model, dls, input_norm, autoregressive=True)
 
-    cbs = [ARInitCB(), TimeSeriesRegularizer(alpha=alpha, beta=beta, modules=[rnn_module])]  # SaveModelCallback()
-    if early_stop > 0:
-        cbs += [EarlyStoppingCallback(patience=early_stop)]
-
-    if metrics is None:
-        metrics = SkipNLoss(fun_rmse, n_skip)
-
-    lrn = Learner(dls, model, loss_func=nn.L1Loss(), opt_func=opt_func, metrics=metrics, cbs=cbs, lr=3e-3)
-    return lrn
+    return Learner(
+        model,
+        dls,
+        loss_func=nn.L1Loss(),
+        metrics=metrics,
+        n_skip=n_skip,
+        opt_func=opt_func,
+        lr=3e-3,
+        transforms=[ar_init()],
+        aux_losses=[TimeSeriesRegularizerLoss(modules=[rnn_module], alpha=alpha, beta=beta)],
+    )
 
 
 class ResidualBlock_RNN(nn.Module):

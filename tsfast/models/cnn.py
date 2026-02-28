@@ -15,8 +15,6 @@ __all__ = [
     "SeperateCRNN",
 ]
 
-from functools import partial
-
 import numpy as np
 import torch
 from torch import Tensor, nn
@@ -24,15 +22,9 @@ from torch.nn import Mish
 from torch.nn.utils.parametrizations import weight_norm
 
 from fastcore.meta import delegates
-from fastai.callback.tracker import EarlyStoppingCallback
-from fastai.data.core import DataLoaders
-from fastai.learner import Learner
-from fastai.optimizer import Adam
-from ..data.loader import get_inp_out_size
-from ..learner.callbacks import ARInitCB, TimeSeriesRegularizer
-from ..learner.losses import SkipNLoss, fun_rmse
+from ..training import Learner, TimeSeriesRegularizerLoss, ar_init, fun_rmse
 from .layers import AR_Model, NormalizedModel, Scaler, SeqLinear, StandardScaler1D
-from .rnn import SimpleRNN
+from .rnn import SimpleRNN, _get_inp_out_size
 
 
 @delegates(nn.Conv1d, keep=True)
@@ -282,21 +274,19 @@ class TCN(nn.Module):
         return out
 
 
-@delegates(TCN, keep=True)
 def TCNLearner(
-    dls: DataLoaders,
+    dls,
     num_layers: int = 3,
     hidden_size: int = 100,
     loss_func: nn.Module = nn.L1Loss(),
-    metrics: list = [fun_rmse],
+    metrics: list | None = None,
     n_skip: int | None = None,
-    opt_func: type = Adam,
-    cbs: list | None = None,
+    opt_func: type = torch.optim.Adam,
     input_norm: type[Scaler] | None = StandardScaler1D,
     output_norm: type[Scaler] | None = None,
     **kwargs,
 ) -> Learner:
-    """Create a fastai Learner with a TCN model.
+    """Create a Learner with a TCN model.
 
     Args:
         dls: DataLoaders providing training and validation data.
@@ -306,23 +296,19 @@ def TCNLearner(
         metrics: List of metric functions.
         n_skip: Number of initial time steps to skip in the loss (defaults to 2**num_layers).
         opt_func: Optimizer constructor.
-        cbs: Additional callbacks.
         input_norm: Input normalization scaler class, or None to disable.
         output_norm: Output denormalization scaler class, or None to disable.
         **kwargs: Additional arguments passed to ``TCN``.
     """
-    inp, out = get_inp_out_size(dls)
+    if metrics is None:
+        metrics = [fun_rmse]
+
+    inp, out = _get_inp_out_size(dls)
     n_skip = 2**num_layers if n_skip is None else n_skip
     model = TCN(inp, out, num_layers, hidden_size, **kwargs)
     model = NormalizedModel.from_dls(model, dls, input_norm, output_norm)
 
-    skip = partial(SkipNLoss, n_skip=n_skip)
-
-    metrics = [skip(f) for f in metrics]
-    loss_func = skip(loss_func)
-
-    lrn = Learner(dls, model, loss_func=loss_func, opt_func=opt_func, metrics=metrics, cbs=cbs, lr=3e-3)
-    return lrn
+    return Learner(model, dls, loss_func=loss_func, opt_func=opt_func, metrics=metrics, n_skip=n_skip, lr=3e-3)
 
 
 class SeperateTCN(nn.Module):
@@ -445,19 +431,17 @@ class CRNN(nn.Module):
         return self.rnn(self.cnn(x))
 
 
-@delegates(CRNN, keep=True)
 def CRNNLearner(
-    dls: DataLoaders,
+    dls,
     loss_func: nn.Module = nn.L1Loss(),
-    metrics: list = [fun_rmse],
+    metrics: list | None = None,
     n_skip: int = 0,
-    opt_func: type = Adam,
-    cbs: list | None = None,
+    opt_func: type = torch.optim.Adam,
     input_norm: type[Scaler] | None = StandardScaler1D,
     output_norm: type[Scaler] | None = None,
     **kwargs,
 ) -> Learner:
-    """Create a fastai Learner with a CRNN model.
+    """Create a Learner with a CRNN model.
 
     Args:
         dls: DataLoaders providing training and validation data.
@@ -465,71 +449,65 @@ def CRNNLearner(
         metrics: List of metric functions.
         n_skip: Number of initial time steps to skip in the loss.
         opt_func: Optimizer constructor.
-        cbs: Additional callbacks.
         input_norm: Input normalization scaler class, or None to disable.
         output_norm: Output denormalization scaler class, or None to disable.
         **kwargs: Additional arguments passed to ``CRNN``.
     """
-    inp, out = get_inp_out_size(dls)
+    if metrics is None:
+        metrics = [fun_rmse]
+
+    inp, out = _get_inp_out_size(dls)
     model = CRNN(inp, out, **kwargs)
     model = NormalizedModel.from_dls(model, dls, input_norm, output_norm)
 
-    skip = partial(SkipNLoss, n_skip=n_skip)
-
-    metrics = [skip(f) for f in metrics]
-    loss_func = skip(loss_func)
-
-    lrn = Learner(dls, model, loss_func=loss_func, opt_func=opt_func, metrics=metrics, cbs=cbs, lr=3e-3)
-    return lrn
+    return Learner(model, dls, loss_func=loss_func, opt_func=opt_func, metrics=metrics, n_skip=n_skip, lr=3e-3)
 
 
-@delegates(TCN, keep=True)
 def AR_TCNLearner(
-    dls: DataLoaders,
+    dls,
     hl_depth: int = 3,
     alpha: float = 1,
     beta: float = 1,
-    early_stop: int = 0,
     metrics: list | None = None,
     n_skip: int | None = None,
-    opt_func: type = Adam,
+    opt_func: type = torch.optim.Adam,
     input_norm: type[Scaler] | None = StandardScaler1D,
     **kwargs,
 ) -> Learner:
-    """Create a fastai Learner with an autoregressive TCN model.
+    """Create a Learner with an autoregressive TCN model.
 
     Args:
         dls: DataLoaders providing training and validation data.
         hl_depth: Number of TCN hidden layers.
         alpha: Regularization weight for smoothness penalty.
         beta: Regularization weight for sparsity penalty.
-        early_stop: Early stopping patience in epochs (0 disables).
-        metrics: Metric functions (defaults to RMSE with skip).
+        metrics: Metric functions (defaults to RMSE).
         n_skip: Number of initial time steps to skip in the loss (defaults to 2**hl_depth).
         opt_func: Optimizer constructor.
         input_norm: Input normalization scaler class, or None to disable.
         **kwargs: Additional arguments passed to ``TCN``.
     """
+    if metrics is None:
+        metrics = [fun_rmse]
     n_skip = 2**hl_depth if n_skip is None else n_skip
 
-    inp, out = get_inp_out_size(dls)
+    inp, out = _get_inp_out_size(dls)
     ar_model = AR_Model(TCN(inp + out, out, hl_depth, **kwargs), ar=False)
     conv_module = ar_model.model.conv_layers[-1]
 
     model = NormalizedModel.from_dls(ar_model, dls, input_norm, autoregressive=True)
 
-    cbs = [
-        ARInitCB(),
-        TimeSeriesRegularizer(alpha=alpha, beta=beta, modules=[conv_module]),
-    ]  # SaveModelCallback()
-    if early_stop > 0:
-        cbs += [EarlyStoppingCallback(patience=early_stop)]
-
-    if metrics is None:
-        metrics = SkipNLoss(fun_rmse, n_skip)
-
-    lrn = Learner(dls, model, loss_func=nn.L1Loss(), opt_func=opt_func, metrics=metrics, cbs=cbs, lr=3e-3)
-    return lrn
+    return Learner(
+        model,
+        dls,
+        loss_func=nn.L1Loss(),
+        opt_func=opt_func,
+        metrics=metrics,
+        n_skip=n_skip,
+        lr=3e-3,
+        transforms=[ar_init()],
+        aux_losses=[TimeSeriesRegularizerLoss(modules=[conv_module], alpha=alpha, beta=beta)],
+    )
 
 
 class SeperateCRNN(nn.Module):

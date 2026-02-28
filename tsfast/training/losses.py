@@ -24,6 +24,7 @@ __all__ = [
     "transition_smoothness",
     "TimeSeriesRegularizerLoss",
     "FranSysRegularizer",
+    "consistency_loss",
 ]
 
 import functools
@@ -590,3 +591,66 @@ class FranSysRegularizer:
             loss = loss + self.p_tar_loss * hidden_loss
 
         return loss
+
+
+class consistency_loss:
+    """Trains SequenceEncoder and StateEncoder compatibility on real data.
+
+    Hooks ``rnn_diagnosis`` and computes MSE between sequence encoder hidden
+    state and state encoder hidden state at a given timestep.
+
+    Args:
+        weight: scaling factor for consistency loss
+        match_at_timestep: timestep to match (defaults to model.init_sz - 1)
+        model: explicit inner model reference (auto-detected via unwrap_model if None)
+    """
+
+    def __init__(
+        self,
+        weight: float = 1.0,
+        match_at_timestep: int | None = None,
+        model: nn.Module | None = None,
+    ):
+        self.weight = weight
+        self.match_at_timestep = match_at_timestep
+        self.inner_model = model
+        self._hooks: list[torch.utils.hooks.RemovableHook] = []
+        self._diag_out: Tensor | None = None
+
+    def setup(self, trainer):
+        from ..models.layers import unwrap_model
+
+        if self.inner_model is None:
+            self.inner_model = unwrap_model(trainer.model)
+        if hasattr(self.inner_model, "rnn_diagnosis") and hasattr(self.inner_model, "encode_single_state"):
+            self._hooks.append(self.inner_model.rnn_diagnosis.register_forward_hook(self._hook_fn))
+
+    def teardown(self, trainer):
+        for h in self._hooks:
+            h.remove()
+        self._hooks.clear()
+
+    def _hook_fn(self, m, i, o):
+        self._diag_out = o[0]
+
+    def __call__(self, pred: Tensor, yb: Tensor, xb: Tensor) -> Tensor:
+        if self._diag_out is None:
+            return torch.tensor(0.0, device=pred.device)
+
+        model = self.inner_model
+        timestep = self.match_at_timestep
+        if timestep is None and hasattr(model, "init_sz"):
+            timestep = model.init_sz - 1
+        elif timestep is None:
+            timestep = -1
+
+        h_sequence = model.rnn_diagnosis.output_to_hidden(self._diag_out, timestep)
+        physical_state = yb[:, timestep, :]
+        h_state = model.encode_single_state(physical_state)
+
+        loss = torch.tensor(0.0, device=pred.device)
+        for h_seq, h_st in zip(h_sequence, h_state):
+            loss = loss + F.mse_loss(h_seq, h_st)
+
+        self._diag_out = None
+        return self.weight * loss

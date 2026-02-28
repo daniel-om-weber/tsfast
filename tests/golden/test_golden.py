@@ -129,49 +129,61 @@ class TestDataPipelineGolden:
 #  Learner tests
 # --------------------------------------------------------------------------- #
 
+def _create_shared_dls():
+    """Create shared DLS objects matching capture_baselines.py pattern."""
+    from tsfast.datasets.core import create_dls
+
+    dls_sim = create_dls(u=["u"], y=["y"], dataset=WH_PATH,
+                         win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2)
+    dls_pred = create_dls(u=["u"], y=["y"], dataset=WH_PATH,
+                          win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2,
+                          prediction=True)
+    dls_pinn_pred = create_dls(u=["u"], y=["x", "v"], dataset=PINN_PATH,
+                               win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2,
+                               prediction=True)
+    return dls_sim, dls_pred, dls_pinn_pred
+
+
+# Module-level shared DLS — matches capture_baselines.py which creates DLS once
+_shared_dls = None
+
+
+def _get_shared_dls():
+    global _shared_dls
+    if _shared_dls is None:
+        _shared_dls = _create_shared_dls()
+    return _shared_dls
+
+
 def _create_learner(name: str):
     """Recreate a learner matching the capture_baselines.py config."""
-    from tsfast.datasets.core import create_dls
+    dls_sim, dls_pred, dls_pinn_pred = _get_shared_dls()
 
     match name:
         case "RNNLearner":
             from tsfast.models.rnn import RNNLearner
-            dls = create_dls(u=["u"], y=["y"], dataset=WH_PATH,
-                             win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2)
-            return RNNLearner(dls, rnn_type="gru", hidden_size=20, num_layers=1)
+            return RNNLearner(dls_sim, rnn_type="gru", hidden_size=20, num_layers=1)
 
         case "TCNLearner":
             from tsfast.models.cnn import TCNLearner
-            dls = create_dls(u=["u"], y=["y"], dataset=WH_PATH,
-                             win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2)
-            return TCNLearner(dls, num_layers=2, hidden_size=20)
+            return TCNLearner(dls_sim, num_layers=2, hidden_size=20)
 
         case "CRNNLearner":
             from tsfast.models.cnn import CRNNLearner
-            dls = create_dls(u=["u"], y=["y"], dataset=WH_PATH,
-                             win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2)
-            return CRNNLearner(dls, num_ft=10, num_cnn_layers=2, num_rnn_layers=1,
+            return CRNNLearner(dls_sim, num_ft=10, num_cnn_layers=2, num_rnn_layers=1,
                                hs_cnn=10, hs_rnn=10)
 
         case "AR_RNNLearner":
             from tsfast.models.rnn import AR_RNNLearner
-            dls = create_dls(u=["u"], y=["y"], dataset=WH_PATH,
-                             win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2)
-            return AR_RNNLearner(dls, hidden_size=20, num_layers=1)
+            return AR_RNNLearner(dls_sim, hidden_size=20, num_layers=1)
 
         case "FranSysLearner":
             from tsfast.prediction.fransys import FranSysLearner
-            dls = create_dls(u=["u"], y=["y"], dataset=WH_PATH,
-                             win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2,
-                             prediction=True)
-            return FranSysLearner(dls, init_sz=50, hidden_size=20, rnn_layer=1)
+            return FranSysLearner(dls_pred, init_sz=50, hidden_size=20, rnn_layer=1)
 
         case "PIRNNLearner":
             from tsfast.pinn.pirnn import PIRNNLearner
-            dls = create_dls(u=["u"], y=["x", "v"], dataset=PINN_PATH,
-                             win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2,
-                             prediction=True)
-            return PIRNNLearner(dls, init_sz=20, hidden_size=20, rnn_layer=1)
+            return PIRNNLearner(dls_pinn_pred, init_sz=20, hidden_size=20, rnn_layer=1)
 
         case _:
             raise ValueError(f"Unknown learner: {name}")

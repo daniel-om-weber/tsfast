@@ -82,14 +82,15 @@ class TestPhysicsCallbacks:
     @pytest.mark.slow
     def test_physics_loss_callback(self, dls_simulation):
         from tsfast.models.rnn import RNNLearner
-        from tsfast.pinn.core import PhysicsLossCallback, diff1_forward
+        from tsfast.pinn.core import diff1_forward
+        from tsfast.training import physics_loss
 
         def simple_physics(u, y_pred, y_ref):
             dy = diff1_forward(y_pred, 0.01)
             return {"physics": (dy ** 2).mean()}
 
         lrn = RNNLearner(dls_simulation, rnn_type="gru", num_layers=1, hidden_size=10)
-        lrn.add_cb(PhysicsLossCallback(
+        lrn.add_aux_loss(physics_loss(
             physics_loss_func=simple_physics,
             weight=0.1,
         ))
@@ -172,18 +173,18 @@ class TestPINNCallbacks:
     @pytest.mark.slow
     def test_transition_smoothness(self, dls_pinn_prediction):
         from tsfast.prediction.fransys import FranSysLearner
-        from tsfast.pinn.core import TransitionSmoothnessCallback
+        from tsfast.training import transition_smoothness
         lrn = FranSysLearner(dls_pinn_prediction, init_sz=20, hidden_size=10, rnn_layer=1)
-        lrn.add_cb(TransitionSmoothnessCallback(init_sz=20, weight=0.1))
+        lrn.add_aux_loss(transition_smoothness(init_sz=20, weight=0.1))
         lrn.fit(1, 3e-3)
         assert not math.isnan(lrn.recorder.values[-1][1])
 
     @pytest.mark.slow
     def test_alternating_encoder(self, dls_pinn_prediction):
         from tsfast.pinn.pirnn import PIRNNLearner
-        from tsfast.pinn.core import AlternatingEncoderCB
+        from tsfast.training import alternating_encoder
         lrn = PIRNNLearner(dls_pinn_prediction, init_sz=20, hidden_size=20, rnn_layer=1)
-        lrn.add_cb(AlternatingEncoderCB(p_state=0.3))
+        lrn.add_augmentation(alternating_encoder(p_state=0.3))
         lrn.fit(1, 3e-3)
         from tsfast.models.layers import unwrap_model
         assert unwrap_model(lrn.model).default_encoder_mode == 'sequence'
@@ -191,8 +192,8 @@ class TestPINNCallbacks:
     @pytest.mark.slow
     def test_consistency_callback(self, dls_pinn_prediction):
         from tsfast.pinn.pirnn import PIRNNLearner
-        from tsfast.pinn.core import ConsistencyCallback
+        from tsfast.training import consistency_loss
         lrn = PIRNNLearner(dls_pinn_prediction, init_sz=20, hidden_size=20, rnn_layer=1)
-        lrn.add_cb(ConsistencyCallback(weight=0.1))
+        lrn.add_aux_loss(consistency_loss(weight=0.1))
         lrn.fit(1, 3e-3)
         assert not math.isnan(lrn.recorder.values[-1][1])

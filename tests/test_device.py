@@ -55,13 +55,14 @@ class TestHookCallbackDevices:
 
     @pytest.mark.slow
     def test_fransys_callback(self, dls_prediction, device):
-        from tsfast.prediction.fransys import FranSysLearner, FranSysCallback
+        from tsfast.prediction.fransys import FranSysLearner
+        from tsfast.training import FranSysRegularizer
         from tsfast.models.layers import unwrap_model
 
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1)
         lrn.model.to(device)
         model = unwrap_model(lrn.model)
-        lrn.add_cb(FranSysCallback(
+        lrn.add_aux_loss(FranSysRegularizer(
             modules=[model.rnn_diagnosis, model.rnn_prognosis],
             p_state_sync=1.0, sync_type="mse", model=model,
         ))
