@@ -521,7 +521,9 @@ class FranSysRegularizer:
         prog = self._out_prog
         self._clear()
         model = self.inner_model
-        win_reg = self.osp_n_skip if self.osp_n_skip is not None else model.init_sz
+        win_reg = (
+            self.osp_n_skip if self.osp_n_skip is not None else getattr(model, "_effective_init_sz", model.init_sz)
+        )
 
         diag_trunc = diag
         if diag.shape[2] > prog.shape[2]:
@@ -585,7 +587,7 @@ class FranSysRegularizer:
 
         # tar hidden loss
         if self.p_tar_loss > 0:
-            h = torch.cat([diag[:, :, : model.init_sz], prog], 2)
+            h = torch.cat([diag[:, :, : getattr(model, "_effective_init_sz", model.init_sz)], prog], 2)
             h_diff = h[:, :, 1:] - h[:, :, :-1]
             hidden_loss = h_diff.pow(2).mean()
             loss = loss + self.p_tar_loss * hidden_loss
@@ -640,7 +642,7 @@ class consistency_loss:
         model = self.inner_model
         timestep = self.match_at_timestep
         if timestep is None and hasattr(model, "init_sz"):
-            timestep = model.init_sz - 1
+            timestep = getattr(model, "_effective_init_sz", model.init_sz) - 1
         elif timestep is None:
             timestep = -1
 

@@ -10,6 +10,8 @@ __all__ = [
     "FranSysLearner",
 ]
 
+import random
+
 import torch
 from torch import nn
 
@@ -200,6 +202,7 @@ class ARProg_Init(nn.Module):
         diag_model: custom diagnosis model, defaults to Diag_RNN
         linear_layer: number of linear layers in the diagnosis output head
         final_layer: number of additional final layers (unused, reserved)
+        init_sz_range: if set, randomize init_sz within (min, max) during training
     """
 
     def __init__(
@@ -213,12 +216,14 @@ class ARProg_Init(nn.Module):
         diag_model: nn.Module | None = None,
         linear_layer: int = 1,
         final_layer: int = 0,
+        init_sz_range: tuple[int, int] | None = None,
         **kwargs,
     ):
         super().__init__()
         self.n_u = n_u
         self.n_y = n_y
         self.init_sz = init_sz
+        self.init_sz_range = init_sz_range
         self.n_x = n_x
         self.hidden_size = hidden_size
         self.rnn_layer = rnn_layer
@@ -250,21 +255,24 @@ class ARProg_Init(nn.Module):
         )
 
     def forward(self, inp: torch.Tensor) -> torch.Tensor:
+        init_sz = random.randint(*self.init_sz_range) if self.training and self.init_sz_range else self.init_sz
+        self._effective_init_sz = init_sz
+
         y_x = inp[..., self.n_u :]  # measured output and external state
         u = inp[..., : self.n_u]  # measured input
 
         if self.training:
             out_diag, _ = self.rnn_diagnosis(inp)
         else:
-            out_diag, _ = self.rnn_diagnosis(inp[:, : self.init_sz])
-        h_init = self.rnn_diagnosis.output_to_hidden(out_diag, self.init_sz - 1)
+            out_diag, _ = self.rnn_diagnosis(inp[:, :init_sz])
+        h_init = self.rnn_diagnosis.output_to_hidden(out_diag, init_sz - 1)
         prog_state = {
             "h": h_init,
-            "y_init": y_x[:, self.init_sz : self.init_sz + 1],
+            "y_init": y_x[:, init_sz : init_sz + 1],
         }
-        out_prog = self.rnn_prognosis(u[:, self.init_sz :], state=prog_state, ar=True)
+        out_prog = self.rnn_prognosis(u[:, init_sz:], state=prog_state, ar=True)
 
-        result = torch.cat([torch.zeros(inp.shape[0], self.init_sz, y_x.shape[2], device=inp.device), out_prog], 1)
+        result = torch.cat([torch.zeros(inp.shape[0], init_sz, y_x.shape[2], device=inp.device), out_prog], 1)
 
         return result[..., -self.n_y :]
 
@@ -283,6 +291,7 @@ class FranSys(nn.Module):
         linear_layer: number of linear layers in the diagnosis output head
         init_diag_only: if True, limit diagnosis to init_sz time steps during training
         final_layer: number of additional layers in the shared output head
+        init_sz_range: if set, randomize init_sz within (min, max) during training
     """
 
     def __init__(
@@ -297,6 +306,7 @@ class FranSys(nn.Module):
         linear_layer: int = 1,
         init_diag_only: bool = False,
         final_layer: int = 0,
+        init_sz_range: tuple[int, int] | None = None,
         **kwargs,
     ):
         super().__init__()
@@ -305,6 +315,7 @@ class FranSys(nn.Module):
         self.n_x = n_x
         self.init_sz = init_sz
         self.init_diag_only = init_diag_only
+        self.init_sz_range = init_sz_range
 
         rnn_kwargs = dict(hidden_size=hidden_size, num_layers=rnn_layer, ret_full_hidden=True)
         rnn_kwargs = dict(rnn_kwargs, **kwargs)
@@ -327,36 +338,37 @@ class FranSys(nn.Module):
         self.final = SeqLinear(hidden_size, n_y, hidden_layer=final_layer)
 
     def forward(self, x: torch.Tensor, init_state: list | None = None) -> torch.Tensor:
+        init_sz = random.randint(*self.init_sz_range) if self.training and self.init_sz_range else self.init_sz
+        self._effective_init_sz = init_sz
+
         x_diag = x[..., : self.n_u + self.n_x + self.n_y]
         x_prog = x[..., : self.n_u]
 
         if self.init_diag_only:
-            x_diag = x_diag[:, : self.init_sz]  # limit diagnosis length to init size
+            x_diag = x_diag[:, :init_sz]  # limit diagnosis length to init size
 
         if self.training:
             # in training, estimate the full sequence with the diagnosis module
             if init_state is None:
                 # execution with no initial state
                 out_diag, _ = self.rnn_diagnosis(x_diag)
-                h_init = self.rnn_diagnosis.output_to_hidden(out_diag, self.init_sz - 1)
+                h_init = self.rnn_diagnosis.output_to_hidden(out_diag, init_sz - 1)
 
                 # ToDo: only execute this if callback is used
                 new_hidden = self.rnn_diagnosis.output_to_hidden(out_diag, -1)
 
-                out_prog, _ = self.rnn_prognosis(x_prog[:, self.init_sz :].contiguous(), h_init)
-                out_prog = torch.cat([out_diag[:, :, : self.init_sz], out_prog], 2)
+                out_prog, _ = self.rnn_prognosis(x_prog[:, init_sz:].contiguous(), h_init)
+                out_prog = torch.cat([out_diag[:, :, :init_sz], out_prog], 2)
             else:
-                # import pdb; pdb.set_trace()
                 out_prog, _ = self.rnn_prognosis(x_prog, init_state)
                 out_diag, _ = self.rnn_diagnosis(x_diag)
                 new_hidden = self.rnn_diagnosis.output_to_hidden(out_diag, -1)
         else:
-            #             import pdb; pdb.set_trace()
             # in inference, use the diagnosis module only for initial state estimation
             if init_state is None:
-                out_init, _ = self.rnn_diagnosis(x_diag[:, : self.init_sz])
+                out_init, _ = self.rnn_diagnosis(x_diag[:, :init_sz])
                 h_init = self.rnn_diagnosis.output_to_hidden(out_init, -1)
-                out_prog, new_hidden = self.rnn_prognosis(x_prog[:, self.init_sz :], h_init)
+                out_prog, new_hidden = self.rnn_prognosis(x_prog[:, init_sz:], h_init)
                 out_prog = torch.cat([out_init, out_prog], 2)
             else:
                 out_prog, new_hidden = self.rnn_prognosis(x_prog, init_state)
