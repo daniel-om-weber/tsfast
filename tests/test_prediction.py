@@ -106,7 +106,7 @@ class TestFranSysRegularization:
     def test_fransys_variable_init(self, dls_prediction):
         from tsfast.prediction.fransys import FranSysLearner
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1,
-                              init_sz_range=(30, 70))
+                              attach_output=True, init_sz_range=(30, 70))
         lrn.fit(1, 3e-3)
         assert not math.isnan(lrn.recorder.values[-1][1])
 
