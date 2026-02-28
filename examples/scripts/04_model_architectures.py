@@ -35,10 +35,10 @@
 # ## Setup
 
 # %%
-from tsfast.datasets.benchmark import create_dls_silverbox
+from tsfast.tsdata.benchmark import create_dls_silverbox
 from tsfast.models.rnn import RNNLearner
 from tsfast.models.cnn import TCNLearner, CRNNLearner
-from tsfast.learner.losses import fun_rmse
+from tsfast.training import fun_rmse
 
 # %% [markdown]
 # ## Load the Dataset
@@ -140,8 +140,9 @@ results = {
     'TCN': lrn_tcn.validate(),
     'CRNN': lrn_crnn.validate(),
 }
-for name, val in results.items():
-    print(f"{name:6s}: loss={val[0]:.4f}, RMSE={val[1]:.4f}")
+for name, (loss, metrics) in results.items():
+    rmse = metrics.get('fun_rmse', float('nan'))
+    print(f"{name:6s}: loss={loss:.4f}, RMSE={rmse:.4f}")
 
 # %% [markdown]
 # ## Trade-offs
