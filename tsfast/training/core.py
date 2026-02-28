@@ -16,7 +16,6 @@ from torch import Tensor, nn
 from torch.optim.lr_scheduler import LambdaLR
 from tqdm.auto import tqdm
 
-from ..models.layers import _detach_state
 from .viz import layout_samples, plot_sequence
 
 
@@ -276,6 +275,8 @@ class Learner:
         optimizer.step()
         optimizer.zero_grad()
 
+        from ..models.layers import _detach_state
+
         return loss.item(), _detach_state(new_state)
 
     # ── validation ────────────────────────────────────────────────────────
@@ -343,30 +344,34 @@ class Learner:
         self._setup_composables()
         try:
             step = 0
-            pbar = tqdm(range(n_epoch), desc="Epoch", disable=not self._show_bar)
-            for epoch in pbar:
+            for epoch in range(n_epoch):
                 # Train
                 self.model.train()
                 train_losses = []
-                for batch in self.dls.train:
-                    xb, yb = self._to_device(batch)
-                    self._pct_train = step / max(1, total_steps)
-                    loss_val, _ = self.training_step((xb, yb), optimizer)
-                    if loss_val is not None:
-                        train_losses.append(loss_val)
-                    if scheduler is not None:
-                        scheduler.step()
-                    step += 1
+                with tqdm(
+                    total=n_batches, desc=f"Epoch {epoch + 1}/{n_epoch}",
+                    disable=not self._show_bar, mininterval=0.5,
+                ) as pbar:
+                    for batch in self.dls.train:
+                        xb, yb = self._to_device(batch)
+                        self._pct_train = step / max(1, total_steps)
+                        loss_val, _ = self.training_step((xb, yb), optimizer)
+                        if loss_val is not None:
+                            train_losses.append(loss_val)
+                        if scheduler is not None:
+                            scheduler.step()
+                        step += 1
+                        pbar.update(1)
 
-                train_loss = sum(train_losses) / max(1, len(train_losses))
+                    train_loss = sum(train_losses) / max(1, len(train_losses))
 
-                # Validate
-                val_loss, metrics_dict = self.validate()
+                    # Validate
+                    val_loss, metrics_dict = self.validate()
 
-                # Record
-                row = [train_loss, val_loss] + [metrics_dict[k] for k in sorted(metrics_dict)]
-                self.recorder.append(row)
-                self._log_epoch(epoch, train_loss, val_loss, metrics_dict, pbar)
+                    # Record
+                    row = [train_loss, val_loss] + [metrics_dict[k] for k in sorted(metrics_dict)]
+                    self.recorder.append(row)
+                    self._log_epoch(epoch, train_loss, val_loss, metrics_dict, pbar)
         finally:
             self._teardown_composables()
 
@@ -523,41 +528,44 @@ class TbpttLearner(Learner):
         self._setup_composables()
         try:
             step = 0
-            pbar = tqdm(range(n_epoch), desc="Epoch", disable=not self._show_bar)
-            for epoch in pbar:
+            for epoch in range(n_epoch):
                 self.model.train()
                 train_losses = []
+                with tqdm(
+                    total=n_batches, desc=f"Epoch {epoch + 1}/{n_epoch}",
+                    disable=not self._show_bar, mininterval=0.5,
+                ) as pbar:
+                    for batch in self.dls.train:
+                        xb, yb = self._to_device(batch)
 
-                for batch in self.dls.train:
-                    xb, yb = self._to_device(batch)
+                        # Apply transforms + augmentations on full sequence
+                        for t in self.transforms:
+                            xb, yb = t(xb, yb)
+                        for a in self.augmentations:
+                            xb, yb = a(xb, yb)
 
-                    # Apply transforms + augmentations on full sequence
-                    for t in self.transforms:
-                        xb, yb = t(xb, yb)
-                    for a in self.augmentations:
-                        xb, yb = a(xb, yb)
+                        # Split into sub-sequences
+                        xb_chunks = xb.split(self.sub_seq_len, dim=1)
+                        yb_chunks = yb.split(self.sub_seq_len, dim=1)
 
-                    # Split into sub-sequences
-                    xb_chunks = xb.split(self.sub_seq_len, dim=1)
-                    yb_chunks = yb.split(self.sub_seq_len, dim=1)
+                        state = None  # reset state at each new batch
+                        self._pct_train = step / max(1, total_steps)
 
-                    state = None  # reset state at each new batch
-                    self._pct_train = step / max(1, total_steps)
+                        for xb_sub, yb_sub in zip(xb_chunks, yb_chunks):
+                            loss_val, state = self.training_step((xb_sub, yb_sub), optimizer, state)
+                            if loss_val is not None:
+                                train_losses.append(loss_val)
 
-                    for xb_sub, yb_sub in zip(xb_chunks, yb_chunks):
-                        loss_val, state = self.training_step((xb_sub, yb_sub), optimizer, state)
-                        if loss_val is not None:
-                            train_losses.append(loss_val)
+                        if scheduler is not None:
+                            scheduler.step()
+                        step += 1
+                        pbar.update(1)
 
-                    if scheduler is not None:
-                        scheduler.step()
-                    step += 1
+                    train_loss = sum(train_losses) / max(1, len(train_losses))
+                    val_loss, metrics_dict = self.validate()
 
-                train_loss = sum(train_losses) / max(1, len(train_losses))
-                val_loss, metrics_dict = self.validate()
-
-                row = [train_loss, val_loss] + [metrics_dict[k] for k in sorted(metrics_dict)]
-                self.recorder.append(row)
-                self._log_epoch(epoch, train_loss, val_loss, metrics_dict, pbar)
+                    row = [train_loss, val_loss] + [metrics_dict[k] for k in sorted(metrics_dict)]
+                    self.recorder.append(row)
+                    self._log_epoch(epoch, train_loss, val_loss, metrics_dict, pbar)
         finally:
             self._teardown_composables()
