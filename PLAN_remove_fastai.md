@@ -950,206 +950,74 @@ back to master only when notebooks pass.
 5. **Validate against the working training loop.** Do explicit model state *before* the
    Learner, so state bugs are caught with the fastai Learner still functional.
 
-### Phase 0: Capture golden baselines
+### Phase 0: Capture golden baselines — DONE
 
-Before touching anything, capture reference outputs on master for regression comparison.
+Golden baselines captured in `tests/golden/`.
 
-**Actions:**
-- Run `pytest tests/ -v` and save output
-- For each learner type (`RNNLearner`, `TCNLearner`, `CRNNLearner`, `FranSysLearner`,
-  `AR_RNNLearner`, `PIRNNLearner`), run a 1-epoch training on Silverbox and record
-  the validation loss
-- Record `create_dls()` output for Silverbox: window counts, batch shapes, normalization
-  stats (mean/std/min/max for inputs and outputs)
-- Save these as `tests/golden/` fixtures (JSON or pickle) for automated comparison
+### Phase 1: Build `tsfast/tsdata/` — pure-PyTorch data pipeline — DONE
 
-**Commit checkpoint:** `capture golden baselines for migration regression testing`
+Implemented in `tsfast/tsdata/`. See `tests/test_tsdata.py`.
 
-### Phase 1: Build `tsfast/tsdata/` — pure-PyTorch data pipeline
+### Phase 2: Make model state explicit — DONE
 
-The data pipeline is a dependency for everything else, so it comes first. Build it as
-a new subpackage that never imports from the rest of `tsfast`.
+All models refactored to explicit state passing:
+- `RNN`: `forward(inp, state=None) → (output, new_hidden)`
+- `AR_Model`: accepts dict/list/None state via match/case, returns `{"h", "y_init"}` when `return_state=True`
+- `NormalizedModel`: handles tuple returns from inner model
+- `ARProg`/`ARProg_Init`: replaced y_init mutation with explicit state dict passing
+- `CausalConv1d`/`SeperateTCN`: internal state kept (deferred to Phase 5, nn.Sequential nesting)
+- `BatchNorm_1D_Stateful`: `BN_start` param provides explicit override, `seq_idx` kept as simple counter
+- Temporary `reset_state()` compat shims kept for `TbpttResetCB` (deleted in Phase 6)
+- Removed `to_detach`/`one_param` imports from fastai in model files
+- Added `_detach_state()` utility in `layers.py`
 
-**New files to create:**
+### Phase 3: Build the new training framework — DONE
 
-1. `tsfast/tsdata/__init__.py` — public API surface
-2. `tsfast/tsdata/blocks.py` — signal readers and resampling wrapper
-   - `HDF5Signals` — temporal block: `read(path, l_slc, r_slc)`, `file_len(path)`
-   - `HDF5Attrs` — scalar block: `read(path)`
-   - `Resampled` — wraps a temporal block, handles coordinate conversion +
-     interpolation: `read(path, l_slc, r_slc, factor)`
-   - Each block handles its own HDF5 file access and caching internally
-3. `tsfast/tsdata/dataset.py` — `WindowedDataset(Dataset)` + `FileEntry`
-   - `FileEntry(path, resampling_factor)` — minimal per-file metadata
-   - Queries first temporal block's `file_len(path)` at init for window counts
-   - Formula: `eff_len = file_len * factor`, `n_win = (eff_len - win_sz) // stp_sz + 1`
-   - Flat index → `(entry, l_slc, r_slc)` via cumsum + searchsorted
-   - `win_sz=None` for full-file mode (one sample per file, variable length)
-   - `__getitem__` returns `(inputs, targets)` tuple
-   - Single block → plain tensor, multiple blocks → tuple of tensors
-4. `tsfast/tsdata/signal.py` — signal processing (from `data/core.py`)
-   - `resample_interp()`, `running_mean()`, `downsample_mean()`
-   - Filtering utilities (Butterworth lowpass for anti-aliasing)
-5. `tsfast/tsdata/norm.py` — normalization (from `data/core.py` + `datasets/core.py`)
-   - `NormPair` frozen dataclass (mean, std, min, max per channel), `NormStats` NamedTuple of `(u, y)` NormPairs
-   - `compute_stats(dl, n_batches)` — on-demand stats from DataLoader batches
-   - `compute_stats_from_files(files, signals)` — exact stats via streaming HDF5 scan
-   - Disk caching via `cache_id` at `.tsfast_cache/{cache_id}.pkl`
-6. `tsfast/tsdata/split.py` — file discovery and splitting
-   - `discover_split_files(path)` — auto-discover train/valid/test from directory structure
-   - Plain functions replacing `ParentSplitter`, `PercentageSplitter`, `FuncSplitter`
-7. `tsfast/tsdata/pipeline.py` — `DataLoaders` container + `create_dls()` factory
-   - `DataLoaders` dataclass with `.train` / `.valid` / `.test` DataLoaders
-   - `.stats(n_batches)` — on-demand stats, cached after first call
-   - `.stats_from_files(cache_id)` — exact stats with disk caching
-   - `create_dls(u, y, dataset, win_sz, ...)` — convenience factory
-   - **Note:** `x` (state signals) dropped from the data pipeline — `NormStats` has `(u, y)` fields only, `create_dls` takes `u` and `y` but no `x`. Users put all target signals in `y`.
-8. `tsfast/tsdata/benchmark.py` — benchmark datasets (from `datasets/benchmark.py`)
-   - `Silverbox`, `WienerHammerstein`, etc. via identibench integration
+Pure-PyTorch training framework built in `tsfast/training/`. Coexists with old fastai code.
+See `tests/test_training.py` (39 tests, all passing).
 
-**HDF5 access strategy:** The optimal approach (mmap for contiguous datasets, memoize
-extracted sequences, or raw h5py per read) will be determined by benchmarking during
-this phase. All three strategies will be tested on real datasets and the fastest chosen.
-Worker safety (DataLoader `num_workers > 0`) must be validated for the chosen strategy.
+**Files created:**
 
-**Migration approach:** Write `tsfast/tsdata/` from scratch alongside the old `tsfast/data/`
-and `tsfast/datasets/`. Both coexist temporarily. New code imports from `tsfast.tsdata`,
-old code still works. Delete old modules only after all consumers are migrated.
+1. `tsfast/training/losses.py` — loss functions, metrics, schedulers, aux loss composables
+   - Pure losses: `mse`, `mse_nan`, `ignore_nan`, `float64_func`, `SkipNLoss`, `CutLoss`,
+     `NormLoss`, `weighted_mae`, `RandSeqLenLoss`, `fun_rmse`, `cos_sim_loss`,
+     `cos_sim_loss_pow`, `nrmse`, `nrmse_std`, `mean_vaf`, `zero_loss`
+   - Schedulers: `sched_lin_p`, `sched_ramp`
+   - Simple aux losses (`__call__(pred, yb, xb) -> loss_term`):
+     `add_loss`, `physics_loss`, `transition_smoothness`
+   - Stateful aux losses (with `setup(trainer)` / `teardown(trainer)`):
+     `TimeSeriesRegularizerLoss` (AR + TAR via hooks),
+     `FranSysRegularizer` (diag/prog sync, OSP, TAR via hooks)
+   - Deferred to Phase 5: `CollocationLoss`, `ConsistencyLoss` (PINN-specific)
 
-**Verification — dual-path equivalence tests:**
-Write comparison tests that load data through both the old and new pipelines and verify:
-- Same number of windows for identical inputs
-- Same normalization stats (mean/std/min/max)
-- Same batch shapes
-- Same TBPTT sub-sequence boundaries (for stateful training)
-- `create_dls()` on Silverbox matches golden baselines from Phase 0
+2. `tsfast/training/transforms.py` — transforms + augmentations
+   - Transforms (train + valid, `__call__(xb, yb) -> (xb, yb)`):
+     `prediction_concat`, `ar_init`
+   - Augmentations (train only): `noise`, `noise_varying`, `noise_grouped`,
+     `bias`, `vary_seq_len`, `truncate_sequence`
 
-**Commit checkpoints:**
-1. `tsdata/blocks.py + tsdata/dataset.py working with HDF5 files`
-2. `tsdata/norm.py + tsdata/split.py passing unit tests`
-3. `tsdata/pipeline.py + create_dls() producing equivalent DataLoaders`
-4. `tsdata/benchmark.py Silverbox matches golden baselines`
+3. `tsfast/training/viz.py` — visualization
+   - `plot_sequence`, `plot_seqs_single_figure`, `plot_seqs_multi_figures`,
+     `layout_samples`, `plot_grad_flow`, `grad_norm`
 
-### Phase 2: Make model state explicit
+4. `tsfast/training/core.py` — Learner + TbpttLearner + Recorder
+   - `Learner`: `fit()`, `fit_flat_cos()`, `training_step()`, `validate()`,
+     `get_preds()`, `show_batch()`, `show_results()`, `show_worst()`, `no_bar()`
+   - `TbpttLearner`: overrides `fit()` for truncated backprop through time
+   - `Recorder`: `values[epoch] = [train_loss, valid_loss, *metrics]`
+   - Helpers: `_auto_device()`, `_make_flat_cos_scheduler()`
+   - Composable protocol: `setup(trainer)` / `teardown(trainer)` on transforms,
+     augmentations, and aux_losses (called automatically by `fit()`)
 
-Do this *before* the Learner so state bugs are caught against the working fastai
-training loop. The existing `test_models.py`, `test_prediction.py`, and `test_pinn.py`
-(31 + 37 + 31 = 99 tests) are the regression net.
+5. `tsfast/training/__init__.py` — public re-exports
 
-Refactor all models to `forward(x, state=None) → (output, state)`:
-
-- `tsfast/models/rnn.py` — `RNN`: remove `self.hidden`, `self.bs`, `self.stateful`,
-  `reset_state()`, `_get_hidden()`. Always accept `h_init` and return `(output, new_hidden)`.
-  Remove `Sequential_RNN` (callers that don't need state just ignore it).
-- `tsfast/models/layers.py` — `AR_Model`: remove `self.y_init`, `self.stateful`,
-  `reset_state()`. Return `(output, {"h": new_hidden, "y_init": last_pred})`.
-  Stop mutating `self.y_init` — return it as part of state.
-  `BatchNorm_1D_Stateful`: accept `seq_idx` as parameter, return updated `seq_idx`
-  in state (or consider replacing with LayerNorm/GroupNorm which need no positional tracking).
-  `NormalizedModel`: pass `state` through opaquely via `forward(x, state=None)`.
-- `tsfast/models/cnn.py` — `CausalConv1d`: remove `self.x_init`, `self.stateful`,
-  `reset_state()`. Accept and return padding state. `TCN`/`CRNN`: compose sub-states.
-- `tsfast/prediction/fransys.py` — `FranSys`: already mostly explicit (diag→prog
-  state transfer uses `h_init`). Remove `ARProg`'s manual `self.rnn_model.y_init = ...`
-  mutation — pass as explicit state instead.
-
-**Temporary compatibility shims:** During this phase, keep thin `reset_state()` methods
-that just set `self._compat_state = None` so that the fastai training loop (which calls
-`reset_state()` via `TbpttResetCB`) still works. These shims are deleted in Phase 5.
-
-**Model state equivalence tests:** For each refactored model, before removing old code,
-verify output equivalence:
-```python
-# Old way
-model_old = RNN(..., stateful=True)
-model_old.reset_state()
-out_old = model_old(x)
-
-# New way (same weights)
-model_new = RNN(...)
-out_new, state = model_new(x, state=None)
-
-assert torch.allclose(out_old, out_new)
-```
-
-**Commit checkpoints:** One commit per model class, each passing the relevant test suite:
-1. `RNN explicit state — test_models.py passes`
-2. `CausalConv1d/TCN/CRNN explicit state — test_models.py passes`
-3. `AR_Model explicit state — test_models.py + test_prediction.py passes`
-4. `NormalizedModel state passthrough — test_models.py passes`
-5. `FranSys explicit state — test_prediction.py passes`
-6. `BatchNorm_1D_Stateful explicit state — test_models.py passes`
-
-### Phase 3: Build the new training framework
-
-**New files to create:**
-
-1. `tsfast/training/__init__.py` — public API surface
-2. `tsfast/training/core.py` — `Learner` class, `TrainConfig`, `TrainState`
-   - `fit()`, `fit_flat_cos()`, `training_step()`, `validate()`
-   - `transforms` (always), `augmentations` (train-only), `aux_losses` composition
-   - `setup()`/`teardown()` protocol for all three composable lists
-   - `validate()`: collect-then-compute — collects all predictions/targets (sliced
-     by `n_skip`, moved to CPU), then computes loss + metrics on the full set.
-     Metrics are plain functions `(pred, target) → float`, same as existing
-     `fun_rmse`, `nrmse`, `mean_vaf`. No accumulator protocol needed.
-   - Progress bars (tqdm), epoch logging
-   - `TbpttLearner` — `fit` override for truncated backpropagation
-   - `detach_state()` — recursive state detachment for TBPTT truncation
-
-3. `tsfast/training/transforms.py` — built-in transforms and augmentations
-   - **Transforms** (applied train + valid):
-     - `prediction_concat(t_offset)` — concat y onto x (replaces `PredictionCallback`)
-     - `ar_init()` — concat y onto x for autoregressive (replaces `ARInitCB`)
-   - **Augmentations** (train only):
-     - `noise(std)` — noise injection (replaces `SeqNoiseInjection` callback)
-     - `bias(std)` — bias injection (replaces `SeqBiasInjection`)
-     - `vary_seq_len(min_len)` — random truncation (replaces `VarySeqLen`)
-     - `truncate_sequence(initial_len)` — progressive curriculum, reads `trainer.pct_train`
-       (replaces `CB_TruncateSequence`)
-
-4. `tsfast/training/losses.py` — built-in auxiliary losses and loss wrappers
-   - Simple callables for basic aux losses (physics residual, etc.)
-   - `FranSysRegularizer` — stateful aux loss with `setup()` for hook-based
-     diagnosis/prognosis state sync, diag output loss, OSP loss, TAR loss
-     (replaces `FranSysCallback`)
-   - `CollocationLoss` — stateful aux loss with `setup()` for PINN collocation
-     points (replaces `CollocationPointsCB`)
-   - `TimeSeriesRegularizer` — activation regularization (AR + TAR) as aux loss
-     with `setup()` for hooks (replaces `TimeSeriesRegularizer` callback)
-   - Existing loss wrappers (`SkipNLoss`, `CutLoss`, `NormLoss`) stay as loss_func wrappers
-   - Metrics (`fun_rmse`, `nrmse`, `mean_vaf`) stay as-is
-
-5. `tsfast/training/viz.py` — visualization
-   - `plot_sequence()` — default `plot_fn` for time series (line plots)
-   - Plotting helpers shared by Learner methods (figure layout, axes grid)
-   - No dispatch registry — `plot_fn` is passed explicitly to Learner
-   - Quaternion/spectrogram plot functions stay in their own modules
-     and are wired in by learner factories
-
-**Verification — old vs new Learner comparison:**
-Write a test that trains the same model with both the old fastai `Learner` and the new
-`tsfast.training.Learner` on the same data, and compares validation loss after 1 epoch.
-They should be close (not identical due to random augmentation, but within a tolerance).
-
-**Existing files to read before implementing:**
-- `tsfast/learner/callbacks.py` — all 20+ callbacks, to ensure nothing is lost
-- `tsfast/models/rnn.py` — RNNLearner factory, training patterns
-- `tsfast/models/cnn.py` — TCNLearner, CRNNLearner factories
-- `tsfast/prediction/fransys.py` — FranSysLearner, prediction mode
-- `tsfast/pinn/core.py` — PINN callbacks, collocation points
-- `tsfast/data/loader.py` — TbpttDl, custom DataLoader factories
-
-**Callback → composable mapping verification:** For each of the 21 callbacks, write
-a targeted test that verifies the new composable callable produces the same effect.
-The feature coverage table above is the checklist — work through it row by row.
-
-**Commit checkpoints:**
-1. `training/core.py Learner with fit() + training_step() working on Silverbox`
-2. `training/transforms.py all transforms + augmentations passing`
-3. `training/losses.py aux losses passing (FranSysRegularizer, CollocationLoss, etc.)`
-4. `training/viz.py visualization working`
-5. `TbpttLearner producing same results as old TbpttDl + TbpttResetCB`
+**Key design decisions:**
+- Composables use `__call__` protocol, not callback hooks — explicit data flow
+- Stateful composables (`TimeSeriesRegularizerLoss`, `FranSysRegularizer`,
+  `truncate_sequence`) register hooks in `setup()`, remove in `teardown()`
+- `Recorder.values` matches fastai convention for test compatibility
+- `_detach_state` reused from `tsfast/models/layers.py` (not duplicated)
+- Old vs new Learner comparison test deferred to Phase 4 (when factories switch)
 
 ### Phase 4: Update learner factories + switch to new data pipeline
 
@@ -1283,13 +1151,6 @@ Full test suite passes: `pytest tests/ -v`.
 
 **After every sub-phase:**
 - `pytest tests/ -v` — full test suite
-
-**After Phase 1:**
-- Dual-path equivalence tests: old pipeline vs new pipeline produce same windows/stats
-
-**After Phase 2:**
-- Model state equivalence tests: old stateful models vs new explicit-state models
-  produce identical outputs given the same weights and inputs
 
 **After Phase 3:**
 - Old vs new Learner comparison: same model, same data, similar validation loss
