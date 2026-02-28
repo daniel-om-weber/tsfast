@@ -185,10 +185,8 @@ class TestPINNCallbacks:
     @pytest.mark.slow
     def test_alternating_encoder(self, dls_pinn):
         from tsfast.pinn.pirnn import PIRNNLearner
-        from tsfast.training import alternating_encoder
         lrn = PIRNNLearner(dls_pinn, init_sz=20, hidden_size=20, rnn_layer=1,
-                            attach_output=True)
-        lrn.add_augmentation(alternating_encoder(p_state=0.3))
+                            attach_output=True, p_state_encoder=0.3)
         lrn.fit(1, 3e-3)
         from tsfast.models.layers import unwrap_model
         assert unwrap_model(lrn.model).default_encoder_mode == 'sequence'

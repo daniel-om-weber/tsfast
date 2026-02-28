@@ -28,7 +28,6 @@ from .losses import (
     zero_loss,
 )
 from .transforms import (
-    alternating_encoder,
     ar_init,
     bias,
     noise,
@@ -36,7 +35,6 @@ from .transforms import (
     noise_varying,
     prediction_concat,
     truncate_sequence,
-    variable_init_sz,
     vary_seq_len,
 )
 from .viz import grad_norm, layout_samples, plot_grad_flow, plot_sequence
@@ -82,8 +80,6 @@ __all__ = [
     "bias",
     "vary_seq_len",
     "truncate_sequence",
-    "variable_init_sz",
-    "alternating_encoder",
     # viz
     "plot_sequence",
     "plot_grad_flow",

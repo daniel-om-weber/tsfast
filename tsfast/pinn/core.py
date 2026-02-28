@@ -17,7 +17,6 @@ __all__ = [
     "PhysicsLoss",
     "CollocationLoss",
     "ConsistencyLoss",
-    "AlternatingEncoder",
     "TransitionSmoothness",
 ]
 
@@ -868,7 +867,7 @@ class ConsistencyLoss:
 
         timestep = self.match_at_timestep
         if timestep is None and hasattr(self.inner_model, "init_sz"):
-            timestep = self.inner_model.init_sz - 1
+            timestep = getattr(self.inner_model, "_effective_init_sz", self.inner_model.init_sz) - 1
         elif timestep is None:
             timestep = -1
 
@@ -883,35 +882,6 @@ class ConsistencyLoss:
         self._diag_output = None
 
         return self.weight * consistency_loss
-
-
-class AlternatingEncoder:
-    """Randomly switch between sequence and state encoder during training.
-
-    Args:
-        p_state: probability of using state encoder per batch
-    """
-
-    def __init__(self, p_state: float = 0.3):
-        self.p_state = p_state
-        self.inner_model = None
-
-    def setup(self, trainer):
-        """Resolve inner model reference."""
-        from ..models.layers import unwrap_model
-
-        self.inner_model = unwrap_model(trainer.model)
-
-    def __call__(self, xb: torch.Tensor, yb: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """Switch encoder mode randomly before each training batch."""
-        if hasattr(self.inner_model, "default_encoder_mode"):
-            self.inner_model.default_encoder_mode = "state" if np.random.rand() < self.p_state else "sequence"
-        return xb, yb
-
-    def teardown(self, trainer):
-        """Reset to sequence encoder after training."""
-        if self.inner_model is not None and hasattr(self.inner_model, "default_encoder_mode"):
-            self.inner_model.default_encoder_mode = "sequence"
 
 
 class TransitionSmoothness:

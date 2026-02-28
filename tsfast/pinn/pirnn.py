@@ -2,6 +2,8 @@
 
 __all__ = ["PIRNN", "AuxiliaryOutputLoss", "PIRNNLearner"]
 
+import random
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -33,7 +35,12 @@ class PIRNN(nn.Module):
         linear_layer: Linear layers in diagnosis RNN.
         final_layer: Final layer complexity.
         init_diag_only: Limit diagnosis to init_sz.
-        default_encoder_mode: Default encoder mode.
+        default_encoder_mode: Default encoder mode during inference.
+        p_state_encoder: Probability of using the state encoder per training batch.
+            When > 0, randomly alternates between sequence and state encoder during
+            training (like ``nn.Dropout``). Has no effect during inference.
+        init_sz_range: If set, randomize ``init_sz`` uniformly within ``(min, max)``
+            during training. Has no effect during inference.
         **kwargs: Additional arguments passed to RNN constructors.
     """
 
@@ -51,6 +58,8 @@ class PIRNN(nn.Module):
         final_layer: int = 0,
         init_diag_only: bool = False,
         default_encoder_mode: str = "sequence",
+        p_state_encoder: float = 0.0,
+        init_sz_range: tuple[int, int] | None = None,
         **kwargs,
     ):
         super().__init__()
@@ -64,6 +73,8 @@ class PIRNN(nn.Module):
         self.hidden_size = hidden_size
         self.rnn_layer = rnn_layer
         self.default_encoder_mode = default_encoder_mode
+        self.p_state_encoder = p_state_encoder
+        self.init_sz_range = init_sz_range
 
         # Instantiate FranSys components - diagnosis RNN uses supervised outputs only
         self.rnn_diagnosis = Diag_RNN(
@@ -104,19 +115,24 @@ class PIRNN(nn.Module):
             encoder_mode: Encoder selection - 'none', 'sequence', or 'state'.
         """
 
+        init_sz = random.randint(*self.init_sz_range) if self.training and self.init_sz_range else self.init_sz
+        self._effective_init_sz = init_sz
+
         u = x[:, :, : self.n_u]
         # Use n_y_supervised for initialization sequence (only supervised outputs in data)
-        x_init = x[:, : self.init_sz, : self.n_u + self.n_x + self.n_y_supervised]
+        x_init = x[:, :init_sz, : self.n_u + self.n_x + self.n_y_supervised]
         if encoder_mode == "default":
-            encoder_mode = self.default_encoder_mode
+            if self.training and self.p_state_encoder > 0:
+                encoder_mode = "state" if random.random() < self.p_state_encoder else "sequence"
+            else:
+                encoder_mode = self.default_encoder_mode
 
-        # Detect encoder mode based on input shape
         if encoder_mode == "none":
             return self._forward_predictor(u, init_state)
         elif encoder_mode == "sequence":
-            return self._forward_sequence_encoder(u[:, self.init_sz :], x_init, init_state)
+            return self._forward_sequence_encoder(u[:, init_sz:], x_init, init_state)
         elif encoder_mode == "state":
-            return self._forward_state_encoder(u[:, self.init_sz :], x_init, init_state)
+            return self._forward_state_encoder(u[:, init_sz:], x_init, init_state)
         else:
             raise ValueError(f"encoder_mode must be 'none', 'sequence', or 'state', got {encoder_mode}")
 
@@ -165,7 +181,7 @@ class PIRNN(nn.Module):
             init_state = x_init[:, -1, -self.n_y_supervised :]
         init_state = self.encode_single_state(init_state)
         pred = self._forward_predictor(u, init_state)
-        return F.pad(pred, (0, 0, self.init_sz, 0))  # Zero-pad init window
+        return F.pad(pred, (0, 0, self._effective_init_sz, 0))  # Zero-pad init window
 
     def _forward_predictor(
         self,

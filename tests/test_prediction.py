@@ -105,9 +105,8 @@ class TestFranSysRegularization:
     @pytest.mark.slow
     def test_fransys_variable_init(self, dls_prediction):
         from tsfast.prediction.fransys import FranSysLearner
-        from tsfast.training import variable_init_sz
-        lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1)
-        lrn.add_transform(variable_init_sz(init_sz_min=30, init_sz_max=70))
+        lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1,
+                              init_sz_range=(30, 70))
         lrn.fit(1, 3e-3)
         assert not math.isnan(lrn.recorder.values[-1][1])
 
