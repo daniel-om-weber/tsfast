@@ -119,6 +119,8 @@ class BatchNorm_1D_Stateful(nn.Module):
             self.bias.data.fill_(0.0)
 
     def forward(self, input, BN_start=None):
+        # BN_start provides explicit sequence-index override; when None the
+        # internal self.seq_idx counter is used (stateful mode) or 0 (default).
         if input.dim() != 3:
             raise ValueError("expected 3D input (got {}D input)".format(input.dim()))
         if self.batch_first:
