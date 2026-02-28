@@ -10,7 +10,7 @@ import numpy as np
 import torch
 
 
-@dataclass
+@dataclass(frozen=True)
 class NormPair:
     """Per-signal normalization statistics (mean, std, min, max as 1-D numpy arrays).
 
@@ -82,7 +82,7 @@ def compute_stats_from_files(files: list, signals: list[str]) -> NormPair | None
     squares = np.zeros(len(signals))
     mins = np.full(len(signals), np.inf)
     maxs = np.full(len(signals), -np.inf)
-    counts = 0
+    counts = np.zeros(len(signals))
 
     for file in files:
         with h5py.File(file, "r") as f:
@@ -94,7 +94,7 @@ def compute_stats_from_files(files: list, signals: list[str]) -> NormPair | None
                 squares[i] += np.sum(data**2)
                 mins[i] = min(mins[i], np.min(data))
                 maxs[i] = max(maxs[i], np.max(data))
-            counts += data.size
+                counts[i] += data.size
 
     means = sums / counts
     stds = np.sqrt((squares / counts) - (means**2))
