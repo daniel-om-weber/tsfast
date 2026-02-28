@@ -16,11 +16,12 @@
 # %% [markdown]
 # # Example 13: Custom Data Pipelines with HDF5
 #
-# When your dataset doesn't fit the standard `create_dls` pattern -- multiple
-# files, custom splits, weighted sampling -- you need a custom pipeline. This
-# example shows how to compose tsfast's building blocks to create flexible data
-# loading for any HDF5 dataset. You will learn how each primitive works on its
-# own, and then combine them into a complete training pipeline.
+# When your dataset doesn't fit the standard `create_dls` pattern -- custom
+# blocks, different signal combinations, fixed batch counts -- you need a
+# custom pipeline. This example shows how to compose tsfast's building blocks
+# to create flexible data loading for any HDF5 dataset. You will learn how
+# each primitive works on its own, and then combine them into a complete
+# training pipeline.
 
 # %% [markdown]
 # ## Prerequisites
@@ -34,20 +35,13 @@
 # %%
 from pathlib import Path
 
-from fastai.data.block import DataBlock
+from torch.utils.data import DataLoader, RandomSampler
 
-from tsfast.data.block import SequenceBlock
-from tsfast.data.core import (
-    CreateDict,
-    DfHDFCreateWindows,
-    TensorSequencesOutput,
-    ValidClmContains,
-    get_hdf_files,
+from tsfast.tsdata import (
+    WindowedDataset, HDF5Signals, FileEntry, DataLoaders,
+    create_dls, create_dls_from_blocks, get_hdf_files, split_by_parent,
 )
-from tsfast.data.loader import NBatches_Factory
-from tsfast.data.split import ParentSplitter
-from tsfast.datasets import create_dls
-from tsfast.learner.losses import fun_rmse
+from tsfast.training import fun_rmse
 from tsfast.models.rnn import RNNLearner
 
 # %% [markdown]
@@ -55,7 +49,7 @@ from tsfast.models.rnn import RNNLearner
 #
 # The first step in any custom pipeline is discovering which files exist on
 # disk. `get_hdf_files` recursively searches a directory for `.hdf5` and `.h5`
-# files and returns them as a fastcore `L` list.
+# files and returns them as a sorted list of `Path` objects.
 
 # %%
 def _find_project_root(marker: str = "test_data") -> Path:
@@ -116,126 +110,110 @@ dls_standard.show_batch(max_n=2)
 # approach doesn't fit your needs.
 
 # %% [markdown]
-# ### Step 1: Create Window Definitions
+# ### Step 1: Split Files by Directory
 #
-# `CreateDict` takes a list of file paths and produces a list of dictionaries,
-# one per training sample. By passing `DfHDFCreateWindows`, each file is split
-# into overlapping windows. By passing `ValidClmContains`, a `valid` column is
-# added to mark validation and test files.
-#
-# Parameters for `DfHDFCreateWindows`:
-#
-# - **`win_sz=200`** -- the length of each window in time steps.
-# - **`stp_sz=50`** -- the stride between consecutive windows.
-# - **`clm='u'`** -- which HDF5 dataset to read for determining sequence
-#   length. The function reads this dataset's shape to calculate how many
-#   windows fit in the file.
+# `split_by_parent` inspects each file's parent directory name and returns
+# `(train_indices, valid_indices)`. Files under a `train/` directory go to
+# training, files under `valid/` go to validation.
 
 # %%
-items = CreateDict([
-    DfHDFCreateWindows(win_sz=200, stp_sz=50, clm='u'),
-    ValidClmContains(['valid', 'test']),
-])(files)
-
-print(f"Total windows: {len(items)}")
-print(f"First item keys: {list(items[0].keys())}")
-print(f"First item: {items[0]}")
+train_idx, valid_idx = split_by_parent(files)
+train_files = [files[i] for i in train_idx]
+valid_files = [files[i] for i in valid_idx]
+print(f"Train files: {len(train_files)}, Valid files: {len(valid_files)}")
 
 # %% [markdown]
-# Each item is a dictionary with:
+# ### Step 2: Define Signal Blocks
 #
-# - **`path`** -- full file path to the HDF5 file.
-# - **`l_slc`** / **`r_slc`** -- left and right slice boundaries defining the
-#   window within the file.
-# - **`valid`** -- `True` for files whose path contains `"valid"` or `"test"`,
-#   used for train/validation splitting.
-
-# %% [markdown]
-# ### Step 2: Build a DataBlock
-#
-# The `DataBlock` ties together all the pieces: how to get items, how to split
-# them, and how to extract tensors. `SequenceBlock.from_hdf` creates a
-# `TransformBlock` that reads columns from HDF5 files and converts them to
-# typed tensors.
-#
-# - **`blocks`** -- a tuple of `TransformBlock` objects defining input and
-#   output types. The first block extracts input signals (`'u'`), the second
-#   extracts output signals (`'y'`). Note that the output block uses
-#   `TensorSequencesOutput` to distinguish it from inputs.
-# - **`splitter`** -- determines how items are split into training and
-#   validation sets. `ParentSplitter()` splits by parent directory name: files
-#   in `train/` go to training, files in `valid/` go to validation.
-# - **`get_items`** -- a callable that takes the source (file list) and returns
-#   a list of items (dictionaries with window definitions).
+# `HDF5Signals` defines which datasets to read from each HDF5 file. The first
+# block reads input signals, the second reads target signals.
 
 # %%
-dblock = DataBlock(
-    blocks=(
-        SequenceBlock.from_hdf(['u']),
-        SequenceBlock.from_hdf(['y'], seq_cls=TensorSequencesOutput),
-    ),
-    splitter=ParentSplitter(),
-    get_items=CreateDict([DfHDFCreateWindows(win_sz=200, stp_sz=50, clm='u')]),
+inputs = HDF5Signals(['u'])
+targets = HDF5Signals(['y'])
+
+# %% [markdown]
+# ### Step 3: Create WindowedDatasets
+#
+# `WindowedDataset` takes a list of `FileEntry` objects and the signal blocks,
+# then creates overlapping windows of the specified size. Each sample is a
+# `(input_tensor, target_tensor)` tuple.
+#
+# - **`win_sz=200`** -- each window is 200 timesteps long
+# - **`stp_sz=50`** -- windows overlap with a stride of 50 timesteps
+
+# %%
+train_entries = [FileEntry(path=str(f)) for f in train_files]
+valid_entries = [FileEntry(path=str(f)) for f in valid_files]
+
+train_ds = WindowedDataset(train_entries, inputs=inputs, targets=targets, win_sz=200, stp_sz=50)
+valid_ds = WindowedDataset(valid_entries, inputs=inputs, targets=targets, win_sz=200, stp_sz=50)
+
+print(f"Train windows: {len(train_ds)}")
+print(f"Valid windows: {len(valid_ds)}")
+
+# %% [markdown]
+# ### Step 4: Create DataLoaders
+#
+# Wrap the datasets in standard PyTorch DataLoaders, then bundle them in
+# tsfast's `DataLoaders` container for compatibility with the Learner.
+
+# %%
+train_dl = DataLoader(train_ds, batch_size=32, shuffle=True)
+valid_dl = DataLoader(valid_ds, batch_size=32, shuffle=False)
+dls_custom = DataLoaders(train_dl, valid_dl)
+
+# %% [markdown]
+# ## Using create_dls_from_blocks
+#
+# For a more concise approach, `create_dls_from_blocks` handles the
+# `WindowedDataset` and `DataLoader` construction for you. It also supports
+# `n_batches_train` to control the number of training batches per epoch.
+
+# %%
+dls_blocks = create_dls_from_blocks(
+    inputs=inputs, targets=targets,
+    train_files=train_files, valid_files=valid_files,
+    win_sz=200, stp_sz=50, bs=32,
 )
 
-dls_custom = dblock.dataloaders(files, bs=32)
-dls_custom.show_batch(max_n=2)
-
 # %% [markdown]
-# ## Fixed Batch Counts with NBatches_Factory
+# ## Fixed Batch Counts
 #
 # When datasets have very different sizes, you may want a fixed number of
-# batches per epoch regardless of how many windows exist. `NBatches_Factory`
-# wraps a DataLoader class so it always yields exactly `n_batches` batches:
-# it oversamples (with replacement) when there are fewer samples than needed,
-# and undersamples when there are more.
+# batches per epoch regardless of how many windows exist. Pass
+# `n_batches_train` to `create_dls_from_blocks` or `create_dls`.
 #
-# This is useful for:
-#
-# - **Consistent training time** across datasets of varying size.
-# - **Curriculum learning** where you want to control exposure per epoch.
-# - **Balancing** when combining datasets of different lengths.
+# This uses `RandomSampler` with `replacement=True` to oversample when there
+# are fewer windows than requested, ensuring consistent training time across
+# datasets of varying size.
 
 # %%
-dls_nbatch = dblock.dataloaders(
-    files, bs=32,
-    dl_type=NBatches_Factory(dls_custom.train.__class__),
-    dl_kwargs=[{'n_batches': 100}, {'n_batches': None}],
+dls_nbatch = create_dls_from_blocks(
+    inputs=inputs, targets=targets,
+    train_files=train_files, valid_files=valid_files,
+    win_sz=200, stp_sz=50, bs=32,
+    n_batches_train=100,
 )
 print(f"Training batches per epoch: {len(dls_nbatch.train)}")
 print(f"Validation batches per epoch: {len(dls_nbatch.valid)}")
 
 # %% [markdown]
-# ## Variable-Length Sequences with Padding
+# You can also build fixed-batch DataLoaders manually using PyTorch's
+# `RandomSampler`:
 #
-# When HDF5 files have different lengths and you want windows that cover the
-# full file without overlap, the resulting sequences may vary in length across
-# files. Setting `padding=True` on `SequenceBlock.from_hdf` adds a collation
-# function that pads shorter sequences with zeros to match the longest sequence
-# in each batch.
-#
-# This is useful when:
-#
-# - Files represent separate experiments of varying duration.
-# - You want to process each file as a single window (no sub-windowing).
-# - You need batch processing but your sequences have different lengths.
-
-# %%
-dblock_padded = DataBlock(
-    blocks=(
-        SequenceBlock.from_hdf(['u'], padding=True),
-        SequenceBlock.from_hdf(['y'], seq_cls=TensorSequencesOutput, padding=True),
-    ),
-    splitter=ParentSplitter(),
-    get_items=CreateDict([DfHDFCreateWindows(win_sz=200, stp_sz=200, clm='u')]),
-)
+# ```python
+# n_samples = 100 * 32  # 100 batches * 32 batch size
+# sampler = RandomSampler(train_ds, replacement=True, num_samples=n_samples)
+# train_dl = DataLoader(train_ds, batch_size=32, sampler=sampler)
+# ```
 
 # %% [markdown]
 # ## Training with the Custom Pipeline
 #
 # Let's train an LSTM on the custom DataLoaders to verify everything works
 # end-to-end. `RNNLearner` creates a recurrent neural network wrapped in a
-# fastai Learner.
+# Learner.
 #
 # Parameters:
 #
@@ -255,18 +233,15 @@ lrn.show_results(max_n=3)
 # ## Key Takeaways
 #
 # - **`get_hdf_files`** discovers HDF5 files recursively in a directory tree.
-# - **`CreateDict`** + **`DfHDFCreateWindows`** creates window definitions from
-#   file paths, where each item is a dictionary with file path and slice
-#   boundaries.
-# - **`ValidClmContains`** marks validation files by checking whether the file
-#   path contains specific strings (e.g., `"valid"`, `"test"`).
-# - **`DataBlock`** with **`SequenceBlock.from_hdf`** creates flexible
-#   input/output pipelines that read directly from HDF5 files.
-# - **`ParentSplitter`** splits data into train/validation sets based on parent
-#   directory names (e.g., `train/` vs `valid/`).
-# - **`NBatches_Factory`** ensures a fixed number of batches per epoch
-#   regardless of dataset size.
-# - **`padding=True`** handles variable-length sequences by zero-padding within
-#   each batch.
+# - **`split_by_parent`** splits files into train/validation sets based on
+#   parent directory names (e.g., `train/` vs `valid/`).
+# - **`HDF5Signals`** defines which datasets to extract from HDF5 files.
+# - **`WindowedDataset`** creates overlapping windows from HDF5 files, with
+#   configurable window size and step size.
+# - **`FileEntry`** wraps a file path with optional resampling metadata.
+# - **`DataLoaders`** bundles train/valid DataLoaders for the Learner.
+# - **`create_dls_from_blocks`** handles dataset + DataLoader construction
+#   from blocks and file lists, including `n_batches_train` for fixed batch
+#   counts.
 # - The standard **`create_dls`** composes these same primitives internally --
 #   understanding them lets you customize any part of the pipeline.
