@@ -40,7 +40,7 @@
 # We use explicit imports so you can see exactly where each function comes from.
 
 # %%
-from tsfast.datasets.benchmark import create_dls_silverbox
+from tsfast.tsdata.benchmark import create_dls_silverbox
 from tsfast.models.rnn import RNNLearner
 
 # %% [markdown]
@@ -76,8 +76,8 @@ dls.show_batch(max_n=4)
 # %% [markdown]
 # ## Create and Train an LSTM Model
 #
-# `RNNLearner` creates a recurrent neural network wrapped in a fastai Learner,
-# ready for training. Setting `rnn_type='lstm'` selects Long Short-Term Memory
+# `RNNLearner` creates a recurrent neural network wrapped in a Learner, ready
+# for training. Setting `rnn_type='lstm'` selects Long Short-Term Memory
 # cells, which are effective at capturing temporal dependencies. The model maps
 # input sequences to output sequences of the same length.
 
