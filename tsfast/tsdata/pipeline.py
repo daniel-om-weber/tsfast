@@ -14,6 +14,8 @@ from .norm import (
     compute_stats,
     compute_stats_from_files,
 )
+from .prefetch import PrefetchLoader
+from .safe_iter import SafeDataLoader
 from .split import discover_split_files, get_hdf_files, split_by_parent
 
 
@@ -32,13 +34,19 @@ class DataLoaders:
         valid: DataLoader,
         test: DataLoader | None = None,
     ):
-        self.train = train
-        self.valid = valid
-        self.test = test
+        self.train = self._wrap(train)
+        self.valid = self._wrap(valid)
+        self.test = self._wrap(test) if test is not None else None
         self._train_files: list | None = None
         self._signal_names: tuple[list[str], list[str]] | None = None
         self._dls_id: str | None = None
         self._cached_stats: NormStats | None = None
+
+    @staticmethod
+    def _wrap(dl: DataLoader):
+        if getattr(dl, "num_workers", 0) > 0:
+            return SafeDataLoader(dl)
+        return PrefetchLoader(dl)
 
     @property
     def norm_stats(self) -> NormStats:
@@ -146,7 +154,7 @@ def create_dls_from_blocks(
     stp_sz: int = 1,
     bs: int = 64,
     valid_stp_sz: int | None = None,
-    num_workers: int = 5,
+    num_workers: int = 0,
     n_batches_train: int | None = 300,
     n_batches_valid: int | None = None,
     targ_fs: list[float] | float | None = None,
@@ -261,7 +269,7 @@ def create_dls(
     stp_sz: int = 1,
     bs: int = 64,
     valid_stp_sz: int | None = None,
-    num_workers: int = 5,
+    num_workers: int = 0,
     n_batches_train: int | None = 300,
     n_batches_valid: int | None = None,
     dls_id: str | None = None,
