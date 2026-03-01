@@ -19,7 +19,7 @@ def dls_silverbox():
     """Small Silverbox DataLoaders for tune tests."""
     from tsfast.tsdata.benchmark import create_dls_silverbox
 
-    return create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
+    return create_dls_silverbox(bs=16, win_sz=50, n_batches_train=2, n_batches_valid=2)
 
 
 @pytest.mark.slow
@@ -41,7 +41,7 @@ def test_learner_optimize_cpu_only(dls_silverbox):
             dls,
             rnn_type=config["rnn_type"],
             hidden_size=config["hidden_size"],
-            n_skip=50,
+            n_skip=5,
             metrics=[fun_rmse],
         )
 
@@ -83,7 +83,7 @@ def test_learner_optimize_callable_lr(dls_silverbox):
             dls,
             rnn_type=config["rnn_type"],
             hidden_size=config["hidden_size"],
-            n_skip=50,
+            n_skip=5,
             metrics=[fun_rmse],
         )
 
