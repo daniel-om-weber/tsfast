@@ -12,7 +12,8 @@ from collections.abc import Callable
 import torch
 import torch.nn.functional as F
 
-from .core import diff2_forward, generate_random_states
+from .differentiation import diff2_forward
+from .signals import generate_random_states
 
 
 class PhysicsLoss:

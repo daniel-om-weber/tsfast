@@ -7,21 +7,21 @@ import torch
 
 class TestDifferencing:
     def test_diff1_forward_shape(self):
-        from tsfast.pinn.core import diff1_forward
+        from tsfast.pinn.differentiation import diff1_forward
 
         x = torch.rand(4, 100, 2)
         dx = diff1_forward(x, 0.01)
         assert dx.shape == x.shape
 
     def test_diff2_central_shape(self):
-        from tsfast.pinn.core import diff2_central
+        from tsfast.pinn.differentiation import diff2_central
 
         x = torch.rand(4, 100, 2)
         d2x = diff2_central(x, 0.01)
         assert d2x.shape == x.shape
 
     def test_diff1_central_shape(self):
-        from tsfast.pinn.core import diff1_central
+        from tsfast.pinn.differentiation import diff1_central
 
         x = torch.rand(4, 100, 2)
         dx = diff1_central(x, 0.01)
@@ -30,13 +30,13 @@ class TestDifferencing:
 
 class TestExcitationSignals:
     def test_generate_excitation_signals_shape(self):
-        from tsfast.pinn.core import generate_excitation_signals
+        from tsfast.pinn.signals import generate_excitation_signals
 
         u = generate_excitation_signals(8, 200, n_inputs=2, dt=0.01)
         assert u.shape == (8, 200, 2)
 
     def test_generate_random_states_shape(self):
-        from tsfast.pinn.core import generate_random_states
+        from tsfast.pinn.signals import generate_random_states
 
         s = generate_random_states(16, 2, [(-1, 1), (0, 10)])
         assert s.shape == (16, 2)
@@ -59,7 +59,7 @@ class TestExcitationSignalTypes:
         ],
     )
     def test_signal_type_shape_and_finite(self, sig_type):
-        from tsfast.pinn.core import generate_excitation_signals
+        from tsfast.pinn.signals import generate_excitation_signals
 
         u = generate_excitation_signals(
             4,
@@ -72,7 +72,7 @@ class TestExcitationSignalTypes:
         assert torch.isfinite(u).all()
 
     def test_synchronized_inputs(self):
-        from tsfast.pinn.core import generate_excitation_signals
+        from tsfast.pinn.signals import generate_excitation_signals
 
         u = generate_excitation_signals(
             4,
@@ -85,7 +85,7 @@ class TestExcitationSignalTypes:
         assert torch.isfinite(u).all()
 
     def test_noise_and_bias(self):
-        from tsfast.pinn.core import generate_excitation_signals
+        from tsfast.pinn.signals import generate_excitation_signals
 
         clean = generate_excitation_signals(4, 200, n_inputs=1, seed=42)
         noisy = generate_excitation_signals(
@@ -102,7 +102,7 @@ class TestExcitationSignalTypes:
         assert not torch.allclose(clean, noisy)
 
     def test_seed_determinism(self):
-        from tsfast.pinn.core import generate_excitation_signals
+        from tsfast.pinn.signals import generate_excitation_signals
 
         u1 = generate_excitation_signals(4, 200, n_inputs=2, seed=123)
         u2 = generate_excitation_signals(4, 200, n_inputs=2, seed=123)
@@ -114,7 +114,7 @@ class TestPhysicsCallbacks:
     @pytest.mark.slow
     def test_physics_loss_callback(self, dls_simulation):
         from tsfast.models.rnn import RNNLearner
-        from tsfast.pinn.core import diff1_forward
+        from tsfast.pinn.differentiation import diff1_forward
         from tsfast.pinn import PhysicsLoss
 
         def simple_physics(u, y_pred, y_ref):
@@ -135,35 +135,35 @@ class TestPhysicsCallbacks:
 @pytest.mark.pinn
 class TestHigherOrderDerivatives:
     def test_diff2_forward_shape(self):
-        from tsfast.pinn.core import diff2_forward
+        from tsfast.pinn.differentiation import diff2_forward
 
         x = torch.rand(4, 100, 2)
         d2x = diff2_forward(x, 0.01)
         assert d2x.shape == x.shape
 
     def test_diff3_forward_shape(self):
-        from tsfast.pinn.core import diff3_forward
+        from tsfast.pinn.differentiation import diff3_forward
 
         x = torch.rand(4, 100, 2)
         d3x = diff3_forward(x, 0.01)
         assert d3x.shape == x.shape
 
     def test_diff3_central_shape(self):
-        from tsfast.pinn.core import diff3_central
+        from tsfast.pinn.differentiation import diff3_central
 
         x = torch.rand(4, 100, 2)
         d3x = diff3_central(x, 0.01)
         assert d3x.shape == x.shape
 
     def test_diff1_central4_double_shape(self):
-        from tsfast.pinn.core import diff1_central4_double
+        from tsfast.pinn.differentiation import diff1_central4_double
 
         x = torch.rand(4, 100, 2)
         dx = diff1_central4_double(x, 0.01)
         assert dx.shape == x.shape
 
     def test_diff2_forward_quadratic_accuracy(self):
-        from tsfast.pinn.core import diff2_forward
+        from tsfast.pinn.differentiation import diff2_forward
 
         dt = 0.01
         t = torch.arange(0, 1.0, dt).unsqueeze(0).unsqueeze(-1)  # (1, 100, 1)

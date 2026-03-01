@@ -1,4 +1,4 @@
-from tsfast.inference.core import *
+from tsfast.inference.wrapper import *
 
 try:
     from tsfast.inference.onnx import *

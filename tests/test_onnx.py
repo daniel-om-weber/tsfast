@@ -56,7 +56,7 @@ class TestExportOnnx:
 class TestOnnxInferenceWrapper:
     def test_matches_pytorch_output(self, dls_simulation, tmp_path):
         from tsfast.models.rnn import RNNLearner
-        from tsfast.inference.core import InferenceWrapper
+        from tsfast.inference.wrapper import InferenceWrapper
         from tsfast.inference.onnx import export_onnx, OnnxInferenceWrapper
 
         lrn = RNNLearner(dls_simulation)
@@ -99,7 +99,7 @@ class TestOnnxInferenceWrapper:
 
     def test_batched_3d_input(self, dls_simulation, tmp_path):
         from tsfast.models.rnn import RNNLearner
-        from tsfast.inference.core import InferenceWrapper
+        from tsfast.inference.wrapper import InferenceWrapper
         from tsfast.inference.onnx import export_onnx, OnnxInferenceWrapper
 
         lrn = RNNLearner(dls_simulation)
@@ -129,7 +129,7 @@ class TestOnnxInferenceWrapper:
 
     def test_tcn_output(self, dls_simulation, tmp_path):
         from tsfast.models.cnn import TCNLearner
-        from tsfast.inference.core import InferenceWrapper
+        from tsfast.inference.wrapper import InferenceWrapper
         from tsfast.inference.onnx import export_onnx, OnnxInferenceWrapper
 
         lrn = TCNLearner(dls_simulation)

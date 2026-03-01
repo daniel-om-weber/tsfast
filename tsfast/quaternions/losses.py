@@ -25,7 +25,7 @@ __all__ = [
 import torch
 import torch.nn.functional as F
 
-from .core import (
+from .ops import (
     conjQuat,
     diffQuat,
     inclinationAngle,
