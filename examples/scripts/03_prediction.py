@@ -32,9 +32,9 @@
 # ## Setup
 
 # %%
-from tsfast.datasets.benchmark import create_dls_silverbox_prediction
+from tsfast.tsdata.benchmark import create_dls_silverbox_prediction
 from tsfast.prediction.fransys import FranSysLearner
-from tsfast.learner.losses import fun_rmse
+from tsfast.training import fun_rmse
 
 # %% [markdown]
 # ## Simulation vs. Prediction
@@ -82,13 +82,6 @@ from tsfast.learner.losses import fun_rmse
 # %%
 dls = create_dls_silverbox_prediction()
 
-# %%
-dls.show_batch(max_n=4)
-
-# %% [markdown]
-# Notice that the input now has **more channels** than in the simulation example.
-# The extra channels are the measured output values y(t-1) concatenated to u(t).
-
 # %% [markdown]
 # ## The FranSys Architecture
 #
@@ -120,7 +113,14 @@ dls.show_batch(max_n=4)
 # - `metrics=[fun_rmse]`: track root mean squared error
 
 # %%
-lrn = FranSysLearner(dls, init_sz=50, hidden_size=40, metrics=[fun_rmse])
+lrn = FranSysLearner(dls, init_sz=50, hidden_size=40, metrics=[fun_rmse], attach_output=True)
+lrn.show_batch(max_n=4)
+
+# %% [markdown]
+# Notice that the input now has **more channels** than in the simulation example.
+# The extra channels are the measured output values y(t-1) concatenated to u(t).
+
+# %%
 lrn.fit_flat_cos(n_epoch=10, lr=3e-3)
 
 # %% [markdown]

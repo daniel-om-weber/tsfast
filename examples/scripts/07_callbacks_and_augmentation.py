@@ -14,11 +14,18 @@
 # ---
 
 # %% [markdown]
-# # Example 07: Training Callbacks and Data Augmentation
+# # Example 07: Augmentations, Auxiliary Losses, and Training Options
 #
-# Callbacks let you customize every aspect of the training loop without
-# modifying model code. Data augmentation transforms add noise or bias to
-# training data, improving generalization. This example demonstrates both.
+# TSFast provides composable building blocks that customize training without
+# modifying model code:
+#
+# - **Augmentations** modify training data on-the-fly (noise, bias, sequence
+#   length variation)
+# - **Auxiliary losses** add regularization terms to the main loss
+#   (activation smoothing, gradient penalties)
+# - **Training options** control optimizer behavior (gradient clipping)
+#
+# This example demonstrates each category and shows how to combine them.
 
 # %% [markdown]
 # ## Prerequisites
@@ -32,52 +39,45 @@
 # ## Setup
 
 # %%
-from tsfast.datasets.benchmark import create_dls_silverbox
+from tsfast.tsdata.benchmark import create_dls_silverbox
 from tsfast.models.rnn import RNNLearner
-from tsfast.learner.callbacks import (
-    TimeSeriesRegularizer, GradientClipping, VarySeqLen,
-    BatchLossFilter, CB_TruncateSequence,
+from tsfast.models.scaling import unwrap_model
+from tsfast.training import (
+    fun_rmse,
+    ActivationRegularizer,
+    TemporalActivationRegularizer,
+    noise, vary_seq_len, truncate_sequence,
 )
-from tsfast.data.transforms import SeqNoiseInjection, SeqBiasInjection
-from tsfast.learner.losses import fun_rmse
 
 # %% [markdown]
 # ## Load the Dataset
 
 # %%
 dls = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
-dls.show_batch(max_n=2)
 
 # %% [markdown]
-# ## Data Augmentation Transforms
+# ## Data Augmentations
 #
-# Transforms modify training data on-the-fly. They only apply during training
-# (not validation or test), so your evaluation metrics stay comparable.
+# Augmentations modify training data on-the-fly. They only apply during
+# training (not validation or test), so your evaluation metrics stay
+# comparable. Pass them as `augmentations=[...]` when creating the Learner.
 
 # %% [markdown]
-# ### SeqNoiseInjection
+# ### noise
 #
-# Adds Gaussian noise to input signals. `std` controls the noise magnitude and
-# `p` is the probability of applying the transform per batch.
+# Adds Gaussian noise to input signals. `std` controls the noise magnitude.
 
 # %%
-dls_noisy = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
-dls_noisy.train.after_batch.add(SeqNoiseInjection(std=0.05, p=1.0))
-dls_noisy.show_batch(max_n=2)
+lrn_noisy = RNNLearner(
+    dls, rnn_type='lstm', metrics=[fun_rmse],
+    augmentations=[noise(std=0.05)],
+)
 
 # %% [markdown]
-# Compare this to the clean batch above -- you should see slight noise on the
-# input signal.
-
-# %% [markdown]
-# ### SeqBiasInjection
+# ### bias
 #
 # Adds a constant offset per signal per sample. This simulates sensor drift or
 # calibration errors, making the model more robust to such shifts.
-
-# %%
-dls_biased = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
-dls_biased.train.after_batch.add(SeqBiasInjection(std=0.1, p=1.0))
 
 # %% [markdown]
 # ### Training with Augmentation
@@ -91,66 +91,60 @@ lrn_base.fit_flat_cos(n_epoch=5, lr=3e-3)
 print(f"Without augmentation: {lrn_base.validate()}")
 
 # %%
-lrn_aug = RNNLearner(dls_noisy, rnn_type='lstm', metrics=[fun_rmse])
-lrn_aug.fit_flat_cos(n_epoch=5, lr=3e-3)
-print(f"With noise augmentation: {lrn_aug.validate()}")
+lrn_noisy.fit_flat_cos(n_epoch=5, lr=3e-3)
+print(f"With noise augmentation: {lrn_noisy.validate()}")
 
 # %% [markdown]
-# ## TimeSeriesRegularizer
+# ## Activation Regularization
 #
-# Adds two regularization terms to the loss:
+# Two regularizers can be added to the loss:
 #
-# - **`alpha`**: L2 penalty on RNN activations -- prevents activations from
-#   growing too large.
-# - **`beta`**: L2 penalty on temporal differences of activations -- encourages
-#   smooth predictions over time.
+# - **`ActivationRegularizer`**: L2 penalty on RNN activations -- prevents
+#   activations from growing too large.
+# - **`TemporalActivationRegularizer`**: L2 penalty on temporal differences of
+#   activations -- encourages smooth predictions over time.
 #
 # `modules` specifies which model components to regularize (typically the RNN
-# layers).
+# layers). Pass them as `aux_losses=[...]` when creating the Learner.
 
 # %%
 lrn_reg = RNNLearner(dls, rnn_type='lstm', metrics=[fun_rmse])
-lrn_reg.fit_flat_cos(n_epoch=5, lr=3e-3, cbs=[
-    TimeSeriesRegularizer(alpha=2.0, beta=1.0)
-])
+lrn_reg.add_aux_loss(
+    ActivationRegularizer(modules=[unwrap_model(lrn_reg.model).rnn], alpha=2.0)
+)
+lrn_reg.add_aux_loss(
+    TemporalActivationRegularizer(modules=[unwrap_model(lrn_reg.model).rnn], beta=1.0)
+)
+lrn_reg.fit_flat_cos(n_epoch=5, lr=3e-3)
 lrn_reg.show_results(max_n=2)
 
 # %% [markdown]
-# ## GradientClipping
+# ## Gradient Clipping
 #
 # Clips the gradient norm during backpropagation. This prevents exploding
-# gradients, which are common with RNNs on long sequences. `clip_val` is the
-# maximum allowed gradient norm.
+# gradients, which are common with RNNs on long sequences. Pass `grad_clip=`
+# when creating the Learner.
 
 # %%
-lrn_clip = RNNLearner(dls, rnn_type='lstm', metrics=[fun_rmse])
-lrn_clip.fit_flat_cos(n_epoch=5, lr=3e-3, cbs=[GradientClipping(clip_val=10)])
+lrn_clip = RNNLearner(dls, rnn_type='lstm', metrics=[fun_rmse], grad_clip=10)
+lrn_clip.fit_flat_cos(n_epoch=5, lr=3e-3)
 
 # %% [markdown]
-# ## VarySeqLen
+# ## vary_seq_len
 #
 # Randomly truncates sequences to different lengths each batch. This acts as
 # data augmentation by preventing the model from overfitting to a fixed window
 # size. `min_len` sets the minimum allowed length.
 
 # %%
-lrn_vary = RNNLearner(dls, rnn_type='lstm', metrics=[fun_rmse])
-lrn_vary.fit_flat_cos(n_epoch=5, lr=3e-3, cbs=[VarySeqLen(min_len=100)])
+lrn_vary = RNNLearner(
+    dls, rnn_type='lstm', metrics=[fun_rmse],
+    augmentations=[vary_seq_len(min_len=100)],
+)
+lrn_vary.fit_flat_cos(n_epoch=5, lr=3e-3)
 
 # %% [markdown]
-# ## BatchLossFilter
-#
-# Keeps only the hardest batches (those with the highest loss) for gradient
-# updates. `loss_perc=0.5` means only the top 50% of samples by loss
-# contribute to learning -- a form of curriculum learning that focuses on the
-# most informative examples.
-
-# %%
-lrn_filter = RNNLearner(dls, rnn_type='lstm', metrics=[fun_rmse])
-lrn_filter.fit_flat_cos(n_epoch=5, lr=3e-3, cbs=[BatchLossFilter(loss_perc=0.5)])
-
-# %% [markdown]
-# ## CB_TruncateSequence
+# ## truncate_sequence
 #
 # Progressively increases sequence length during training. Starts with short
 # sequences (easier for the model) and gradually increases to full length.
@@ -158,35 +152,44 @@ lrn_filter.fit_flat_cos(n_epoch=5, lr=3e-3, cbs=[BatchLossFilter(loss_perc=0.5)]
 # dynamics first before tackling longer dependencies.
 
 # %%
-lrn_trunc = RNNLearner(dls, rnn_type='lstm', metrics=[fun_rmse])
-lrn_trunc.fit_flat_cos(n_epoch=10, lr=3e-3, cbs=[CB_TruncateSequence(truncate_length=100)])
+lrn_trunc = RNNLearner(
+    dls, rnn_type='lstm', metrics=[fun_rmse],
+    augmentations=[truncate_sequence(truncate_length=100)],
+)
+lrn_trunc.fit_flat_cos(n_epoch=10, lr=3e-3)
 
 # %% [markdown]
-# ## Combining Callbacks
+# ## Combining Options
 #
-# Multiple callbacks can be combined. They execute in order during each
-# training step, so you can layer regularization, gradient control, and
-# curriculum strategies together.
+# Augmentations, auxiliary losses, and gradient clipping can be combined freely.
+# Pass them all at Learner creation time.
 
 # %%
-lrn_combined = RNNLearner(dls, rnn_type='lstm', metrics=[fun_rmse])
-lrn_combined.fit_flat_cos(n_epoch=10, lr=3e-3, cbs=[
-    TimeSeriesRegularizer(alpha=2.0, beta=1.0),
-    GradientClipping(clip_val=10),
-])
+lrn_combined = RNNLearner(
+    dls, rnn_type='lstm', metrics=[fun_rmse],
+    grad_clip=10,
+)
+lrn_combined.add_aux_loss(
+    ActivationRegularizer(modules=[unwrap_model(lrn_combined.model).rnn], alpha=2.0)
+)
+lrn_combined.add_aux_loss(
+    TemporalActivationRegularizer(modules=[unwrap_model(lrn_combined.model).rnn], beta=1.0)
+)
+lrn_combined.fit_flat_cos(n_epoch=10, lr=3e-3)
 lrn_combined.show_results(max_n=2)
 
 # %% [markdown]
 # ## Key Takeaways
 #
-# - **`SeqNoiseInjection`** and **`SeqBiasInjection`** augment training data
-#   for better generalization.
-# - **`TimeSeriesRegularizer`** smooths predictions with activation and
-#   temporal penalties.
-# - **`GradientClipping`** prevents exploding gradients on long sequences.
-# - **`VarySeqLen`** acts as augmentation by varying sequence length each
+# - **`noise`** and **`bias`** augment training data for better
+#   generalization. Pass them as `augmentations=[...]` on the Learner.
+# - **`ActivationRegularizer`** and **`TemporalActivationRegularizer`** smooth
+#   predictions with activation and temporal penalties. Pass them as
+#   `aux_losses=[...]` or via `lrn.add_aux_loss(...)`.
+# - **`grad_clip`** prevents exploding gradients on long sequences.
+# - **`vary_seq_len`** acts as augmentation by varying sequence length each
 #   batch.
-# - **`BatchLossFilter`** focuses learning on the hardest examples.
-# - **`CB_TruncateSequence`** implements curriculum learning with progressive
+# - **`truncate_sequence`** implements curriculum learning with progressive
 #   sequence length.
-# - Callbacks compose -- combine multiple for best results.
+# - All options compose -- combine augmentations, auxiliary losses, and
+#   gradient clipping for best results.

@@ -6,7 +6,6 @@ __all__ = [
     "stop_shared_memory_managers",
     "learner_optimize",
     "sample_config",
-    "CBRayReporter",
     "HPOptimizer",
 ]
 
@@ -15,6 +14,7 @@ import os
 import tempfile
 from collections.abc import Callable
 from multiprocessing.managers import SharedMemoryManager
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -25,11 +25,6 @@ from ray import tune
 from ray.tune import Checkpoint
 from ray.tune.experiment.trial import ExportFormat
 from ray.tune.schedulers import PopulationBasedTraining
-
-from fastcore.meta import delegates
-
-from fastai.callback.core import Callback
-from fastai.learner import Learner, save_model
 
 
 def _worker_device() -> torch.device:
@@ -57,7 +52,7 @@ def log_uniform(min_bound: float, max_bound: float, base: float = 10) -> Callabl
 
 
 class LearnerTrainable(tune.Trainable):
-    """Ray Tune Trainable wrapper for fastai Learners.
+    """Ray Tune Trainable wrapper for Learners.
 
     Args:
         config: Ray Tune config dict containing 'create_lrn' and 'dls' references.
@@ -65,15 +60,19 @@ class LearnerTrainable(tune.Trainable):
 
     def setup(self, config: dict):
         self.create_lrn = ray.get(config["create_lrn"])
-        self.dls = ray.get(config["dls"]).to(_worker_device())
+        dls = ray.get(config["dls"])
+        self.dls = dls.to(_worker_device()) if hasattr(dls, "to") else dls
 
         self.lrn = self.create_lrn(self.dls, config)
 
     def step(self) -> dict:
         with self.lrn.no_bar():
             self.lrn.fit(1)
-        train_loss, valid_loss, rmse = self.lrn.recorder.values[-1]
-        result = {"train_loss": train_loss, "valid_loss": valid_loss, "mean_loss": rmse}
+        row = self.lrn.recorder.values[-1]
+        result = {"train_loss": row[0], "valid_loss": row[1]}
+        metric_names = [getattr(m, "__name__", type(m).__name__) for m in self.lrn.metrics]
+        for name, val in zip(metric_names, row[2:]):
+            result[name] = val
         return result
 
     def save_checkpoint(self, tmp_checkpoint_dir: str) -> str:
@@ -133,16 +132,6 @@ def stop_shared_memory_managers(obj: object):
             stack.extend(vars(current_obj).values())
 
 
-def _prepare_dls_for_serialization(dls):
-    """Remove transient iterator state from DataLoaders for Ray serialization.
-
-    fastai DataLoaders accumulate generator attributes during iteration
-    that cannot be pickled.  This strips them so ``ray.put(dls)`` succeeds.
-    """
-    for dl in dls.loaders:
-        if hasattr(dl, "it"):
-            del dl.it
-
 
 def learner_optimize(config: dict):
     """Training function for Ray Tune function-based API.
@@ -153,7 +142,8 @@ def learner_optimize(config: dict):
     """
     try:
         create_lrn = ray.get(config["create_lrn"])
-        dls = ray.get(config["dls"]).to(_worker_device())
+        dls = ray.get(config["dls"])
+        dls = dls.to(_worker_device()) if hasattr(dls, "to") else dls
 
         # Scheduling Parameters for training the Model
         lrn_kwargs = {"n_epoch": 100, "pct_start": 0.5}
@@ -171,9 +161,13 @@ def learner_optimize(config: dict):
 
         lr = config["lr"] if "lr" in config else 3e-3
         lrn.lr = lr() if callable(lr) else lr
-        lrn.add_cb(CBRayReporter() if "reporter" not in config else ray.get(config["reporter"])())
+        _attach_ray_reporter(lrn)
+        fit_method = ray.get(config["fit_method"]) if "fit_method" in config else None
         with lrn.no_bar():
-            ray.get(config["fit_method"])(lrn, **lrn_kwargs)
+            if fit_method is not None:
+                fit_method(lrn, **lrn_kwargs)
+            else:
+                lrn.fit_flat_cos(**lrn_kwargs)
     finally:
         # cleanup shared memory even when earlystopping occurs
         if "lrn" in locals():
@@ -194,30 +188,22 @@ def sample_config(config: dict) -> dict:
     return ret_conf
 
 
-class CBRayReporter(Callback):
-    """Report training metrics and checkpoints to Ray Tune after each epoch."""
+def _attach_ray_reporter(lrn):
+    """Patch ``_log_epoch`` on a Learner to report metrics and checkpoints to Ray Tune.
 
-    order = 70  # order has to be >50, to be executed after the recorder callback
+    The new Learner calls ``self._log_epoch(epoch, train_loss, val_loss, metrics, pbar)``
+    after each epoch.  Assigning a plain function to the instance attribute overrides
+    the method without ``self`` being passed, so the signature matches directly.
+    """
 
-    def after_epoch(self):
-        # train_loss,valid_loss,rmse = self.learn.recorder.values[-1]
-        # metrics = {
-        #     'train_loss': train_loss,
-        #     'valid_loss': valid_loss,
-        #     'mean_loss': rmse,
-        # }
-        scores = self.learn.recorder.values[-1]
-        metrics = {"train_loss": scores[0], "valid_loss": scores[1]}
-        for metric, value in zip(self.learn.metrics, scores[2:]):
-            m_name = metric.name if hasattr(metric, "name") else str(metric)
-            metrics[m_name] = value
+    def _ray_log_epoch(epoch, train_loss, val_loss, metrics, pbar):
+        result = {"train_loss": train_loss, "valid_loss": val_loss}
+        result.update(metrics)
+        with tempfile.TemporaryDirectory() as d:
+            torch.save(lrn.model.state_dict(), os.path.join(d, "model.pth"))
+            ray.tune.report(result, checkpoint=Checkpoint.from_directory(d))
 
-        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-            file = os.path.join(temp_checkpoint_dir, "model.pth")
-            # the model has to be saved to the checkpoint directory on creation
-            # that is why a seperate callback for model saving is not trivial
-            save_model(file, self.learn.model, opt=None)
-            ray.tune.report(metrics, checkpoint=Checkpoint.from_directory(temp_checkpoint_dir))
+    lrn._log_epoch = _ray_log_epoch
 
 
 class HPOptimizer:
@@ -233,7 +219,25 @@ class HPOptimizer:
         self.dls = dls
         self.analysis = None
 
-    @delegates(ray.init)
+    @staticmethod
+    def _find_project_root() -> str | None:
+        """Find the project root containing pyproject.toml."""
+        cwd = Path.cwd()
+        for p in [cwd, *cwd.parents]:
+            if (p / "pyproject.toml").exists():
+                return str(p)
+        return None
+
+    def _ensure_ray(self):
+        """Initialize Ray if not already running, setting working_dir to the project root."""
+        if ray.is_initialized():
+            return
+        project_root = self._find_project_root()
+        kwargs = {}
+        if project_root and project_root != str(Path.cwd()):
+            kwargs["runtime_env"] = {"working_dir": project_root}
+        ray.init(**kwargs)
+
     def start_ray(self, **kwargs):
         """Initialize Ray runtime."""
         ray.shutdown()
@@ -243,7 +247,6 @@ class HPOptimizer:
         """Shut down Ray runtime."""
         ray.shutdown()
 
-    @delegates(tune.run, keep=True)
     def optimize(
         self,
         config: dict,
@@ -260,19 +263,16 @@ class HPOptimizer:
             resources_per_trial: resource dict per trial (e.g. GPU/CPU counts).
             verbose: Ray Tune verbosity level.
         """
+        self._ensure_ray()
         config["create_lrn"] = ray.put(self.create_lrn)
         # dls are large objects, letting ray handle the copying process makes it much faster
-        _prepare_dls_for_serialization(self.dls)
         config["dls"] = ray.put(self.dls)
-        if "fit_method" not in config:
-            config["fit_method"] = ray.put(Learner.fit_flat_cos)
 
         self.analysis = tune.run(
             optimize_func, config=config, resources_per_trial=resources_per_trial, verbose=verbose, **kwargs
         )
         return self.analysis
 
-    @delegates(tune.run, keep=True)
     def optimize_pbt(
         self,
         opt_name: str,
@@ -301,9 +301,9 @@ class HPOptimizer:
         """
         self.mut_conf = mut_conf
 
+        self._ensure_ray()
         config["create_lrn"] = ray.put(self.create_lrn)
         # dls are large objects, letting ray handle the copying process makes it much faster
-        _prepare_dls_for_serialization(self.dls)
         config["dls"] = ray.put(self.dls)
 
         scheduler = PopulationBasedTraining(

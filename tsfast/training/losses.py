@@ -1,14 +1,14 @@
-"""Loss functions and loss-function modifiers for time series training."""
+"""Loss functions and metrics for training."""
 
 __all__ = [
+    "mse",
     "mse_nan",
     "ignore_nan",
     "float64_func",
-    "SkipNLoss",
-    "CutLoss",
-    "NormLoss",
+    "cut_loss",
+    "norm_loss",
     "weighted_mae",
-    "RandSeqLenLoss",
+    "rand_seq_len_loss",
     "fun_rmse",
     "cos_sim_loss",
     "cos_sim_loss_pow",
@@ -27,27 +27,33 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 
-from fastai.metrics import mse
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  Pure loss functions and metrics
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def mse(inp: Tensor, targ: Tensor) -> Tensor:
+    """Mean squared error loss."""
+    return F.mse_loss(inp, targ)
 
 
 def ignore_nan(func: Callable) -> Callable:
-    """Decorator that removes NaN values from tensors before function execution.
+    """Decorator that removes NaN samples from (inp, targ) before computing a loss.
 
-    Reduces tensors to a flat array. Apply to functions such as mse.
+    A sample is removed if any feature in the target is NaN.
+    Reduces tensors to a flat array.
 
     Args:
-        func: loss function to wrap
+        func: loss function with signature (inp, targ) -> Tensor
     """
 
     @functools.wraps(func)
-    def ignore_nan_decorator(*args, **kwargs):
-        #         mask = ~torch.isnan(args[-1]) #nan mask of target tensor
-        #         args = tuple([x[mask] for x in args]) #remove nan values
-        mask = ~torch.isnan(args[-1][..., -1])  # nan mask of target tensor
-        args = tuple([x[mask, :] for x in args])  # remove nan values
-        return func(*args, **kwargs)
+    def wrapper(inp: Tensor, targ: Tensor) -> Tensor:
+        mask = ~torch.isnan(targ).any(dim=-1)
+        return func(inp[mask], targ[mask])
 
-    return ignore_nan_decorator
+    return wrapper
 
 
 mse_nan = ignore_nan(mse)
@@ -64,38 +70,21 @@ def float64_func(func: Callable) -> Callable:
     def float64_func_decorator(*args, **kwargs):
         typ = args[0].dtype
         try:
-            # Try to use float64 for higher precision
-            args = tuple([x.double() if issubclass(type(x), Tensor) else x for x in args])
+            args = tuple([x.double() if isinstance(x, Tensor) else x for x in args])
             return func(*args, **kwargs).type(typ)
         except TypeError as e:
-            # If float64 is not supported on this device, warn the user and fall back to float32
             if "doesn't support float64" in str(e):
                 warnings.warn(
                     f"Float64 precision not supported on {args[0].device} device. Using original precision. This may reduce numerical accuracy. Error: {e}"
                 )
                 return func(*args, **kwargs)
             else:
-                raise  # Re-raise if it's some other error
+                raise
 
     return float64_func_decorator
 
 
-def SkipNLoss(fn: Callable, n_skip: int = 0) -> Callable:
-    """Loss-function modifier that skips the first n time steps of sequential data.
-
-    Args:
-        fn: base loss function to wrap
-        n_skip: number of initial time steps to discard
-    """
-
-    @functools.wraps(fn)
-    def _inner(input, target):
-        return fn(input[:, n_skip:].contiguous(), target[:, n_skip:].contiguous())
-
-    return _inner
-
-
-def CutLoss(fn: Callable, l_cut: int = 0, r_cut: int | None = None) -> Callable:
+def cut_loss(fn: Callable, l_cut: int = 0, r_cut: int | None = None) -> Callable:
     """Loss-function modifier that slices the sequence from l_cut to r_cut.
 
     Args:
@@ -111,18 +100,18 @@ def CutLoss(fn: Callable, l_cut: int = 0, r_cut: int | None = None) -> Callable:
     return _inner
 
 
-def NormLoss(fn: Callable, norm_stats, scaler_cls: type | None = None) -> Callable:
+def norm_loss(fn: Callable, norm_stats, scaler_cls: type | None = None) -> Callable:
     """Loss wrapper that normalizes predictions and targets before computing loss.
 
     Args:
         fn: base loss function to wrap
         norm_stats: normalization statistics used to build the scaler
-        scaler_cls: scaler class to use (defaults to StandardScaler1D)
+        scaler_cls: scaler class to use (defaults to StandardScaler)
     """
-    from ..models.layers import StandardScaler1D
+    from ..models.scaling import StandardScaler
 
     if scaler_cls is None:
-        scaler_cls = StandardScaler1D
+        scaler_cls = StandardScaler
     scaler = scaler_cls.from_stats(norm_stats)
 
     @functools.wraps(fn)
@@ -140,32 +129,27 @@ def weighted_mae(input: Tensor, target: Tensor) -> Tensor:
     seq_len = input.shape[1]
 
     device = input.device
+    compute_device = device
     if device.type == "mps":
-        # Compute on CPU because MPS does not support logspace yet
-        weights = torch.logspace(
-            start=torch.log10(torch.tensor(max_weight)),
-            end=torch.log10(torch.tensor(min_weight)),
-            steps=seq_len,
-            device="cpu",
-        ).to(device)
+        compute_device = "cpu"
         warnings.warn(
             f"torch.logspace not supported on {device} device. Using cpu. This may reduce numerical performance"
         )
-    else:
-        # Compute directly on the target device
-        weights = torch.logspace(
-            start=torch.log10(torch.tensor(max_weight)),
-            end=torch.log10(torch.tensor(min_weight)),
-            steps=seq_len,
-            device=device,
-        )
+    weights = torch.logspace(
+        start=torch.log10(torch.tensor(max_weight)),
+        end=torch.log10(torch.tensor(min_weight)),
+        steps=seq_len,
+        device=compute_device,
+    ).to(device)
 
     weights = (weights / weights.sum())[None, :, None]
 
     return ((input - target).abs() * weights).sum(dim=1).mean()
 
 
-def RandSeqLenLoss(fn: Callable, min_idx: int = 1, max_idx: int | None = None, mid_idx: int | None = None) -> Callable:
+def rand_seq_len_loss(
+    fn: Callable, min_idx: int = 1, max_idx: int | None = None, mid_idx: int | None = None
+) -> Callable:
     """Loss-function modifier that randomly truncates each sequence in the minibatch individually.
 
     Uses a triangular distribution. Slow for very large batch sizes.
@@ -180,12 +164,9 @@ def RandSeqLenLoss(fn: Callable, min_idx: int = 1, max_idx: int | None = None, m
     @functools.wraps(fn)
     def _inner(input, target):
         bs, seq_len, _ = input.shape
-        if "max_idx" not in locals():
-            max_idx = seq_len
-        if "mid_idx" not in locals():
-            mid_idx = min_idx  # +(max_idx-min_idx)//4
-        # len_list = torch.randint(min_idx,max_idx,(bs,))
-        len_list = np.random.triangular(min_idx, mid_idx, max_idx, (bs,)).astype(int)
+        _max = max_idx if max_idx is not None else seq_len
+        _mid = mid_idx if mid_idx is not None else min_idx
+        len_list = np.random.triangular(min_idx, _mid, _max, (bs,)).astype(int)
         return torch.stack([fn(input[i, : len_list[i]], target[i, : len_list[i]]) for i in range(bs)]).mean()
 
     return _inner
@@ -208,16 +189,16 @@ def cos_sim_loss_pow(inp: Tensor, targ: Tensor) -> Tensor:
 
 def nrmse(inp: Tensor, targ: Tensor) -> Tensor:
     """RMSE loss normalized by variance of each target variable."""
-    mse = (inp - targ).pow(2).mean(dim=[0, 1])
+    mse_val = (inp - targ).pow(2).mean(dim=[0, 1])
     var = targ.var(dim=[0, 1])
-    return (mse / var).sqrt().mean()
+    return (mse_val / var).sqrt().mean()
 
 
 def nrmse_std(inp: Tensor, targ: Tensor) -> Tensor:
     """RMSE loss normalized by standard deviation of each target variable."""
-    mse = (inp - targ).pow(2).mean(dim=[0, 1])
-    var = targ.std(dim=[0, 1])
-    return (mse / var).sqrt().mean()
+    mse_val = (inp - targ).pow(2).mean(dim=[0, 1])
+    std = targ.std(dim=[0, 1])
+    return (mse_val / std).sqrt().mean()
 
 
 def mean_vaf(inp: Tensor, targ: Tensor) -> Tensor:

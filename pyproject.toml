@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 authors = [{name = "Daniel Oliver Martin Weber", email = "daniel.om.weber@gmail.com"}]
-keywords = ["fastai", "time-series", "system-identification", "deep-learning", "pytorch", "fransys"]
+keywords = ["time-series", "system-identification", "deep-learning", "pytorch", "fransys"]
 classifiers = [
     "Natural Language :: English",
     "Intended Audience :: Developers",
@@ -23,9 +23,11 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "fastai>=2.7.0",
-    "fastprogress<1.1",
     "torch>=2.1",
+    "numpy",
+    "scipy",
+    "h5py",
+    "tqdm",
     "identibench",
     "matplotlib",
     "ray[tune]",

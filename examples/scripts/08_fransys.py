@@ -33,10 +33,10 @@
 # ## Setup
 
 # %%
-from tsfast.datasets.benchmark import create_dls_cascaded_tanks
-from tsfast.prediction.fransys import FranSysLearner, FranSysCallback
-from tsfast.learner.callbacks import TimeSeriesRegularizer
-from tsfast.learner.losses import fun_rmse
+from tsfast.tsdata.benchmark import create_dls_cascaded_tanks
+from tsfast.prediction.fransys import FranSysLearner
+from tsfast.models.scaling import unwrap_model
+from tsfast.training import fun_rmse, FranSysRegularizer, ActivationRegularizer, TemporalActivationRegularizer
 
 # %% [markdown]
 # ## The Diagnosis/Prognosis Concept
@@ -67,7 +67,6 @@ from tsfast.learner.losses import fun_rmse
 
 # %%
 dls = create_dls_cascaded_tanks()
-dls.show_batch(max_n=4)
 
 # %% [markdown]
 # ## Training a Basic FranSys Model
@@ -76,9 +75,8 @@ dls.show_batch(max_n=4)
 #
 # - **`init_sz=50`**: use the first 50 timesteps for diagnosis (state
 #   estimation). Predictions are only evaluated after this window.
-# - **`attach_output=True`**: activates PredictionCallback -- the model receives
-#   past measured outputs as additional input. This is standard for
-#   prediction-mode FranSys.
+# - **`attach_output=True`**: the model receives past measured outputs as
+#   additional input. This is standard for prediction-mode FranSys.
 # - **`hidden_size=40`**: dimension of the RNN hidden state for both diagnosis
 #   and prognosis.
 
@@ -87,6 +85,9 @@ lrn = FranSysLearner(
     dls, init_sz=50, attach_output=True,
     hidden_size=40, metrics=[fun_rmse]
 )
+lrn.show_batch(max_n=4)
+
+# %%
 lrn.fit_flat_cos(n_epoch=10, lr=3e-3)
 
 # %% [markdown]
@@ -100,35 +101,40 @@ lrn.fit_flat_cos(n_epoch=10, lr=3e-3)
 lrn.show_results(ds_idx=-1, max_n=2)
 
 # %% [markdown]
-# ## Adding TimeSeriesRegularizer
+# ## Adding Activation Regularization
 #
 # FranSys models benefit significantly from activation regularization, which
-# encourages smoother predictions. `alpha` penalizes large activations, `beta`
-# penalizes abrupt changes between timesteps. We need to extract the prognosis
-# RNN module from the model so the regularizer knows which layer to hook into.
+# encourages smoother predictions. `ActivationRegularizer` penalizes large
+# activations, `TemporalActivationRegularizer` penalizes abrupt changes between
+# timesteps. We need to extract the prognosis RNN module from the model so the
+# regularizers know which layer to hook into.
+#
+# Pass them as auxiliary losses via `lrn.add_aux_loss(...)`.
 
 # %%
-from tsfast.models.layers import unwrap_model
-
 lrn_reg = FranSysLearner(
     dls, init_sz=50, attach_output=True,
     hidden_size=40, metrics=[fun_rmse]
 )
 model_reg = unwrap_model(lrn_reg.model)
-lrn_reg.fit_flat_cos(n_epoch=10, lr=3e-3, cbs=[
-    TimeSeriesRegularizer(alpha=6.0, beta=6.0, modules=[model_reg.rnn_prognosis])
-])
+lrn_reg.add_aux_loss(
+    ActivationRegularizer(modules=[model_reg.rnn_prognosis], alpha=6.0)
+)
+lrn_reg.add_aux_loss(
+    TemporalActivationRegularizer(modules=[model_reg.rnn_prognosis], beta=6.0)
+)
+lrn_reg.fit_flat_cos(n_epoch=10, lr=3e-3)
 lrn_reg.show_results(ds_idx=-1, max_n=2)
 
 # %% [markdown]
-# ## FranSys Callback for State Synchronization
+# ## FranSysRegularizer for State Synchronization
 #
-# `FranSysCallback` adds an auxiliary loss that encourages the prognosis RNN to
-# maintain state consistency: the hidden state at any point in the prognosis
+# `FranSysRegularizer` adds an auxiliary loss that encourages the prognosis RNN
+# to maintain state consistency: the hidden state at any point in the prognosis
 # should be similar to what the diagnosis RNN would produce from the same data
 # window. This improves long-horizon stability.
 #
-# The callback requires the diagnosis and prognosis modules to be passed
+# The regularizer requires the diagnosis and prognosis modules to be passed
 # explicitly so it can hook into both and compare their hidden states.
 
 # %%
@@ -137,13 +143,19 @@ lrn_sync = FranSysLearner(
     hidden_size=40, metrics=[fun_rmse]
 )
 model_sync = unwrap_model(lrn_sync.model)
-lrn_sync.fit_flat_cos(n_epoch=10, lr=3e-3, cbs=[
-    TimeSeriesRegularizer(alpha=6.0, beta=6.0, modules=[model_sync.rnn_prognosis]),
-    FranSysCallback(
+lrn_sync.add_aux_loss(
+    ActivationRegularizer(modules=[model_sync.rnn_prognosis], alpha=6.0)
+)
+lrn_sync.add_aux_loss(
+    TemporalActivationRegularizer(modules=[model_sync.rnn_prognosis], beta=6.0)
+)
+lrn_sync.add_aux_loss(
+    FranSysRegularizer(
         modules=[model_sync.rnn_diagnosis, model_sync.rnn_prognosis],
         model=model_sync,
-    ),
-])
+    )
+)
+lrn_sync.fit_flat_cos(n_epoch=10, lr=3e-3)
 lrn_sync.show_results(ds_idx=-1, max_n=2)
 
 # %% [markdown]
@@ -154,9 +166,10 @@ lrn_sync.show_results(ds_idx=-1, max_n=2)
 # - `init_sz` controls how many timesteps are used to initialize the hidden
 #   state from measured data.
 # - `attach_output=True` enables prediction mode (output feedback).
-# - `TimeSeriesRegularizer` is especially important for FranSys -- it
-#   encourages smooth, stable predictions.
-# - `FranSysCallback` adds state synchronization regularization for improved
+# - `ActivationRegularizer` and `TemporalActivationRegularizer` are especially
+#   important for FranSys -- they encourage smooth, stable predictions. Pass
+#   them via `lrn.add_aux_loss(...)`.
+# - `FranSysRegularizer` adds state synchronization regularization for improved
 #   long-horizon stability. It requires the diagnosis and prognosis modules
 #   to be passed so it can compare their hidden states.
 # - The architecture naturally handles variable initial conditions.
