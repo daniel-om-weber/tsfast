@@ -115,7 +115,7 @@ class TestPhysicsCallbacks:
     def test_physics_loss_callback(self, dls_simulation):
         from tsfast.models.rnn import RNNLearner
         from tsfast.pinn.core import diff1_forward
-        from tsfast.training import PhysicsLoss
+        from tsfast.pinn import PhysicsLoss
 
         def simple_physics(u, y_pred, y_ref):
             dy = diff1_forward(y_pred, 0.01)
@@ -218,10 +218,10 @@ class TestPINNCallbacks:
     @pytest.mark.slow
     def test_transition_smoothness(self, dls_pinn):
         from tsfast.prediction.fransys import FranSysLearner
-        from tsfast.training import TransitionSmoothness
+        from tsfast.pinn import TransitionSmoothnessLoss
 
         lrn = FranSysLearner(dls_pinn, init_sz=20, hidden_size=10, rnn_layer=1, attach_output=True)
-        lrn.add_aux_loss(TransitionSmoothness(init_sz=20, weight=0.1))
+        lrn.add_aux_loss(TransitionSmoothnessLoss(init_sz=20, weight=0.1))
         lrn.fit(1, 3e-3)
         assert not math.isnan(lrn.recorder.values[-1][1])
 
@@ -238,7 +238,7 @@ class TestPINNCallbacks:
     @pytest.mark.slow
     def test_consistency_callback(self, dls_pinn):
         from tsfast.pinn.pirnn import PIRNNLearner
-        from tsfast.training import ConsistencyLoss
+        from tsfast.pinn import ConsistencyLoss
 
         lrn = PIRNNLearner(dls_pinn, init_sz=20, hidden_size=20, rnn_layer=1, attach_output=True)
         lrn.add_aux_loss(ConsistencyLoss(weight=0.1))
