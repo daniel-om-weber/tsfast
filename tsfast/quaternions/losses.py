@@ -100,7 +100,7 @@ abs_inclination = inclination_angle.reduce(lambda x: x.abs().mean())
 ms_inclination = inclination_angle.reduce(lambda x: x.pow(2).mean())
 rms_inclination = inclination_angle.reduce("rms")
 smooth_inclination = inclination_angle.reduce(_smooth_l1)
-rms_inclination_deg = inclination_angle.reduce(lambda x: rad2deg(x).mean())
+rms_inclination_deg = inclination_angle.reduce(lambda x: rad2deg(x).mean().sqrt())
 mean_inclination_deg = inclination_angle.reduce(lambda x: rad2deg(x).mean())
 
 
