@@ -193,8 +193,7 @@ class TestPIRNN:
 
         model = PIRNN(n_u=1, n_y=2, init_sz=20, hidden_size=20, rnn_layer=2)
         states = model.encode_single_state(torch.randn(4, 2))
-        assert len(states) == 2  # rnn_layer
-        assert states[0].shape == (1, 4, 20)  # (1, batch, hidden_size)
+        assert states.shape == (4, 40)  # (batch, state_size = hidden_size * rnn_layer)
 
     @pytest.mark.slow
     def test_pirnn_learner_fit(self, dls_pinn):

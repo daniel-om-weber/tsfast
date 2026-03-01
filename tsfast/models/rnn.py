@@ -165,7 +165,47 @@ class RNN(nn.Module):
         else:
             raise ValueError("Invalid value for normalization")
 
-    def forward(self, inp: Tensor, state: list | None = None):
+    @property
+    def state_size(self) -> int:
+        """Total flat state dimension needed to initialize this RNN."""
+        mult = 2 if self.rnn_type == "lstm" else 1
+        return self.hidden_size * self.num_layers * mult
+
+    def unflatten_state(self, flat: Tensor) -> list:
+        """Convert ``[batch, state_size]`` flat tensor to per-layer hidden state list.
+
+        Returns:
+            For GRU/RNN: ``list[[1, batch, hidden_size]]``.
+            For LSTM: ``list[tuple[[1, batch, hidden_size], [1, batch, hidden_size]]]``.
+        """
+        bs = flat.shape[0]
+        if self.rnn_type == "lstm":
+            flat = flat.view(bs, self.num_layers, 2, self.hidden_size)
+            return [
+                (flat[:, i, 0].unsqueeze(0).contiguous(), flat[:, i, 1].unsqueeze(0).contiguous())
+                for i in range(self.num_layers)
+            ]
+        else:
+            flat = flat.view(bs, self.num_layers, self.hidden_size)
+            return [flat[:, i].unsqueeze(0).contiguous() for i in range(self.num_layers)]
+
+    def unflatten_sequence(self, flat_seq: Tensor) -> Tensor:
+        """Convert ``[batch, seq_len, state_size]`` to ``[num_layers, batch, seq_len, hidden_size]``.
+
+        For LSTM, extracts only h-states (matching ``ret_full_hidden`` output format).
+        """
+        bs, seq_len, _ = flat_seq.shape
+        if self.rnn_type == "lstm":
+            # Layout: [h0, c0, h1, c1, ...] — extract h-states only
+            flat_seq = flat_seq.view(bs, seq_len, self.num_layers, 2, self.hidden_size)
+            return flat_seq[:, :, :, 0, :].permute(2, 0, 1, 3).contiguous()
+        else:
+            flat_seq = flat_seq.view(bs, seq_len, self.num_layers, self.hidden_size)
+            return flat_seq.permute(2, 0, 1, 3).contiguous()
+
+    def forward(self, inp: Tensor, state: list | Tensor | None = None):
+        if isinstance(state, Tensor) and state.dim() == 2:
+            state = self.unflatten_state(state)
         bs, seq_len, _ = inp.shape
         r_input = self.input_dp(inp) if self.input_p > 0 else inp
         full_hid, new_hidden = [], []
