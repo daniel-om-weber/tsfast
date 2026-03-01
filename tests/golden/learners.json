@@ -1,6 +1,6 @@
 {
   "RNNLearner": {
-    "val_loss_1epoch": 0.21488486230373383,
+    "val_loss_1epoch": 0.21190451085567474,
     "param_count": 1401,
     "output_shape": [
       64,
@@ -9,7 +9,7 @@
     ]
   },
   "TCNLearner": {
-    "val_loss_1epoch": 0.29128655791282654,
+    "val_loss_1epoch": 0.2674170136451721,
     "param_count": 981,
     "output_shape": [
       64,
@@ -18,7 +18,7 @@
     ]
   },
   "CRNNLearner": {
-    "val_loss_1epoch": 0.23518960177898407,
+    "val_loss_1epoch": 0.19818593561649323,
     "param_count": 1061,
     "output_shape": [
       64,
@@ -27,7 +27,7 @@
     ]
   },
   "AR_RNNLearner": {
-    "val_loss_1epoch": 0.1947939693927765,
+    "val_loss_1epoch": 0.20398254692554474,
     "param_count": 1461,
     "output_shape": [
       64,
@@ -36,7 +36,7 @@
     ]
   },
   "FranSysLearner": {
-    "val_loss_1epoch": 0.20031538605690002,
+    "val_loss_1epoch": 0.19827015697956085,
     "param_count": 3261,
     "output_shape": [
       64,
@@ -45,7 +45,7 @@
     ]
   },
   "PIRNNLearner": {
-    "val_loss_1epoch": 0.19674770534038544,
+    "val_loss_1epoch": 0.19674763083457947,
     "param_count": 4834,
     "output_shape": [
       5,

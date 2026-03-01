@@ -22,8 +22,9 @@ from torch.nn import Mish
 from torch.nn.utils.parametrizations import weight_norm
 
 from ..training import Learner, TimeSeriesRegularizerLoss, ar_init, fun_rmse
+from ..tsdata import get_io_size
 from .layers import AR_Model, NormalizedModel, Scaler, SeqLinear, StandardScaler1D
-from .rnn import SimpleRNN, _get_inp_out_size
+from .rnn import SimpleRNN
 
 
 def Conv1D(
@@ -275,7 +276,7 @@ def TCNLearner(
     if metrics is None:
         metrics = [fun_rmse]
 
-    inp, out = _get_inp_out_size(dls)
+    inp, out = get_io_size(dls)
     n_skip = 2**num_layers if n_skip is None else n_skip
     model = TCN(inp, out, num_layers, hidden_size, **kwargs)
     model = NormalizedModel.from_dls(model, dls, input_norm, output_norm)
@@ -403,7 +404,7 @@ def CRNNLearner(
     if metrics is None:
         metrics = [fun_rmse]
 
-    inp, out = _get_inp_out_size(dls)
+    inp, out = get_io_size(dls)
     model = CRNN(inp, out, **kwargs)
     model = NormalizedModel.from_dls(model, dls, input_norm, output_norm)
 
@@ -438,7 +439,7 @@ def AR_TCNLearner(
         metrics = [fun_rmse]
     n_skip = 2**hl_depth if n_skip is None else n_skip
 
-    inp, out = _get_inp_out_size(dls)
+    inp, out = get_io_size(dls)
     ar_model = AR_Model(TCN(inp + out, out, hl_depth, **kwargs), ar=False)
     conv_module = ar_model.model.conv_layers[-1]
 

@@ -20,6 +20,7 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 
 from ..training import Learner, TbpttLearner, TimeSeriesRegularizerLoss, ar_init, fun_rmse
+from ..tsdata import get_io_size
 from .layers import AR_Model, BatchNorm_1D_Stateful, NormalizedModel, SeqLinear, StandardScaler1D
 
 
@@ -250,10 +251,6 @@ class SimpleRNN(nn.Module):
         return out if not self.return_state else (out, h)
 
 
-def _get_inp_out_size(dls):
-    """Get input/output sizes from a DataLoaders batch."""
-    batch = dls.one_batch()
-    return batch[0].shape[-1], batch[1].shape[-1]
 
 
 def RNNLearner(
@@ -297,7 +294,7 @@ def RNNLearner(
     if metrics is None:
         metrics = [fun_rmse]
 
-    inp, out = _get_inp_out_size(dls)
+    inp, out = get_io_size(dls)
     model = SimpleRNN(inp, out, num_layers, hidden_size, stateful=stateful, **kwargs)
     model = NormalizedModel.from_dls(model, dls, input_norm, output_norm)
 
@@ -336,7 +333,7 @@ def AR_RNNLearner(
     if metrics is None:
         metrics = [fun_rmse]
 
-    inp, out = _get_inp_out_size(dls)
+    inp, out = get_io_size(dls)
     ar_model = AR_Model(SimpleRNN(inp + out, out, **kwargs), ar=False)
     rnn_module = ar_model.model.rnn
 

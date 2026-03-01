@@ -99,6 +99,14 @@ class DataLoaders:
         return next(iter(self.train))
 
 
+def get_io_size(dls) -> tuple[int, int]:
+    """Get total input/output feature counts from DataLoaders blocks."""
+    ds = dls.train.dataset
+    inp = sum(b.n_features for b in ds._inputs)
+    out = sum(b.n_features for b in ds._targets)
+    return inp, out
+
+
 def _get_block_names(blocks: tuple) -> list[str] | None:
     """Extract signal names from blocks."""
     names = []
