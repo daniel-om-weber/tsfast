@@ -3,13 +3,9 @@
 from .core import Learner, Recorder, TbpttLearner
 from .losses import (
     CutLoss,
-    FranSysRegularizer,
     NormLoss,
     RandSeqLenLoss,
     SkipNLoss,
-    TimeSeriesRegularizerLoss,
-    add_loss,
-    consistency_loss,
     cos_sim_loss,
     cos_sim_loss_pow,
     float64_func,
@@ -20,13 +16,18 @@ from .losses import (
     mse_nan,
     nrmse,
     nrmse_std,
-    physics_loss,
-    sched_lin_p,
-    sched_ramp,
-    transition_smoothness,
     weighted_mae,
     zero_loss,
 )
+from .aux_losses import (
+    FranSysRegularizer,
+    TimeSeriesRegularizerLoss,
+    add_loss,
+    consistency_loss,
+    physics_loss,
+    transition_smoothness,
+)
+from .schedulers import sched_lin_p, sched_ramp
 from .transforms import (
     ar_init,
     bias,

@@ -88,14 +88,14 @@ class TestLosses:
         assert fn(x, y).item() >= 0
 
     def test_sched_lin_p(self):
-        from tsfast.training.losses import sched_lin_p
+        from tsfast.training.schedulers import sched_lin_p
 
         assert sched_lin_p(0, 1, 0.0) == 0.0
         assert sched_lin_p(0, 1, 0.75) == 1.0
         assert sched_lin_p(0, 1, 1.0) == 1.0
 
     def test_sched_ramp(self):
-        from tsfast.training.losses import sched_ramp
+        from tsfast.training.schedulers import sched_ramp
 
         assert sched_ramp(0, 1, 0.0) == 0.0
         assert sched_ramp(0, 1, 1.0) == 1.0
@@ -328,7 +328,7 @@ class TestViz:
 
 class TestAuxLosses:
     def test_add_loss(self):
-        from tsfast.training.losses import add_loss
+        from tsfast.training.aux_losses import add_loss
 
         aux = add_loss(nn.MSELoss(), alpha=0.5)
         pred = torch.rand(4, 100, 1)
@@ -339,7 +339,7 @@ class TestAuxLosses:
         assert torch.allclose(loss, expected)
 
     def test_transition_smoothness(self):
-        from tsfast.training.losses import transition_smoothness
+        from tsfast.training.aux_losses import transition_smoothness
 
         ts = transition_smoothness(init_sz=20, weight=1.0, window=3, dt=0.01)
         pred = torch.rand(4, 50, 2, requires_grad=True)
