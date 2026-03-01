@@ -712,3 +712,14 @@ class TestCudaGraphTbpttLearner:
         lrn.fit(1)
         assert math.isfinite(lrn.recorder.values[-1][1])
 
+    def test_cuda_graph_tbptt_lstm(self):
+        """LSTM state is list[tuple[h, c]] — ensure CUDA graph handles it."""
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import CudaGraphTbpttLearner
+
+        dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True, rnn_type="lstm")
+        lrn = CudaGraphTbpttLearner(model, dls, loss_func=nn.MSELoss(), sub_seq_len=25)
+        lrn.fit(1)
+        assert math.isfinite(lrn.recorder.values[-1][1])
+
