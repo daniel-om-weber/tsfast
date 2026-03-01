@@ -75,7 +75,7 @@ class TestQuaternionLosses:
 
         q = norm_quaternion(torch.rand(4, 100, 4))
         loss = angle_loss(q, q)
-        assert loss.item() < 1e-4
+        assert loss.mean().item() < 1e-4
 
     def test_rms_inclination_deg_positive(self):
         from tsfast.quaternions import rms_inclination_deg, norm_quaternion
