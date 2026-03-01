@@ -132,7 +132,6 @@ def stop_shared_memory_managers(obj: object):
             stack.extend(vars(current_obj).values())
 
 
-
 def learner_optimize(config: dict):
     """Training function for Ray Tune function-based API.
 
