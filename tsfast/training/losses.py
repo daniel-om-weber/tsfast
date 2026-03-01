@@ -4,6 +4,7 @@ __all__ = [
     "mse",
     "mse_nan",
     "ignore_nan",
+    "mask_nan",
     "float64_func",
     "cut_loss",
     "norm_loss",
@@ -52,6 +53,23 @@ def ignore_nan(func: Callable) -> Callable:
     def wrapper(inp: Tensor, targ: Tensor) -> Tensor:
         mask = ~torch.isnan(targ).any(dim=-1)
         return func(inp[mask], targ[mask])
+
+    return wrapper
+
+
+def mask_nan(func: Callable) -> Callable:
+    """Like ignore_nan but with static tensor shapes (CUDA-graph safe).
+
+    Zeroes NaN-containing samples instead of removing them,
+    then divides by the number of valid samples.
+    """
+
+    @functools.wraps(func)
+    def wrapper(inp: Tensor, targ: Tensor) -> Tensor:
+        mask = ~torch.isnan(targ).any(dim=-1, keepdim=True)  # [B, T, 1]
+        inp = torch.where(mask, inp, torch.zeros_like(inp))
+        targ = torch.where(mask, targ, torch.zeros_like(targ))
+        return func(inp, targ)
 
     return wrapper
 

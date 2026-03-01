@@ -21,6 +21,7 @@ from torch import Tensor, nn
 
 from ..training import (
     ActivationRegularizer,
+    CudaGraphTbpttLearner,
     Learner,
     TbpttLearner,
     TemporalActivationRegularizer,
@@ -305,6 +306,7 @@ def RNNLearner(
     transforms: list | None = None,
     aux_losses: list | None = None,
     grad_clip: float | None = None,
+    cuda_graph: bool = False,
     **kwargs,
 ):
     """Create a Learner with a SimpleRNN model and standard training setup.
@@ -324,6 +326,7 @@ def RNNLearner(
         transforms: list of transforms (train + valid).
         aux_losses: list of auxiliary loss functions.
         grad_clip: max gradient norm for clipping, or None to disable.
+        cuda_graph: if True and sub_seq_len is set, use CudaGraphTbpttLearner for faster training.
         **kwargs: additional keyword arguments forwarded to ``SimpleRNN``.
     """
     if metrics is None:
@@ -333,7 +336,10 @@ def RNNLearner(
     model = SimpleRNN(inp, out, num_layers, hidden_size, **kwargs)
     model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
 
-    cls = TbpttLearner if sub_seq_len else Learner
+    if sub_seq_len:
+        cls = CudaGraphTbpttLearner if cuda_graph else TbpttLearner
+    else:
+        cls = Learner
     extra = {"sub_seq_len": sub_seq_len} if sub_seq_len else {}
     return cls(
         model,
