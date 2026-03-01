@@ -79,14 +79,6 @@ class TestLosses:
         y = torch.rand(4, 100, 1)
         assert nrmse(x, y).item() > 0
 
-    def test_skip_n_loss(self):
-        from tsfast.training.losses import skip_n_loss
-
-        fn = skip_n_loss(nn.MSELoss(), n_skip=10)
-        x = torch.rand(2, 100, 1)
-        y = torch.rand(2, 100, 1)
-        assert fn(x, y).item() >= 0
-
     def test_sched_lin_p(self):
         from tsfast.training.schedulers import sched_lin_p
 
@@ -558,6 +550,20 @@ class TestTbpttLearner:
         lrn = TbpttLearner(model, dls, loss_func=nn.MSELoss(), sub_seq_len=25, device=torch.device("cpu"))
         lrn.fit(1)
         assert math.isfinite(lrn.recorder.values[-1][1])
+
+    def test_tbptt_n_skip_first_chunk_only(self):
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import TbpttLearner
+
+        dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True)
+        lrn = TbpttLearner(
+            model, dls, loss_func=nn.MSELoss(), sub_seq_len=25, n_skip=10, device=torch.device("cpu")
+        )
+        lrn.fit(1)
+        assert math.isfinite(lrn.recorder.values[-1][1])
+        # n_skip must be restored after _train_one_batch
+        assert lrn.n_skip == 10
 
     def test_tbptt_with_augmentations(self):
         from tsfast.models.rnn import SimpleRNN

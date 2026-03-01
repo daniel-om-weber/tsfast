@@ -42,7 +42,7 @@ from tsfast.tsdata.benchmark import create_dls_silverbox
 from tsfast.models.rnn import RNNLearner
 from tsfast.training import (
     fun_rmse, nrmse, nrmse_std, mean_vaf,
-    weighted_mae, norm_loss, skip_n_loss, cut_loss,
+    weighted_mae, norm_loss, cut_loss,
 )
 
 # %% [markdown]
@@ -103,19 +103,18 @@ lrn.fit_flat_cos(n_epoch=5, lr=3e-3)
 lrn.show_results(max_n=2)
 
 # %% [markdown]
-# ## skip_n_loss: Ignoring Transient Warmup
+# ## n_skip: Ignoring Transient Warmup
 #
 # RNNs start from a zero hidden state. During the first few timesteps, the
-# hidden state is "warming up" and predictions are unreliable. `skip_n_loss`
-# wraps any loss function to discard the first N timesteps from the loss
-# computation. This prevents the optimizer from wasting effort on the
-# unavoidable warmup transient.
+# hidden state is "warming up" and predictions are unreliable. Setting
+# `n_skip` on the Learner discards the first N timesteps from both loss
+# and metric computation. This prevents the optimizer from wasting effort on
+# the unavoidable warmup transient.
 #
 # - **`n_skip=50`** -- skip the first 50 timesteps when computing the loss
 
 # %%
-skip_loss = skip_n_loss(nn.L1Loss(), n_skip=50)
-lrn_skip = RNNLearner(dls, rnn_type='lstm', loss_func=skip_loss, metrics=[fun_rmse])
+lrn_skip = RNNLearner(dls, rnn_type='lstm', n_skip=50, metrics=[fun_rmse])
 lrn_skip.fit_flat_cos(n_epoch=5, lr=3e-3)
 
 # %% [markdown]
@@ -174,7 +173,7 @@ lrn_wmae.fit_flat_cos(n_epoch=5, lr=3e-3)
 # - **`fun_rmse`**, **`nrmse`**, and **`mean_vaf`** are standard evaluation
 #   metrics. `nrmse` enables fair comparison across different-scale outputs,
 #   and `mean_vaf` reports the percentage of variance explained.
-# - **`skip_n_loss`** excludes the RNN warmup transient from the loss, preventing
+# - **`n_skip`** excludes the RNN warmup transient from the loss, preventing
 #   the optimizer from fitting the unavoidable zero-state startup.
 # - **`cut_loss`** restricts the loss to a specific time window, useful when
 #   only part of the sequence matters.

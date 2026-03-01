@@ -5,7 +5,6 @@ __all__ = [
     "mse_nan",
     "ignore_nan",
     "float64_func",
-    "skip_n_loss",
     "cut_loss",
     "norm_loss",
     "weighted_mae",
@@ -83,21 +82,6 @@ def float64_func(func: Callable) -> Callable:
                 raise
 
     return float64_func_decorator
-
-
-def skip_n_loss(fn: Callable, n_skip: int = 0) -> Callable:
-    """Loss-function modifier that skips the first n time steps of sequential data.
-
-    Args:
-        fn: base loss function to wrap
-        n_skip: number of initial time steps to discard
-    """
-
-    @functools.wraps(fn)
-    def _inner(input, target):
-        return fn(input[:, n_skip:].contiguous(), target[:, n_skip:].contiguous())
-
-    return _inner
 
 
 def cut_loss(fn: Callable, l_cut: int = 0, r_cut: int | None = None) -> Callable:
