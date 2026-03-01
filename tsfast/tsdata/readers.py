@@ -21,21 +21,15 @@ class HDF5Signals:
     Args:
         names: dataset column names to extract
         dataset: HDF5 group name containing the datasets, None for root
-        fs_idx: index of frequency column, scaled by resampling_factor
-        dt_idx: index of time-step column, scaled by resampling_factor
     """
 
     def __init__(
         self,
         names: list[str],
         dataset: str | None = None,
-        fs_idx: int | None = None,
-        dt_idx: int | None = None,
     ):
         self.names = names
         self.dataset = dataset
-        self.fs_idx = fs_idx
-        self.dt_idx = dt_idx
         self._len_cache: dict[str, int] = {}
         self._mmap_cache: dict[str, dict[str, np.ndarray | None]] = {}
         self._dtype: np.dtype | None = None
@@ -142,11 +136,21 @@ class Resampled:
 
     Args:
         block: temporal reader with read(path, l_slc, r_slc) and file_len(path)
+        fs_idx: column index of sampling rate, scaled by resampling factor
+        dt_idx: column index of time step, scaled by resampling factor
         fast_resample: use linear interpolation (True) or FFT resampling (False)
     """
 
-    def __init__(self, block: HDF5Signals, fast_resample: bool = True):
+    def __init__(
+        self,
+        block: HDF5Signals,
+        fs_idx: int | None = None,
+        dt_idx: int | None = None,
+        fast_resample: bool = True,
+    ):
         self.block = block
+        self.fs_idx = fs_idx
+        self.dt_idx = dt_idx
         self.fast_resample = fast_resample
 
     def read(self, path: str, l_slc: int, r_slc: int, factor: float) -> np.ndarray:
@@ -164,10 +168,10 @@ class Resampled:
         else:
             resampled = fft_resample(raw, int(raw.shape[0] * factor), window=("kaiser", 14.0))
 
-        if (idx := getattr(self.block, "fs_idx", None)) is not None:
-            resampled[:, idx] = raw[0, idx] * factor
-        if (idx := getattr(self.block, "dt_idx", None)) is not None:
-            resampled[:, idx] = raw[0, idx] / factor
+        if self.fs_idx is not None:
+            resampled[:, self.fs_idx] = raw[0, self.fs_idx] * factor
+        if self.dt_idx is not None:
+            resampled[:, self.dt_idx] = raw[0, self.dt_idx] / factor
 
         return resampled[:target_len]
 
