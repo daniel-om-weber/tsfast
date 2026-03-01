@@ -19,7 +19,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from ..training import Learner, TbpttLearner, TimeSeriesRegularizerLoss, ar_init, fun_rmse
+from ..training import Learner, TbpttLearner, TimeSeriesRegularizerLoss, fun_rmse, prediction_concat
 from ..tsdata import get_io_size
 from .layers import AR_Model, BatchNorm_1D_Stateful, NormalizedModel, SeqLinear, StandardScaler1D
 
@@ -251,8 +251,6 @@ class SimpleRNN(nn.Module):
         return out if not self.return_state else (out, h)
 
 
-
-
 def RNNLearner(
     dls,
     loss_func=nn.L1Loss(),
@@ -301,9 +299,17 @@ def RNNLearner(
     cls = TbpttLearner if stateful else Learner
     extra = {"sub_seq_len": sub_seq_len or 100} if stateful else {}
     return cls(
-        model, dls, loss_func=loss_func, metrics=metrics, n_skip=n_skip,
-        opt_func=opt_func, lr=3e-3, augmentations=augmentations,
-        transforms=transforms, aux_losses=aux_losses, grad_clip=grad_clip,
+        model,
+        dls,
+        loss_func=loss_func,
+        metrics=metrics,
+        n_skip=n_skip,
+        opt_func=opt_func,
+        lr=3e-3,
+        augmentations=augmentations,
+        transforms=transforms,
+        aux_losses=aux_losses,
+        grad_clip=grad_clip,
         **extra,
     )
 
@@ -347,7 +353,7 @@ def AR_RNNLearner(
         n_skip=n_skip,
         opt_func=opt_func,
         lr=3e-3,
-        transforms=[ar_init()],
+        transforms=[prediction_concat(t_offset=0)],
         aux_losses=[TimeSeriesRegularizerLoss(modules=[rnn_module], alpha=alpha, beta=beta)],
     )
 

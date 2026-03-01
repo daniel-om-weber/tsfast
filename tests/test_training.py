@@ -80,9 +80,9 @@ class TestLosses:
         assert nrmse(x, y).item() > 0
 
     def test_skip_n_loss(self):
-        from tsfast.training.losses import SkipNLoss
+        from tsfast.training.losses import skip_n_loss
 
-        fn = SkipNLoss(nn.MSELoss(), n_skip=10)
+        fn = skip_n_loss(nn.MSELoss(), n_skip=10)
         x = torch.rand(2, 100, 1)
         y = torch.rand(2, 100, 1)
         assert fn(x, y).item() >= 0
@@ -102,9 +102,9 @@ class TestLosses:
         assert 0 < sched_ramp(0, 1, 0.4) < 1
 
     def test_cut_loss(self):
-        from tsfast.training.losses import CutLoss
+        from tsfast.training.losses import cut_loss
 
-        fn = CutLoss(nn.MSELoss(), l_cut=5, r_cut=-5)
+        fn = cut_loss(nn.MSELoss(), l_cut=5, r_cut=-5)
         x = torch.rand(2, 100, 1)
         y = torch.rand(2, 100, 1)
         loss = fn(x, y)
@@ -119,9 +119,9 @@ class TestLosses:
         assert loss.item() > 0
 
     def test_rand_seq_len_loss(self):
-        from tsfast.training.losses import RandSeqLenLoss
+        from tsfast.training.losses import rand_seq_len_loss
 
-        fn = RandSeqLenLoss(nn.MSELoss(), min_idx=10)
+        fn = rand_seq_len_loss(nn.MSELoss(), min_idx=10)
         x = torch.rand(4, 100, 1)
         y = torch.rand(4, 100, 1)
         loss = fn(x, y)
@@ -179,10 +179,10 @@ class TestTransforms:
         assert xb_out.shape == (4, 100, 3)
         assert yb_out.shape == (4, 100, 1)
 
-    def test_ar_init(self):
-        from tsfast.training.transforms import ar_init
+    def test_prediction_concat_no_offset(self):
+        from tsfast.training.transforms import prediction_concat
 
-        t = ar_init()
+        t = prediction_concat(t_offset=0)
         xb = torch.randn(4, 100, 2)
         yb = torch.randn(4, 100, 1)
         xb_out, yb_out = t(xb, yb)
@@ -328,9 +328,9 @@ class TestViz:
 
 class TestAuxLosses:
     def test_add_loss(self):
-        from tsfast.training.aux_losses import add_loss
+        from tsfast.training.aux_losses import AddLoss
 
-        aux = add_loss(nn.MSELoss(), alpha=0.5)
+        aux = AddLoss(nn.MSELoss(), alpha=0.5)
         pred = torch.rand(4, 100, 1)
         yb = torch.rand(4, 100, 1)
         xb = torch.rand(4, 100, 1)
@@ -339,9 +339,9 @@ class TestAuxLosses:
         assert torch.allclose(loss, expected)
 
     def test_transition_smoothness(self):
-        from tsfast.training.aux_losses import transition_smoothness
+        from tsfast.training.aux_losses import TransitionSmoothness
 
-        ts = transition_smoothness(init_sz=20, weight=1.0, window=3, dt=0.01)
+        ts = TransitionSmoothness(init_sz=20, weight=1.0, window=3, dt=0.01)
         pred = torch.rand(4, 50, 2, requires_grad=True)
         yb = torch.rand(4, 50, 2)
         xb = torch.rand(4, 50, 1)
@@ -423,7 +423,7 @@ class TestLearner:
 
     def test_learner_aux_losses(self):
         from tsfast.models.rnn import SimpleRNN
-        from tsfast.training import Learner, add_loss
+        from tsfast.training import AddLoss, Learner
 
         dls = _SyntheticDls(n_u=1, n_y=1)
         model = SimpleRNN(1, 1, hidden_size=20)
@@ -432,9 +432,9 @@ class TestLearner:
         lrn_base = Learner(model, dls, loss_func=nn.MSELoss(), device=torch.device("cpu"))
         lrn_base.fit(1)
 
-        # Train with aux loss (add_loss should make total > primary)
+        # Train with aux loss (AddLoss should make total > primary)
         model2 = SimpleRNN(1, 1, hidden_size=20)
-        aux = add_loss(nn.L1Loss(), alpha=1.0)
+        aux = AddLoss(nn.L1Loss(), alpha=1.0)
         lrn_aux = Learner(model2, dls, loss_func=nn.MSELoss(), aux_losses=[aux], device=torch.device("cpu"))
         lrn_aux.fit(1)
 

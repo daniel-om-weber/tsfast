@@ -42,7 +42,7 @@ from tsfast.tsdata.benchmark import create_dls_silverbox
 from tsfast.models.rnn import RNNLearner
 from tsfast.training import (
     fun_rmse, nrmse, nrmse_std, mean_vaf,
-    weighted_mae, NormLoss, SkipNLoss, CutLoss,
+    weighted_mae, norm_loss, skip_n_loss, cut_loss,
 )
 
 # %% [markdown]
@@ -103,10 +103,10 @@ lrn.fit_flat_cos(n_epoch=5, lr=3e-3)
 lrn.show_results(max_n=2)
 
 # %% [markdown]
-# ## SkipNLoss: Ignoring Transient Warmup
+# ## skip_n_loss: Ignoring Transient Warmup
 #
 # RNNs start from a zero hidden state. During the first few timesteps, the
-# hidden state is "warming up" and predictions are unreliable. `SkipNLoss`
+# hidden state is "warming up" and predictions are unreliable. `skip_n_loss`
 # wraps any loss function to discard the first N timesteps from the loss
 # computation. This prevents the optimizer from wasting effort on the
 # unavoidable warmup transient.
@@ -114,14 +114,14 @@ lrn.show_results(max_n=2)
 # - **`n_skip=50`** -- skip the first 50 timesteps when computing the loss
 
 # %%
-skip_loss = SkipNLoss(nn.L1Loss(), n_skip=50)
+skip_loss = skip_n_loss(nn.L1Loss(), n_skip=50)
 lrn_skip = RNNLearner(dls, rnn_type='lstm', loss_func=skip_loss, metrics=[fun_rmse])
 lrn_skip.fit_flat_cos(n_epoch=5, lr=3e-3)
 
 # %% [markdown]
-# ## CutLoss: Evaluating a Window
+# ## cut_loss: Evaluating a Window
 #
-# `CutLoss` slices the sequence to a specific range before computing the loss.
+# `cut_loss` slices the sequence to a specific range before computing the loss.
 # This is useful when you only care about predictions in a particular part of
 # the sequence.
 #
@@ -131,26 +131,26 @@ lrn_skip.fit_flat_cos(n_epoch=5, lr=3e-3)
 # This evaluates only timesteps 50 through 450 of each 500-step window.
 
 # %%
-cut_loss = CutLoss(nn.L1Loss(), l_cut=50, r_cut=450)
-lrn_cut = RNNLearner(dls, rnn_type='lstm', loss_func=cut_loss, metrics=[fun_rmse])
+my_cut_loss = cut_loss(nn.L1Loss(), l_cut=50, r_cut=450)
+lrn_cut = RNNLearner(dls, rnn_type='lstm', loss_func=my_cut_loss, metrics=[fun_rmse])
 lrn_cut.fit_flat_cos(n_epoch=5, lr=3e-3)
 
 # %% [markdown]
-# ## NormLoss: Scale-Invariant Training
+# ## norm_loss: Scale-Invariant Training
 #
 # When your system has multiple outputs with very different magnitudes (e.g.,
 # position in meters and velocity in m/s), the loss is dominated by the
-# largest-scale output. `NormLoss` normalizes both predictions and targets
+# largest-scale output. `norm_loss` normalizes both predictions and targets
 # before computing the loss, so all outputs contribute equally regardless of
 # their physical scale.
 #
-# `NormLoss` takes the output normalization statistics from the DataLoaders
+# `norm_loss` takes the output normalization statistics from the DataLoaders
 # (`dls.norm_stats.y`) and uses them to normalize both prediction and target
 # tensors before passing them to the base loss function.
 
 # %%
-norm_loss = NormLoss(nn.L1Loss(), dls.norm_stats.y)
-lrn_norm = RNNLearner(dls, rnn_type='lstm', loss_func=norm_loss, metrics=[fun_rmse])
+my_norm_loss = norm_loss(nn.L1Loss(), dls.norm_stats.y)
+lrn_norm = RNNLearner(dls, rnn_type='lstm', loss_func=my_norm_loss, metrics=[fun_rmse])
 lrn_norm.fit_flat_cos(n_epoch=5, lr=3e-3)
 
 # %% [markdown]
@@ -174,11 +174,11 @@ lrn_wmae.fit_flat_cos(n_epoch=5, lr=3e-3)
 # - **`fun_rmse`**, **`nrmse`**, and **`mean_vaf`** are standard evaluation
 #   metrics. `nrmse` enables fair comparison across different-scale outputs,
 #   and `mean_vaf` reports the percentage of variance explained.
-# - **`SkipNLoss`** excludes the RNN warmup transient from the loss, preventing
+# - **`skip_n_loss`** excludes the RNN warmup transient from the loss, preventing
 #   the optimizer from fitting the unavoidable zero-state startup.
-# - **`CutLoss`** restricts the loss to a specific time window, useful when
+# - **`cut_loss`** restricts the loss to a specific time window, useful when
 #   only part of the sequence matters.
-# - **`NormLoss`** enables scale-invariant training for multi-output systems by
+# - **`norm_loss`** enables scale-invariant training for multi-output systems by
 #   computing the loss in normalized space.
 # - **`weighted_mae`** emphasizes early timesteps, useful for transient-response
 #   modeling.
