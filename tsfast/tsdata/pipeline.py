@@ -1,5 +1,6 @@
 """DataLoaders container and create_dls factory for pure-PyTorch data pipeline."""
 
+from collections.abc import Callable
 from pathlib import Path
 
 import torch
@@ -141,7 +142,7 @@ def get_signal_names(dl) -> tuple[list[str], list[str]] | None:
 def _compute_resampling_factors(
     files: list[Path],
     targ_fs: float | list[float],
-    src_fs: float | str | None,
+    src_fs: float | str | Callable | None,
 ) -> dict[str, list[tuple[float, float]]]:
     """Compute per-file resampling factors from source/target sampling rates.
 
@@ -154,7 +155,9 @@ def _compute_resampling_factors(
     result = {}
     for f in files:
         path = str(f)
-        if isinstance(src_fs, str):
+        if callable(src_fs):
+            file_fs = float(src_fs(path))
+        elif isinstance(src_fs, str):
             # src_fs is an HDF5 attribute name — read from file
             import h5py
 
@@ -206,7 +209,7 @@ def create_dls_from_readers(
     n_batches_train: int | None = 300,
     n_batches_valid: int | None = None,
     targ_fs: list[float] | float | None = None,
-    src_fs: float | str | None = None,
+    src_fs: float | str | Callable | None = None,
     cache: bool = False,
     dls_id: str | None = None,
 ) -> DataLoaders:
@@ -328,7 +331,7 @@ def create_dls(
     n_batches_valid: int | None = None,
     dls_id: str | None = None,
     targ_fs: list[float] | float | None = None,
-    src_fs: float | str | None = None,
+    src_fs: float | str | Callable | None = None,
     cache: bool = False,
 ) -> DataLoaders:
     """Create DataLoaders from HDF5 time-series files.
