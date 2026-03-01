@@ -1,6 +1,6 @@
 """Quaternion math, loss functions, and augmentations."""
 
-from .core import (
+from .ops import (
     conjQuat,
     diffQuat,
     inclinationAngle,

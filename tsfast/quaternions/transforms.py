@@ -5,7 +5,7 @@ __all__ = ["augmentation_groups", "QuaternionAugmentation"]
 import numpy as np
 import torch
 
-from .core import multiplyQuat, rand_quat, rot_vec
+from .ops import multiplyQuat, rand_quat, rot_vec
 
 
 def augmentation_groups(u_groups: list[int]) -> list[list[int]]:

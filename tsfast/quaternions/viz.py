@@ -8,7 +8,7 @@ __all__ = [
 
 import torch
 
-from .core import inclinationAngle, inclinationAngleAbs, rad2deg, relativeAngle
+from .ops import inclinationAngle, inclinationAngleAbs, rad2deg, relativeAngle
 
 
 def plot_scalar_inclination(

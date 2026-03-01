@@ -1,6 +1,6 @@
 """Lightweight pure-PyTorch training framework."""
 
-from .core import Learner, Recorder, TbpttLearner
+from .learner import Learner, Recorder, TbpttLearner
 from .losses import (
     cos_sim_loss,
     cos_sim_loss_pow,
