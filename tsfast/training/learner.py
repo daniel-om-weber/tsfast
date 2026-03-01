@@ -184,10 +184,10 @@ class Learner:
 
     # ── training step ─────────────────────────────────────────────────────
 
-    def training_step(
-        self, batch: tuple[Tensor, Tensor], optimizer, state=None, n_skip: int | None = None
+    def _forward_backward_step(
+        self, xb: Tensor, yb: Tensor, optimizer, state=None, n_skip: int | None = None
     ) -> tuple[float | None, object]:
-        """Single training step: forward, loss, backward, step.
+        """Core forward + loss + backward + optimizer step (no transforms/augmentations).
 
         Args:
             n_skip: timesteps to skip in loss (defaults to ``self.n_skip``)
@@ -197,13 +197,6 @@ class Learner:
         """
         if n_skip is None:
             n_skip = self.n_skip
-        xb, yb = batch
-
-        # Apply transforms then augmentations
-        for t in self.transforms:
-            xb, yb = t(xb, yb)
-        for a in self.augmentations:
-            xb, yb = a(xb, yb)
 
         # Forward
         if state is not None:
@@ -238,6 +231,17 @@ class Learner:
         optimizer.zero_grad()
 
         return loss.item(), _detach_state(new_state)
+
+    def training_step(
+        self, batch: tuple[Tensor, Tensor], optimizer, state=None, n_skip: int | None = None
+    ) -> tuple[float | None, object]:
+        """Single training step: apply transforms/augmentations, forward, loss, backward, step."""
+        xb, yb = batch
+        for t in self.transforms:
+            xb, yb = t(xb, yb)
+        for a in self.augmentations:
+            xb, yb = a(xb, yb)
+        return self._forward_backward_step(xb, yb, optimizer, state, n_skip)
 
     # ── validation ────────────────────────────────────────────────────────
 
@@ -479,7 +483,9 @@ class TbpttLearner(Learner):
             # n_skip only applies to the first sub-sequence (RNN warmup);
             # subsequent chunks already have a warmed-up hidden state.
             skip = self.n_skip if i == 0 else 0
-            loss_val, state = self.training_step((xb_sub, yb_sub), optimizer, state, n_skip=skip)
+            # Use _forward_backward_step directly — transforms/augmentations
+            # are already applied once in _prepare_chunks().
+            loss_val, state = self._forward_backward_step(xb_sub, yb_sub, optimizer, state, n_skip=skip)
             if loss_val is not None:
                 losses.append(loss_val)
         return losses
