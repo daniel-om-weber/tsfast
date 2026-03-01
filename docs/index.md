@@ -21,7 +21,7 @@ hide:
 
 - **Specialized Data Handling** — `SequenceBlock`, sequence transforms, `TbpttDl` for truncated backpropagation
 - **Benchmark Datasets** — One-line access to Silverbox, Wiener-Hammerstein, Cascaded Tanks, and more via `identibench`
-- **Time Series Models** — RNNs (DenseNet, Residual), TCNs, CRNNs with stateful batch normalization
+- **Time Series Models** — RNNs (DenseNet, Residual), TCNs, CRNNs with layer normalization
 - **Integrated Training** — `RNNLearner`, `TCNLearner`, `CRNNLearner` with custom losses (`nrmse`, `skip_n_loss`) and callbacks
 - **System Identification** — Simulation, N-step prediction, FranSys, autoregressive models
 - **Hyperparameter Optimization** — Ray Tune integration via `HPOptimizer`

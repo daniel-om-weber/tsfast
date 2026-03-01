@@ -144,16 +144,6 @@ class TestModelWrappers:
         out = model(torch.cat([u, y], dim=-1))
         assert out.shape == batch[1].shape
 
-    def test_batch_norm_1d_stateful_shape(self):
-        from tsfast.models.layers import BatchNorm_1D_Stateful
-        bn = BatchNorm_1D_Stateful(hidden_size=10, stateful=True, batch_first=True)
-        x = torch.rand(4, 100, 10)
-        out = bn(x)
-        assert out.shape == x.shape
-        bn.reset_seq_idx()
-        out2 = bn(x)
-        assert out2.shape == x.shape
-
     def test_seq_aggregation_last(self):
         from tsfast.models.layers import SeqAggregation
         agg = SeqAggregation()

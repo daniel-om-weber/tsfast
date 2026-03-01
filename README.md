@@ -39,7 +39,7 @@ utilities.
   Convolutional Neural Networks (TCNs, `CausalConv1d`),
   and combined architectures (`CRNN`, `SeperateCRNN`)
   specifically designed for sequence modeling. Includes building blocks
-  like `SeqLinear` and stateful batch normalization.
+  like `SeqLinear` and layer normalization.
 - **Integrated Training**: Features `RNNLearner`, `TCNLearner`,
   `CRNNLearner`, etc., with a lightweight pure-PyTorch training loop,
   custom time-series losses (e.g., `fun_rmse`, `nrmse`), and composable

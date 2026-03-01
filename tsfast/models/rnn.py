@@ -28,7 +28,7 @@ from ..training import (
     prediction_concat,
 )
 from ..tsdata import get_io_size
-from .layers import AR_Model, BatchNorm_1D_Stateful, SeqLinear
+from .layers import AR_Model, SeqLinear
 from .scaling import ScaledModel, StandardScaler
 
 
@@ -118,8 +118,7 @@ class RNN(nn.Module):
         weight_p: weight dropout probability applied within each RNN cell.
         rnn_type: recurrent cell type, one of ``'gru'``, ``'lstm'``, or ``'rnn'``.
         ret_full_hidden: if True, return stacked hidden outputs from all layers.
-        stateful: if True, enable per-timestep batch normalization layers.
-        normalization: normalization between layers (``''``, ``'layernorm'``, or ``'batchnorm'``).
+        normalization: normalization between layers (``''`` or ``'layernorm'``).
         **kwargs: additional keyword arguments forwarded to the underlying ``nn.RNN``/``nn.GRU``/``nn.LSTM``.
     """
 
@@ -133,7 +132,6 @@ class RNN(nn.Module):
         weight_p: float = 0.0,
         rnn_type: str = "gru",
         ret_full_hidden: bool = False,
-        stateful: bool = False,
         normalization: str = "",
         **kwargs,
     ):
@@ -163,13 +161,6 @@ class RNN(nn.Module):
         elif normalization == "layernorm":
             self.norm_layers = nn.ModuleList(
                 [nn.LayerNorm(hidden_size, elementwise_affine=False) for _ in range(num_layers)]
-            )
-        elif normalization == "batchnorm":
-            self.norm_layers = nn.ModuleList(
-                [
-                    (BatchNorm_1D_Stateful(hidden_size, stateful=stateful, batch_first=True, affine=False))
-                    for i in range(num_layers)
-                ]
             )
         else:
             raise ValueError("Invalid value for normalization")
@@ -266,7 +257,6 @@ def RNNLearner(
     n_skip: int = 0,
     num_layers: int = 1,
     hidden_size: int = 100,
-    stateful: bool = False,
     sub_seq_len: int | None = None,
     opt_func=torch.optim.Adam,
     input_norm: type | None = StandardScaler,
@@ -286,8 +276,7 @@ def RNNLearner(
         n_skip: number of initial timesteps to skip in loss and metric computation.
         num_layers: number of stacked RNN layers.
         hidden_size: number of hidden units per RNN layer.
-        stateful: if True, enable stateful training with TBPTT.
-        sub_seq_len: sub-sequence length for TBPTT (defaults to 100).
+        sub_seq_len: sub-sequence length for TBPTT; enables stateful training when set.
         opt_func: optimizer constructor.
         input_norm: scaler class for input normalization, or None to disable.
         output_norm: scaler class for output denormalization, or None to disable.
@@ -301,11 +290,11 @@ def RNNLearner(
         metrics = [fun_rmse]
 
     inp, out = get_io_size(dls)
-    model = SimpleRNN(inp, out, num_layers, hidden_size, stateful=stateful, **kwargs)
+    model = SimpleRNN(inp, out, num_layers, hidden_size, **kwargs)
     model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
 
-    cls = TbpttLearner if stateful else Learner
-    extra = {"sub_seq_len": sub_seq_len or 100} if stateful else {}
+    cls = TbpttLearner if sub_seq_len else Learner
+    extra = {"sub_seq_len": sub_seq_len} if sub_seq_len else {}
     return cls(
         model,
         dls,
