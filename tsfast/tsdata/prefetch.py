@@ -1,12 +1,30 @@
 """Thread-based batch prefetcher for DataLoader(num_workers=0)."""
 
+import atexit
 import queue
 import threading
+import weakref
 
 from torch.utils.data import DataLoader
 
 
 _DONE = object()
+_live_iterators: set[weakref.ref] = set()
+_lock = threading.Lock()
+
+
+def _cleanup_iterators():
+    """Stop all live prefetch threads at interpreter shutdown."""
+    with _lock:
+        for ref in list(_live_iterators):
+            it = ref()
+            if it is not None:
+                it._stop.set()
+                it._thread.join(timeout=2.0)
+        _live_iterators.clear()
+
+
+atexit.register(_cleanup_iterators)
 
 
 class _PrefetchIterator:
@@ -17,6 +35,10 @@ class _PrefetchIterator:
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._produce, args=(dl_iter,), daemon=True)
         self._thread.start()
+        ref = weakref.ref(self, _remove_ref)
+        with _lock:
+            _live_iterators.add(ref)
+        self._ref = ref
 
     def _produce(self, dl_iter):
         try:
@@ -33,6 +55,8 @@ class _PrefetchIterator:
         except Exception as exc:
             if not self._stop.is_set():
                 self._queue.put(exc)
+        finally:
+            self._stop.set()
 
     def __next__(self):
         item = self._queue.get()
@@ -47,6 +71,11 @@ class _PrefetchIterator:
 
     def __del__(self):
         self._stop.set()
+
+
+def _remove_ref(ref):
+    with _lock:
+        _live_iterators.discard(ref)
 
 
 class PrefetchLoader:

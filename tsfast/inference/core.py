@@ -7,6 +7,7 @@ import warnings
 import numpy as np
 import torch
 
+from ..models.scaling import ScaledModel
 from ..training.transforms import prediction_concat
 
 
@@ -17,6 +18,14 @@ def _find_prediction_concat(learner):
             if isinstance(t, prediction_concat):
                 return t
 
+    return None
+
+
+def _get_n_model_inputs(model: torch.nn.Module) -> int | None:
+    """Detect the number of input features the model expects."""
+    if isinstance(model, ScaledModel):
+        for buf in model.input_norm.buffers():
+            return buf.shape[-1]
     return None
 
 
@@ -41,6 +50,7 @@ class InferenceWrapper:
         self.device = torch.device(device)
         self.model = learner.model.to(self.device).eval()
         self._pred_cb = _find_prediction_concat(learner)
+        self._n_model_inputs = _get_n_model_inputs(self.model)
 
     def _prepare_tensor(self, np_array: np.ndarray, name: str) -> torch.Tensor:
         "Converts numpy array to a 3D tensor [batch, seq_len, features] on the correct device."
@@ -63,6 +73,12 @@ class InferenceWrapper:
             return torch.nn.functional.pad(tensor, (0, 0, 0, target_len - current_len))
         warnings.warn(f"Truncating {name} seq len from {current_len} to {target_len}.", UserWarning)
         return tensor[:, :target_len, :]
+
+    def _needs_concat(self, u_tensor: torch.Tensor) -> bool:
+        """Check if the model expects more input features than u alone."""
+        if self._n_model_inputs is None:
+            return False
+        return self._n_model_inputs > u_tensor.shape[-1]
 
     @torch.no_grad()
     def inference(
@@ -106,7 +122,7 @@ class InferenceWrapper:
                 y_init_tensor = y_init_tensor[:, : -self._pred_cb.t_offset, :]
             y_init_tensor = self._adjust_seq_len(y_init_tensor, input_seq_len, "y_init")
             final_input = torch.cat((u_tensor, y_init_tensor), dim=-1)
-        elif y_init_tensor is not None:
+        elif y_init_tensor is not None and self._needs_concat(u_tensor):
             y_init_tensor = self._adjust_seq_len(y_init_tensor, input_seq_len, "y_init")
             final_input = torch.cat((u_tensor, y_init_tensor), dim=-1)
         else:
