@@ -26,6 +26,7 @@ class DataLoaders:
         train: training DataLoader
         valid: validation DataLoader
         test: test DataLoader, or None if no test split
+        dls_id: cache id for exact file-based normalization stats
     """
 
     def __init__(
@@ -33,13 +34,13 @@ class DataLoaders:
         train: DataLoader,
         valid: DataLoader,
         test: DataLoader | None = None,
+        *,
+        dls_id: str | None = None,
     ):
         self.train = self._wrap(train)
         self.valid = self._wrap(valid)
         self.test = self._wrap(test) if test is not None else None
-        self._train_files: list | None = None
-        self._signal_names: tuple[list[str], list[str]] | None = None
-        self._dls_id: str | None = None
+        self._dls_id = dls_id
         self._cached_stats: NormStats | None = None
 
     @staticmethod
@@ -73,15 +74,16 @@ class DataLoaders:
             cached = _load_norm_stats(cache_id)
             if cached is not None:
                 return cached
-        if self._signal_names is None or self._train_files is None:
+        signal_names = get_signal_names(self.train)
+        file_paths = get_file_paths(self.train)
+        if signal_names is None or not file_paths:
             raise ValueError(
-                "File-based stats require signal_names and train_files. "
-                "Use create_dls() which sets these automatically, or after "
-                "create_dls_from_blocks() set dls._signal_names = (u_names, y_names)."
+                "File-based stats require HDF5Signals blocks with signal names. "
+                "Use create_dls() or create_dls_from_blocks() with HDF5Signals blocks."
             )
-        u_names, y_names = self._signal_names
-        norm_u = compute_stats_from_files(self._train_files, u_names)
-        norm_y = compute_stats_from_files(self._train_files, y_names)
+        u_names, y_names = signal_names
+        norm_u = compute_stats_from_files(file_paths, u_names)
+        norm_y = compute_stats_from_files(file_paths, y_names)
         result = NormStats(norm_u, norm_y)
         if cache_id is not None:
             _save_norm_stats(cache_id, result)
@@ -95,6 +97,37 @@ class DataLoaders:
     def one_batch(self) -> tuple:
         """Return one batch from the training DataLoader."""
         return next(iter(self.train))
+
+
+def _get_block_names(blocks: tuple) -> list[str] | None:
+    """Extract signal names from blocks, unwrapping Cached/Resampled layers."""
+    names = []
+    for b in blocks:
+        while hasattr(b, "block"):
+            b = b.block
+        if hasattr(b, "names"):
+            names.extend(b.names)
+        else:
+            return None
+    return names
+
+
+def get_file_paths(dl) -> list[str]:
+    """Extract unique file paths from a DataLoader's dataset entries."""
+    return list(dict.fromkeys(e.path for e in dl.dataset.entries))
+
+
+def get_signal_names(dl) -> tuple[list[str], list[str]] | None:
+    """Extract (input_names, target_names) from a DataLoader's blocks.
+
+    Returns None if blocks don't expose signal names (non-HDF5 blocks).
+    """
+    ds = dl.dataset
+    u = _get_block_names(ds._inputs)
+    y = _get_block_names(ds._targets)
+    if u is None or y is None:
+        return None
+    return (u, y)
 
 
 def _compute_resampling_factors(
@@ -167,6 +200,7 @@ def create_dls_from_blocks(
     targ_fs: list[float] | float | None = None,
     src_fs: float | str | None = None,
     cache: bool = False,
+    dls_id: str | None = None,
 ) -> DataLoaders:
     """Create DataLoaders from user-provided blocks and file lists.
 
@@ -186,6 +220,7 @@ def create_dls_from_blocks(
         targ_fs: target sampling frequency/frequencies for resampling
         src_fs: source sampling frequency (number or HDF5 attribute name)
         cache: cache file data in memory on first read for faster subsequent access
+        dls_id: cache id for exact file-based normalization stats
     """
     if valid_stp_sz is None:
         valid_stp_sz = win_sz
@@ -269,9 +304,7 @@ def create_dls_from_blocks(
         )
 
     # --- Build DataLoaders container ---
-    dls = DataLoaders(train=train_dl, valid=valid_dl, test=test_dl)
-    dls._train_files = train_files
-    return dls
+    return DataLoaders(train=train_dl, valid=valid_dl, test=test_dl, dls_id=dls_id)
 
 
 def create_dls(
@@ -340,7 +373,7 @@ def create_dls(
     else:
         raise ValueError(f"dataset must be a Path, list, or dict. {type(dataset)} was given.")
 
-    dls = create_dls_from_blocks(
+    return create_dls_from_blocks(
         inputs=HDF5Signals(u),
         targets=HDF5Signals(y),
         train_files=train_files,
@@ -356,7 +389,5 @@ def create_dls(
         targ_fs=targ_fs,
         src_fs=src_fs,
         cache=cache,
+        dls_id=dls_id,
     )
-    dls._signal_names = (u, y)
-    dls._dls_id = dls_id
-    return dls
