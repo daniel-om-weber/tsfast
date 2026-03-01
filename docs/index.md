@@ -13,7 +13,7 @@ hide:
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python Versions](https://img.shields.io/pypi/pyversions/tsfast.png)](https://pypi.org/project/tsfast/)
 
-**A deep learning library for time series analysis and system identification, built on PyTorch and fastai.**
+**A deep learning library for time series analysis and system identification, built on PyTorch.**
 
 ---
 
@@ -21,8 +21,8 @@ hide:
 
 - **Specialized Data Handling** — `SequenceBlock`, sequence transforms, `TbpttDl` for truncated backpropagation
 - **Benchmark Datasets** — One-line access to Silverbox, Wiener-Hammerstein, Cascaded Tanks, and more via `identibench`
-- **Time Series Models** — RNNs (DenseNet, Residual), TCNs, CRNNs with stateful batch normalization
-- **Integrated Training** — `RNNLearner`, `TCNLearner`, `CRNNLearner` with custom losses (`nrmse`, `SkipNLoss`) and callbacks
+- **Time Series Models** — RNNs (DenseNet, Residual), TCNs, CRNNs with layer normalization
+- **Integrated Training** — `RNNLearner`, `TCNLearner`, `CRNNLearner` with custom losses (`nrmse`, `skip_n_loss`) and callbacks
 - **System Identification** — Simulation, N-step prediction, FranSys, autoregressive models
 - **Hyperparameter Optimization** — Ray Tune integration via `HPOptimizer`
 - **Deployment** — `InferenceWrapper` for NumPy-in/NumPy-out inference, ONNX export

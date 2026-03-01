@@ -31,11 +31,10 @@
 # ## Setup
 
 # %%
-import numpy as np
-from tsfast.datasets.benchmark import create_dls_silverbox, create_dls_wh
+from tsfast.tsdata.benchmark import create_dls_silverbox, create_dls_wh
 from tsfast.models.rnn import RNNLearner
 from tsfast.inference import InferenceWrapper
-from tsfast.learner.losses import fun_rmse
+from tsfast.training import fun_rmse
 
 # %% [markdown]
 # ## What is Simulation?
@@ -61,9 +60,6 @@ from tsfast.learner.losses import fun_rmse
 # %%
 dls = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
 
-# %%
-dls.show_batch(max_n=4)
-
 # %% [markdown]
 # ## Train an LSTM with n_skip
 #
@@ -81,6 +77,9 @@ dls.show_batch(max_n=4)
 
 # %%
 lrn = RNNLearner(dls, rnn_type='lstm', n_skip=50, hidden_size=40, metrics=[fun_rmse])
+lrn.show_batch(max_n=4)
+
+# %%
 lrn.fit_flat_cos(n_epoch=10, lr=3e-3)
 
 # %% [markdown]
@@ -93,19 +92,16 @@ lrn.fit_flat_cos(n_epoch=10, lr=3e-3)
 lrn.show_results(max_n=3)
 
 # %% [markdown]
-# ## Evaluating on Different Data Splits
+# ## Evaluating on the Validation Set
 #
-# tsfast DataLoaders can hold multiple data splits from the benchmark:
-#
-# - `ds_idx=0`: training set
-# - `ds_idx=1`: validation set
-# - `ds_idx=2` and above: test sets (if the benchmark provides them)
-#
-# Use `validate()` to compute the loss and metrics on any split.
+# `validate()` runs the model on the validation set and returns a tuple of
+# `(loss, {metric_name: value})`. You can pass a different DataLoader via
+# `dl=` to evaluate on other splits (e.g., `lrn.validate(dl=dls.test)`).
 
 # %%
-val_loss = lrn.validate(ds_idx=1)
+val_loss, val_metrics = lrn.validate()
 print(f"Validation loss: {val_loss}")
+print(f"Validation metrics: {val_metrics}")
 
 # %% [markdown]
 # ## Getting Predictions

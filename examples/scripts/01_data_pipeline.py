@@ -34,8 +34,8 @@
 # %%
 import identibench as idb
 
-from tsfast.datasets import create_dls
-from tsfast.datasets.benchmark import create_dls_silverbox
+from tsfast.tsdata import create_dls
+from tsfast.tsdata.benchmark import create_dls_silverbox
 from tsfast.models.rnn import RNNLearner
 
 # %% [markdown]
@@ -98,16 +98,6 @@ dls_explicit = create_dls(
 )
 
 # %% [markdown]
-# ## Inspecting the Data
-#
-# `show_batch` visualizes random windows from the training set. The bottom
-# subplot shows the input signal(s), and the upper subplot(s) show the output
-# signal(s) that the model will learn to predict.
-
-# %%
-dls_explicit.show_batch(max_n=4)
-
-# %% [markdown]
 # ## Normalization
 #
 # By default, TSFast normalizes **input signals only** using z-score
@@ -135,6 +125,21 @@ print(f"  Std:  {dls_explicit.norm_stats.y.std}")
 
 # %%
 lrn = RNNLearner(dls_explicit, rnn_type='lstm')
+
+# %% [markdown]
+# ## Inspecting the Data
+#
+# `show_batch` visualizes random windows from the validation set. The bottom
+# subplot shows the input signal(s), and the upper subplot(s) show the output
+# signal(s) that the model will learn to predict.
+
+# %%
+lrn.show_batch(max_n=4)
+
+# %% [markdown]
+# ## Training
+
+# %%
 lrn.fit_flat_cos(n_epoch=5)
 
 # %%

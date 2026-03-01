@@ -1,7 +1,6 @@
 """Tests for the Ray Tune hyperparameter optimization integration."""
 
 import pytest
-import torch
 
 ray = pytest.importorskip("ray")
 tune = pytest.importorskip("ray.tune")
@@ -18,7 +17,7 @@ def ray_init_shutdown():
 @pytest.fixture(scope="module")
 def dls_silverbox():
     """Small Silverbox DataLoaders for tune tests."""
-    from tsfast.datasets.benchmark import create_dls_silverbox
+    from tsfast.tsdata.benchmark import create_dls_silverbox
 
     return create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
 
@@ -35,7 +34,7 @@ def test_learner_optimize_cpu_only(dls_silverbox):
     """
     from tsfast.models.rnn import RNNLearner
     from tsfast.tune import HPOptimizer
-    from tsfast.learner.losses import fun_rmse
+    from tsfast.training import fun_rmse
 
     def create_learner(dls, config):
         return RNNLearner(
@@ -77,7 +76,7 @@ def test_learner_optimize_callable_lr(dls_silverbox):
     """
     from tsfast.models.rnn import RNNLearner
     from tsfast.tune import HPOptimizer, log_uniform
-    from tsfast.learner.losses import fun_rmse
+    from tsfast.training import fun_rmse
 
     def create_learner(dls, config):
         return RNNLearner(

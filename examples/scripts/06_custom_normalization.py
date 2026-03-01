@@ -33,10 +33,10 @@
 # %%
 import torch
 
-from tsfast.datasets.benchmark import create_dls_silverbox
+from tsfast.tsdata.benchmark import create_dls_silverbox
 from tsfast.models.rnn import RNNLearner
-from tsfast.models.layers import Scaler, StandardScaler1D, MinMaxScaler1D, MaxAbsScaler1D
-from tsfast.learner.losses import fun_rmse
+from tsfast.models.scaling import Scaler, StandardScaler, MinMaxScaler, MaxAbsScaler
+from tsfast.training import fun_rmse
 
 # %% [markdown]
 # ## Why Normalization Matters
@@ -57,11 +57,11 @@ dls = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
 #
 # TSFast provides three built-in scalers:
 #
-# - **`StandardScaler1D`** (default): z-score normalization.
+# - **`StandardScaler`** (default): z-score normalization.
 #   `x_norm = (x - mean) / std`
-# - **`MinMaxScaler1D`**: scales to [0, 1].
+# - **`MinMaxScaler`**: scales to [0, 1].
 #   `x_norm = (x - min) / (max - min)`
-# - **`MaxAbsScaler1D`**: scales to [-1, 1].
+# - **`MaxAbsScaler`**: scales to [-1, 1].
 #   `x_norm = x / max(|min|, |max|)`
 
 # %% [markdown]
@@ -73,17 +73,17 @@ dls = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
 # %%
 lrn_std = RNNLearner(dls, rnn_type='lstm', metrics=[fun_rmse])
 lrn_std.fit_flat_cos(n_epoch=5, lr=3e-3)
-print(f"StandardScaler1D: {lrn_std.validate()}")
+print(f"StandardScaler: {lrn_std.validate()}")
 
 # %%
-lrn_mm = RNNLearner(dls, rnn_type='lstm', input_norm=MinMaxScaler1D, metrics=[fun_rmse])
+lrn_mm = RNNLearner(dls, rnn_type='lstm', input_norm=MinMaxScaler, metrics=[fun_rmse])
 lrn_mm.fit_flat_cos(n_epoch=5, lr=3e-3)
-print(f"MinMaxScaler1D:   {lrn_mm.validate()}")
+print(f"MinMaxScaler:   {lrn_mm.validate()}")
 
 # %%
-lrn_ma = RNNLearner(dls, rnn_type='lstm', input_norm=MaxAbsScaler1D, metrics=[fun_rmse])
+lrn_ma = RNNLearner(dls, rnn_type='lstm', input_norm=MaxAbsScaler, metrics=[fun_rmse])
 lrn_ma.fit_flat_cos(n_epoch=5, lr=3e-3)
-print(f"MaxAbsScaler1D:   {lrn_ma.validate()}")
+print(f"MaxAbsScaler:   {lrn_ma.validate()}")
 
 # %%
 lrn_none = RNNLearner(dls, rnn_type='lstm', input_norm=None, metrics=[fun_rmse])
@@ -99,7 +99,7 @@ print(f"No normalization: {lrn_none.validate()}")
 # physical units.
 
 # %%
-lrn_out = RNNLearner(dls, rnn_type='lstm', output_norm=StandardScaler1D, metrics=[fun_rmse])
+lrn_out = RNNLearner(dls, rnn_type='lstm', output_norm=StandardScaler, metrics=[fun_rmse])
 lrn_out.fit_flat_cos(n_epoch=5, lr=3e-3)
 
 # %% [markdown]
@@ -153,13 +153,13 @@ lrn_custom.show_results(max_n=2)
 # %% [markdown]
 # ## Key Takeaways
 #
-# - **`StandardScaler1D`** (z-score) is the default and works well for most
+# - **`StandardScaler`** (z-score) is the default and works well for most
 #   problems.
-# - **`MinMaxScaler1D`** and **`MaxAbsScaler1D`** are alternatives for bounded
+# - **`MinMaxScaler`** and **`MaxAbsScaler`** are alternatives for bounded
 #   signals.
 # - **`input_norm=None`** disables normalization (useful for pre-normalized
 #   data).
-# - **`output_norm=StandardScaler1D`** normalizes outputs for multi-scale
+# - **`output_norm=StandardScaler`** normalizes outputs for multi-scale
 #   training. Predictions are automatically denormalized.
 # - Custom scalers subclass `Scaler` with `normalize`, `denormalize`, and
 #   `from_stats`.

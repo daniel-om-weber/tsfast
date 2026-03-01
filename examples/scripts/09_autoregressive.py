@@ -32,10 +32,10 @@
 # ## Setup
 
 # %%
-from tsfast.datasets.benchmark import create_dls_silverbox
+from tsfast.tsdata.benchmark import create_dls_silverbox
 from tsfast.models.rnn import AR_RNNLearner, RNNLearner
 from tsfast.models.cnn import AR_TCNLearner
-from tsfast.learner.losses import fun_rmse
+from tsfast.training import fun_rmse
 
 # %% [markdown]
 # ## What is Autoregressive Prediction?
@@ -58,7 +58,6 @@ from tsfast.learner.losses import fun_rmse
 
 # %%
 dls = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
-dls.show_batch(max_n=2)
 
 # %% [markdown]
 # ## Standard Simulation Baseline

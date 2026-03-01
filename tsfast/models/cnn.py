@@ -15,29 +15,19 @@ __all__ = [
     "SeperateCRNN",
 ]
 
-from functools import partial
-
 import numpy as np
 import torch
 from torch import Tensor, nn
 from torch.nn import Mish
 from torch.nn.utils.parametrizations import weight_norm
 
-from fastcore.meta import delegates
-from fastai.callback.tracker import EarlyStoppingCallback
-from fastai.data.core import DataLoaders
-from fastai.learner import Learner
-from fastai.optimizer import Adam
-from fastai.torch_basics import to_detach
-
-from ..data.loader import get_inp_out_size
-from ..learner.callbacks import ARInitCB, TimeSeriesRegularizer
-from ..learner.losses import SkipNLoss, fun_rmse
-from .layers import AR_Model, NormalizedModel, Scaler, SeqLinear, StandardScaler1D
+from ..training import ActivationRegularizer, Learner, TemporalActivationRegularizer, fun_rmse, prediction_concat
+from ..tsdata import get_io_size
+from .layers import AR_Model, SeqLinear
+from .scaling import ScaledModel, Scaler, StandardScaler
 from .rnn import SimpleRNN
 
 
-@delegates(nn.Conv1d, keep=True)
 def Conv1D(
     input_size: int,
     output_size: int,
@@ -113,7 +103,6 @@ class CausalConv1d(torch.nn.Conv1d):
         dilation: Dilation factor for the kernel.
         groups: Number of blocked connections from input to output channels.
         bias: Whether to add a learnable bias.
-        stateful: Whether to carry internal state across forward calls.
     """
 
     def __init__(
@@ -125,7 +114,6 @@ class CausalConv1d(torch.nn.Conv1d):
         dilation: int = 1,
         groups: int = 1,
         bias: bool = True,
-        stateful: bool = False,
     ):
         super().__init__(
             in_channels,
@@ -138,30 +126,12 @@ class CausalConv1d(torch.nn.Conv1d):
             bias=bias,
         )
         self.__init_size = (kernel_size - 1) * dilation
-        self.x_init = None
-        self.stateful = stateful
 
     def forward(self, x: Tensor) -> Tensor:
-        if self.x_init is not None and self.x_init.shape[0] != x.shape[0]:
-            self.x_init = None
-
-        if self.x_init is None or not self.stateful:
-            self.x_init = torch.zeros((x.shape[0], x.shape[1], self.__init_size), device=x.device)
-
-        x = torch.cat([self.x_init, x], dim=-1)
-
-        out = super().forward(x)
-
-        if self.stateful:
-            self.x_init = to_detach(x[..., -self.__init_size :], cpu=False, gather=False)
-
-        return out
-
-    def reset_state(self) -> None:
-        self.x_init = None
+        padding = torch.zeros((x.shape[0], x.shape[1], self.__init_size), device=x.device)
+        return super().forward(torch.cat([padding, x], dim=-1))
 
 
-@delegates(CausalConv1d, keep=True)
 def CConv1D(
     input_size: int,
     output_size: int,
@@ -191,7 +161,6 @@ def CConv1D(
     return nn.Sequential(*m)
 
 
-@delegates(CausalConv1d, keep=True)
 class TCN_Block(nn.Module):
     """Single TCN residual block with stacked causal convolutions.
 
@@ -202,7 +171,6 @@ class TCN_Block(nn.Module):
         activation: Activation function class, or None to disable.
         wn: Whether to apply weight normalization.
         bn: Whether to apply batch normalization.
-        stateful: Whether causal convolutions carry state across calls.
         **kwargs: Additional arguments passed to ``CausalConv1d``.
     """
 
@@ -214,14 +182,13 @@ class TCN_Block(nn.Module):
         activation: type[nn.Module] | None = Mish,
         wn: bool = True,
         bn: bool = False,
-        stateful: bool = False,
         **kwargs,
     ):
         super().__init__()
 
         layers = []
         for _ in range(num_layers):
-            conv = CausalConv1d(input_size, output_size, 2, stateful=stateful, **kwargs)
+            conv = CausalConv1d(input_size, output_size, 2, **kwargs)
             if wn:
                 conv = weight_norm(conv)
             act = activation() if activation is not None else None
@@ -248,7 +215,6 @@ class TCN(nn.Module):
         hl_width: Number of channels in each hidden TCN block.
         act: Activation function class.
         bn: Whether to apply batch normalization.
-        stateful: Whether causal convolutions carry state across calls.
     """
 
     def __init__(
@@ -259,7 +225,6 @@ class TCN(nn.Module):
         hl_width: int = 10,
         act: type[nn.Module] = Mish,
         bn: bool = False,
-        stateful: bool = False,
     ):
         super().__init__()
 
@@ -270,7 +235,6 @@ class TCN(nn.Module):
                 dilation=2 ** (i),
                 bn=bn,
                 activation=act,
-                stateful=stateful,
             )
             for i in range(hl_depth)
         ]
@@ -284,21 +248,19 @@ class TCN(nn.Module):
         return out
 
 
-@delegates(TCN, keep=True)
 def TCNLearner(
-    dls: DataLoaders,
+    dls,
     num_layers: int = 3,
     hidden_size: int = 100,
     loss_func: nn.Module = nn.L1Loss(),
-    metrics: list = [fun_rmse],
+    metrics: list | None = None,
     n_skip: int | None = None,
-    opt_func: type = Adam,
-    cbs: list | None = None,
-    input_norm: type[Scaler] | None = StandardScaler1D,
+    opt_func: type = torch.optim.Adam,
+    input_norm: type[Scaler] | None = StandardScaler,
     output_norm: type[Scaler] | None = None,
     **kwargs,
 ) -> Learner:
-    """Create a fastai Learner with a TCN model.
+    """Create a Learner with a TCN model.
 
     Args:
         dls: DataLoaders providing training and validation data.
@@ -308,23 +270,19 @@ def TCNLearner(
         metrics: List of metric functions.
         n_skip: Number of initial time steps to skip in the loss (defaults to 2**num_layers).
         opt_func: Optimizer constructor.
-        cbs: Additional callbacks.
         input_norm: Input normalization scaler class, or None to disable.
         output_norm: Output denormalization scaler class, or None to disable.
         **kwargs: Additional arguments passed to ``TCN``.
     """
-    inp, out = get_inp_out_size(dls)
+    if metrics is None:
+        metrics = [fun_rmse]
+
+    inp, out = get_io_size(dls)
     n_skip = 2**num_layers if n_skip is None else n_skip
     model = TCN(inp, out, num_layers, hidden_size, **kwargs)
-    model = NormalizedModel.from_dls(model, dls, input_norm, output_norm)
+    model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
 
-    skip = partial(SkipNLoss, n_skip=n_skip)
-
-    metrics = [skip(f) for f in metrics]
-    loss_func = skip(loss_func)
-
-    lrn = Learner(dls, model, loss_func=loss_func, opt_func=opt_func, metrics=metrics, cbs=cbs, lr=3e-3)
-    return lrn
+    return Learner(model, dls, loss_func=loss_func, opt_func=opt_func, metrics=metrics, n_skip=n_skip, lr=3e-3)
 
 
 class SeperateTCN(nn.Module):
@@ -337,7 +295,6 @@ class SeperateTCN(nn.Module):
         hl_width: Total hidden width split evenly across branches.
         act: Activation function class.
         bn: Whether to apply batch normalization.
-        stateful: Whether to carry state across forward calls.
         final_layer: Number of hidden layers in the final linear head.
     """
 
@@ -349,7 +306,6 @@ class SeperateTCN(nn.Module):
         hl_width: int = 10,
         act: type[nn.Module] = Mish,
         bn: bool = False,
-        stateful: bool = False,
         final_layer: int = 3,
     ):
         super().__init__()
@@ -365,35 +321,15 @@ class SeperateTCN(nn.Module):
         ]
         self.layers = nn.ModuleList([nn.Sequential(*layer) for layer in layers])
 
-        self.rec_field = (2**hl_depth) - 1
         self.final = SeqLinear(tcn_width * len(input_list), output_size, hidden_size=hl_width, hidden_layer=final_layer)
-        self.x_init = None
-        self.stateful = stateful
 
     def forward(self, x: Tensor) -> Tensor:
-        if self.x_init is not None:
-            if self.x_init.shape[0] != x.shape[0]:
-                self.x_init = None
-            elif self.stateful:
-                x = torch.cat([self.x_init, x], dim=1)
-
         tcn_out = [
             layer(x[..., self.input_list[i] : self.input_list[i + 1]].transpose(1, 2))
             for i, layer in enumerate(self.layers)
         ]
         out = torch.cat(tcn_out, dim=1).transpose(1, 2)
-
-        out = self.final(out)
-
-        if self.stateful:
-            if self.x_init is not None:
-                out = out[:, self.rec_field :]
-            self.x_init = x[:, -self.rec_field :]
-
-        return out
-
-    def reset_state(self) -> None:
-        self.x_init = None
+        return self.final(out)
 
 
 class CRNN(nn.Module):
@@ -411,7 +347,6 @@ class CRNN(nn.Module):
         input_p: Dropout probability on RNN inputs.
         weight_p: Weight dropout probability for RNN parameters.
         rnn_type: RNN cell type (``"gru"`` or ``"lstm"``).
-        stateful: Whether both CNN and RNN carry state across calls.
     """
 
     def __init__(
@@ -427,10 +362,9 @@ class CRNN(nn.Module):
         input_p: float = 0,
         weight_p: float = 0,
         rnn_type: str = "gru",
-        stateful: bool = False,
     ):
         super().__init__()
-        self.cnn = TCN(input_size, num_ft, num_cnn_layers, hs_cnn, act=nn.ReLU, stateful=stateful)
+        self.cnn = TCN(input_size, num_ft, num_cnn_layers, hs_cnn, act=nn.ReLU)
         self.rnn = SimpleRNN(
             num_ft,
             output_size,
@@ -440,26 +374,23 @@ class CRNN(nn.Module):
             input_p=input_p,
             weight_p=weight_p,
             rnn_type=rnn_type,
-            stateful=stateful,
         )
 
     def forward(self, x: Tensor) -> Tensor:
         return self.rnn(self.cnn(x))
 
 
-@delegates(CRNN, keep=True)
 def CRNNLearner(
-    dls: DataLoaders,
+    dls,
     loss_func: nn.Module = nn.L1Loss(),
-    metrics: list = [fun_rmse],
+    metrics: list | None = None,
     n_skip: int = 0,
-    opt_func: type = Adam,
-    cbs: list | None = None,
-    input_norm: type[Scaler] | None = StandardScaler1D,
+    opt_func: type = torch.optim.Adam,
+    input_norm: type[Scaler] | None = StandardScaler,
     output_norm: type[Scaler] | None = None,
     **kwargs,
 ) -> Learner:
-    """Create a fastai Learner with a CRNN model.
+    """Create a Learner with a CRNN model.
 
     Args:
         dls: DataLoaders providing training and validation data.
@@ -467,71 +398,68 @@ def CRNNLearner(
         metrics: List of metric functions.
         n_skip: Number of initial time steps to skip in the loss.
         opt_func: Optimizer constructor.
-        cbs: Additional callbacks.
         input_norm: Input normalization scaler class, or None to disable.
         output_norm: Output denormalization scaler class, or None to disable.
         **kwargs: Additional arguments passed to ``CRNN``.
     """
-    inp, out = get_inp_out_size(dls)
+    if metrics is None:
+        metrics = [fun_rmse]
+
+    inp, out = get_io_size(dls)
     model = CRNN(inp, out, **kwargs)
-    model = NormalizedModel.from_dls(model, dls, input_norm, output_norm)
+    model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
 
-    skip = partial(SkipNLoss, n_skip=n_skip)
-
-    metrics = [skip(f) for f in metrics]
-    loss_func = skip(loss_func)
-
-    lrn = Learner(dls, model, loss_func=loss_func, opt_func=opt_func, metrics=metrics, cbs=cbs, lr=3e-3)
-    return lrn
+    return Learner(model, dls, loss_func=loss_func, opt_func=opt_func, metrics=metrics, n_skip=n_skip, lr=3e-3)
 
 
-@delegates(TCN, keep=True)
 def AR_TCNLearner(
-    dls: DataLoaders,
+    dls,
     hl_depth: int = 3,
     alpha: float = 1,
     beta: float = 1,
-    early_stop: int = 0,
     metrics: list | None = None,
     n_skip: int | None = None,
-    opt_func: type = Adam,
-    input_norm: type[Scaler] | None = StandardScaler1D,
+    opt_func: type = torch.optim.Adam,
+    input_norm: type[Scaler] | None = StandardScaler,
     **kwargs,
 ) -> Learner:
-    """Create a fastai Learner with an autoregressive TCN model.
+    """Create a Learner with an autoregressive TCN model.
 
     Args:
         dls: DataLoaders providing training and validation data.
         hl_depth: Number of TCN hidden layers.
         alpha: Regularization weight for smoothness penalty.
         beta: Regularization weight for sparsity penalty.
-        early_stop: Early stopping patience in epochs (0 disables).
-        metrics: Metric functions (defaults to RMSE with skip).
+        metrics: Metric functions (defaults to RMSE).
         n_skip: Number of initial time steps to skip in the loss (defaults to 2**hl_depth).
         opt_func: Optimizer constructor.
         input_norm: Input normalization scaler class, or None to disable.
         **kwargs: Additional arguments passed to ``TCN``.
     """
+    if metrics is None:
+        metrics = [fun_rmse]
     n_skip = 2**hl_depth if n_skip is None else n_skip
 
-    inp, out = get_inp_out_size(dls)
+    inp, out = get_io_size(dls)
     ar_model = AR_Model(TCN(inp + out, out, hl_depth, **kwargs), ar=False)
     conv_module = ar_model.model.conv_layers[-1]
 
-    model = NormalizedModel.from_dls(ar_model, dls, input_norm, autoregressive=True)
+    model = ScaledModel.from_dls(ar_model, dls, input_norm, autoregressive=True)
 
-    cbs = [
-        ARInitCB(),
-        TimeSeriesRegularizer(alpha=alpha, beta=beta, modules=[conv_module]),
-    ]  # SaveModelCallback()
-    if early_stop > 0:
-        cbs += [EarlyStoppingCallback(patience=early_stop)]
-
-    if metrics is None:
-        metrics = SkipNLoss(fun_rmse, n_skip)
-
-    lrn = Learner(dls, model, loss_func=nn.L1Loss(), opt_func=opt_func, metrics=metrics, cbs=cbs, lr=3e-3)
-    return lrn
+    return Learner(
+        model,
+        dls,
+        loss_func=nn.L1Loss(),
+        opt_func=opt_func,
+        metrics=metrics,
+        n_skip=n_skip,
+        lr=3e-3,
+        transforms=[prediction_concat(t_offset=0)],
+        aux_losses=[
+            ActivationRegularizer(modules=[conv_module], alpha=alpha),
+            TemporalActivationRegularizer(modules=[conv_module], beta=beta),
+        ],
+    )
 
 
 class SeperateCRNN(nn.Module):
@@ -549,7 +477,6 @@ class SeperateCRNN(nn.Module):
         input_p: Dropout probability on RNN inputs.
         weight_p: Weight dropout probability for RNN parameters.
         rnn_type: RNN cell type (``"gru"`` or ``"lstm"``).
-        stateful: Whether both CNN and RNN carry state across calls.
     """
 
     def __init__(
@@ -565,12 +492,9 @@ class SeperateCRNN(nn.Module):
         input_p: float = 0,
         weight_p: float = 0,
         rnn_type: str = "gru",
-        stateful: bool = False,
     ):
         super().__init__()
-        self.cnn = SeperateTCN(
-            input_list, num_ft, num_cnn_layers, hs_cnn, act=nn.ReLU, stateful=stateful, final_layer=0
-        )
+        self.cnn = SeperateTCN(input_list, num_ft, num_cnn_layers, hs_cnn, act=nn.ReLU, final_layer=0)
         self.rnn = SimpleRNN(
             num_ft,
             output_size,
@@ -580,7 +504,6 @@ class SeperateCRNN(nn.Module):
             input_p=input_p,
             weight_p=weight_p,
             rnn_type=rnn_type,
-            stateful=stateful,
         )
 
     def forward(self, x: Tensor) -> Tensor:

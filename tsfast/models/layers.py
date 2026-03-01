@@ -1,174 +1,16 @@
-"""Reusable model layers, scalers, and wrappers for normalization and aggregation."""
+"""Reusable model layers and wrappers."""
 
 __all__ = [
-    "BatchNorm_1D_Stateful",
     "SeqLinear",
-    "Scaler",
-    "StandardScaler1D",
-    "MinMaxScaler1D",
-    "MaxAbsScaler1D",
     "AR_Model",
-    "NormalizedModel",
-    "unwrap_model",
     "SeqAggregation",
 ]
 
 from collections.abc import Callable
 
-import numpy as np
 import torch
 from torch import nn
-from torch.nn import Mish, Parameter
-
-import fastai.callback.progress  # noqa: F401  — side-effect import activates progress bar
-import fastai.callback.schedule  # noqa: F401  — side-effect import patches fit_flat_cos onto Learner
-from fastai.torch_basics import to_detach
-
-
-class BatchNorm_1D_Stateful(nn.Module):
-    """Batch normalization for stateful models.
-
-    Stores batch statistics for every timestep separately to mitigate transient effects.
-
-    Args:
-        hidden_size: number of features (channels) to normalize
-        seq_len: fixed sequence length for pre-allocating running statistics
-        stateful: whether to track sequence index across forward calls
-        batch_first: if ``True``, input shape is ``[batch, seq, features]``
-        eps: value added to denominator for numerical stability
-        momentum: exponential moving average factor for running statistics
-        affine: if ``True``, learn elementwise scale and shift parameters
-        track_running_stats: if ``True``, maintain running mean and variance
-    """
-
-    __constants__ = [
-        "track_running_stats",
-        "momentum",
-        "eps",
-        "weight",
-        "bias",
-        "running_mean",
-        "running_var",
-        "num_batches_tracked",
-    ]
-
-    def __init__(
-        self,
-        hidden_size: int,
-        seq_len: int | None = None,
-        stateful: bool = False,
-        batch_first: bool = True,
-        eps: float = 1e-7,
-        momentum: float = 0.1,
-        affine: bool = True,
-        track_running_stats: bool = True,
-    ):
-        super().__init__()
-        channel_d = hidden_size
-        self.seq_len = seq_len
-        self.stateful = stateful
-        self.batch_first = batch_first
-        self.eps = eps
-        self.momentum = momentum
-        self.affine = affine
-        self.track_running_stats = track_running_stats
-        self.axes = (1,)
-        if self.affine:
-            self.weight = Parameter(torch.Tensor(channel_d))
-            self.bias = Parameter(torch.Tensor(channel_d))
-            self.register_parameter("weight", self.weight)
-            self.register_parameter("bias", self.bias)
-        else:
-            self.register_parameter("weight", None)
-            self.register_parameter("bias", None)
-        if self.track_running_stats:
-            if seq_len is not None:
-                self.register_buffer("running_mean", torch.zeros(seq_len, channel_d))
-                self.register_buffer("running_var", torch.ones(seq_len, channel_d))
-            self.register_buffer("num_batches_tracked", torch.tensor(0, dtype=torch.long))
-        else:
-            self.register_parameter("running_mean", None)
-            self.register_parameter("running_var", None)
-            self.register_parameter("num_batches_tracked", None)
-        self.reset_parameters()
-        self.reset_state()
-
-    def reset_state(self):
-        self.seq_idx = 0
-
-    def reset_parameters(self):
-        if self.track_running_stats and self.seq_len is not None:
-            self.running_mean.zero_()
-            self.running_var.fill_(1)
-            self.num_batches_tracked.zero_()
-        if self.affine:
-            self.weight.data.fill_(1.0)
-            self.bias.data.fill_(0.0)
-
-    def forward(self, input, BN_start=None):
-        if input.dim() != 3:
-            raise ValueError("expected 3D input (got {}D input)".format(input.dim()))
-        if self.batch_first:
-            input = input.transpose(0, 1)
-
-        input_t, n_batch, hidden_size = input.size()
-
-        if self.track_running_stats and self.seq_len is None:
-            self.seq_len = input_t
-            self.register_buffer("running_mean", torch.zeros((input_t, hidden_size), device=input.device))
-            self.register_buffer("running_var", torch.ones((input_t, hidden_size), device=input.device))
-
-        if BN_start is None:
-            if self.stateful:
-                BN_start = self.seq_idx
-            else:
-                BN_start = 0
-
-        exponential_average_factor = 0.0
-        if self.training and self.track_running_stats:
-            if self.num_batches_tracked is not None:
-                self.num_batches_tracked += 1
-                if self.momentum is None:  # use cumulative moving average
-                    exponential_average_factor = 1.0 / float(self.num_batches_tracked)
-                else:  # use exponential moving average
-                    exponential_average_factor = self.momentum
-
-        BN_stop = BN_start + input_t
-        self.seq_idx = BN_stop  # new starting point for next forward call
-
-        if self.training:
-            mean = input.mean(1)
-            var = input.var(1, unbiased=False)  # use biased var in train
-
-            if self.seq_len - BN_start > 0:  # frame has to be in statistics window for updates
-                with torch.no_grad():
-                    self.running_mean[BN_start:BN_stop] = (
-                        exponential_average_factor * mean[: self.seq_len - BN_start]
-                        + (1 - exponential_average_factor) * self.running_mean[BN_start:BN_stop]
-                    )
-                    self.running_var[BN_start:BN_stop] = (
-                        exponential_average_factor * var[: self.seq_len - BN_start] * n_batch / (n_batch - 1)
-                        + (1 - exponential_average_factor) * self.running_var[BN_start:BN_stop]
-                    )  # update running_var with unbiased var
-        else:
-            mean = self.running_mean[BN_start:BN_stop]
-            var = self.running_var[BN_start:BN_stop]
-
-            # if elements outside of the statistics are requested, append the last element repeatedly
-            #             import pdb;pdb.set_trace()
-            if BN_stop >= self.seq_len:
-                cat_len = input_t - max(self.seq_len - BN_start, 0)  # min(BN_stop-self.seq_len,self.seq_len)
-                mean = torch.cat((mean, self.running_mean[-1:].repeat(cat_len, 1)))
-                var = torch.cat((var, self.running_var[-1:].repeat(cat_len, 1)))
-
-        output = (input - mean[:, None, :]) / (torch.sqrt(var[:, None, :] + self.eps))
-        if self.affine:
-            output = output * self.weight[None, None, :] + self.bias[None, None, :]  # [None, :, None, None]
-
-        if self.batch_first:
-            output = output.transpose(0, 1)
-
-        return output
+from torch.nn import Mish
 
 
 class SeqLinear(nn.Module):
@@ -217,125 +59,16 @@ class SeqLinear(nn.Module):
         return out
 
 
-class Scaler(nn.Module):
-    "Base class for feature scaling on [batch, seq, features] tensors."
-
-    def normalize(self, x: torch.Tensor) -> torch.Tensor:
-        raise NotImplementedError
-
-    def denormalize(self, x: torch.Tensor) -> torch.Tensor:
-        raise NotImplementedError
-
-    def unnormalize(self, x: torch.Tensor) -> torch.Tensor:
-        return self.denormalize(x)
-
-    @classmethod
-    def from_stats(cls, stats) -> "Scaler":
-        "Create a Scaler from a NormPair. Override in subclasses."
-        raise NotImplementedError(f"{cls.__name__} must implement from_stats")
-
-
-def _ensure_tensor(arr):
-    "Convert numpy array or tensor to shape [1,1,features] float tensor."
-    if isinstance(arr, np.ndarray):
-        return torch.from_numpy(arr[None, None, :]).float()
-    if isinstance(arr, torch.Tensor):
-        if arr.ndim == 1:
-            return arr[None, None, :].float()
-        return arr.float()
-    raise TypeError(f"Expected ndarray or Tensor, got {type(arr)}")
-
-
-class StandardScaler1D(Scaler):
-    """Normalize by ``(x - mean) / std``.
-
-    Args:
-        mean: per-feature mean, as ndarray or tensor
-        std: per-feature standard deviation, as ndarray or tensor
-    """
-
-    _epsilon = 1e-16
-
-    def __init__(self, mean, std):
-        super().__init__()
-        self.register_buffer("mean", _ensure_tensor(mean))
-        self.register_buffer("std", _ensure_tensor(std) + self._epsilon)
-
-    def normalize(self, x: torch.Tensor) -> torch.Tensor:
-        return (x - self.mean) / self.std
-
-    def denormalize(self, x: torch.Tensor) -> torch.Tensor:
-        return x * self.std + self.mean
-
-    @classmethod
-    def from_stats(cls, stats) -> "StandardScaler1D":
-        return cls(stats.mean, stats.std)
-
-
-class MinMaxScaler1D(Scaler):
-    """Normalize by ``(x - min) / (max - min)`` to ``[0, 1]``.
-
-    Args:
-        min_val: per-feature minimum, as ndarray or tensor
-        max_val: per-feature maximum, as ndarray or tensor
-    """
-
-    _epsilon = 1e-16
-
-    def __init__(self, min_val, max_val):
-        super().__init__()
-        self.register_buffer("min_val", _ensure_tensor(min_val))
-        self.register_buffer("range_val", _ensure_tensor(max_val) - _ensure_tensor(min_val) + self._epsilon)
-
-    def normalize(self, x: torch.Tensor) -> torch.Tensor:
-        return (x - self.min_val) / self.range_val
-
-    def denormalize(self, x: torch.Tensor) -> torch.Tensor:
-        return x * self.range_val + self.min_val
-
-    @classmethod
-    def from_stats(cls, stats) -> "MinMaxScaler1D":
-        return cls(stats.min, stats.max)
-
-
-class MaxAbsScaler1D(Scaler):
-    """Normalize by ``x / max(|min|, |max|)``.
-
-    Args:
-        min_val: per-feature minimum, as ndarray or tensor
-        max_val: per-feature maximum, as ndarray or tensor
-    """
-
-    _epsilon = 1e-16
-
-    def __init__(self, min_val, max_val):
-        super().__init__()
-        self.register_buffer(
-            "max_abs", torch.max(torch.abs(_ensure_tensor(min_val)), torch.abs(_ensure_tensor(max_val))) + self._epsilon
-        )
-
-    def normalize(self, x: torch.Tensor) -> torch.Tensor:
-        return x / self.max_abs
-
-    def denormalize(self, x: torch.Tensor) -> torch.Tensor:
-        return x * self.max_abs
-
-    @classmethod
-    def from_stats(cls, stats) -> "MaxAbsScaler1D":
-        return cls(stats.min, stats.max)
-
-
 class AR_Model(nn.Module):
     """Autoregressive model container.
 
     Runs autoregressively when the output sequence is not provided, otherwise
     uses teacher forcing. Normalization should be handled externally via
-    NormalizedModel wrapping.
+    ScaledModel wrapping.
 
     Args:
         model: inner model to wrap
         ar: if ``True``, default to autoregressive mode in forward
-        stateful: if ``True``, carry the last output across forward calls
         model_has_state: if ``True``, the inner model accepts and returns hidden state
         return_state: if ``True``, return ``(output, hidden_state)`` tuple
         out_sz: output feature size, used to initialize autoregressive seed
@@ -345,7 +78,6 @@ class AR_Model(nn.Module):
         self,
         model: nn.Module,
         ar: bool = True,
-        stateful: bool = False,
         model_has_state: bool = False,
         return_state: bool = False,
         out_sz: int | None = None,
@@ -353,26 +85,31 @@ class AR_Model(nn.Module):
         super().__init__()
         self.model = model
         self.ar = ar
-        self.stateful = stateful
         self.model_has_state = model_has_state
         self.return_state = return_state
         self.out_sz = out_sz
         if return_state and not model_has_state:
             raise ValueError("return_state=True requires model_has_state=True")
-        self.y_init = None
 
-    def forward(self, inp: torch.Tensor, h_init=None, ar: bool | None = None):
+    def forward(self, inp: torch.Tensor, state=None, ar: bool | None = None):
         if ar is None:
             ar = self.ar
 
-        if ar:  # autoregressive mode
+        # Unpack state — accept dict, list (legacy), or None
+        match state:
+            case {"h": h_init, **rest}:
+                y_prev = rest.get("y_init", None)
+            case list():
+                h_init = state
+                y_prev = None
+            case _:
+                h_init = None
+                y_prev = None
+
+        if ar:
             y_e = []
+            y_next = y_prev if y_prev is not None else torch.zeros(inp.shape[0], 1, self.out_sz, device=inp.device)
 
-            y_next = (
-                self.y_init if self.y_init is not None else torch.zeros(inp.shape[0], 1, self.out_sz).to(inp.device)
-            )
-
-            # two loops in the if clause to avoid the if inside the loop
             if self.model_has_state:
                 h0 = h_init
                 for u_in in inp.split(1, dim=1):
@@ -386,101 +123,16 @@ class AR_Model(nn.Module):
                     y_e.append(y_next)
 
             y_e = torch.cat(y_e, dim=1)
-
-        else:  # teacherforcing mode
+            h0 = h0 if self.model_has_state else None
+        else:
             if self.model_has_state:
                 y_e, h0 = self.model(inp, h_init)
             else:
                 y_e = self.model(inp)
+                h0 = None
 
-        if self.stateful:
-            self.y_init = to_detach(y_e[:, -1:], cpu=False, gather=False)
-
-        return y_e if not self.return_state else (y_e, h0)
-
-    def reset_state(self):
-        self.y_init = None
-
-
-class NormalizedModel(nn.Module):
-    """Wraps a model with input normalization and optional output denormalization.
-
-    Args:
-        model: inner model to wrap
-        input_norm: scaler applied to inputs before the model
-        output_norm: scaler applied to outputs after the model
-    """
-
-    def __init__(self, model: nn.Module, input_norm: Scaler, output_norm: Scaler | None = None):
-        super().__init__()
-        self.model = model
-        self.input_norm = input_norm
-        self.output_norm = output_norm
-
-    @classmethod
-    def from_stats(
-        cls, model: nn.Module, input_stats, output_stats=None, scaler_cls: type | None = None
-    ) -> "NormalizedModel":
-        "Create from NormPair stats with the given Scaler class."
-        if scaler_cls is None:
-            scaler_cls = StandardScaler1D
-        input_norm = scaler_cls.from_stats(input_stats)
-        output_norm = scaler_cls.from_stats(output_stats) if output_stats is not None else None
-        return cls(model, input_norm, output_norm)
-
-    @classmethod
-    def from_dls(
-        cls,
-        model: nn.Module,
-        dls,
-        input_norm: type[Scaler] | None = StandardScaler1D,
-        output_norm: type[Scaler] | None = None,
-        *,
-        autoregressive: bool = False,
-    ) -> nn.Module:
-        """Create from DataLoaders norm_stats, or return *model* unchanged if *input_norm* is None.
-
-        Args:
-            model: inner model to wrap
-            dls: DataLoaders with ``norm_stats`` attribute (populated automatically if missing)
-            input_norm: scaler class for input normalization, or None to skip wrapping
-            output_norm: scaler class for output denormalization, or None to skip
-            autoregressive: if True, input stats are ``norm_u + norm_y`` and output
-                stats use ``input_norm`` (AR models use the same scaler for both)
-        """
-        if input_norm is None:
-            return model
-        from ..datasets.core import ensure_norm_stats
-
-        ensure_norm_stats(dls)
-        norm_u, _, norm_y = dls.norm_stats
-        if autoregressive:
-            in_scaler = input_norm.from_stats(norm_u + norm_y)
-            out_scaler = input_norm.from_stats(norm_y)
-        else:
-            in_scaler = input_norm.from_stats(norm_u)
-            out_scaler = output_norm.from_stats(norm_y) if output_norm is not None else None
-        return cls(model, in_scaler, out_scaler)
-
-    def forward(self, xb: torch.Tensor, **kwargs) -> torch.Tensor:
-        xb = self.input_norm.normalize(xb)
-        out = self.model(xb, **kwargs)
-        if self.output_norm is not None:
-            out = self.output_norm.denormalize(out)
-        return out
-
-
-def _unwrap_ddp(model):
-    "Unwrap DistributedDataParallel/DataParallel wrappers."
-    while hasattr(model, "module"):
-        model = model.module
-    return model
-
-
-def unwrap_model(model: nn.Module) -> nn.Module:
-    "Get the inner model, unwrapping DDP/DP and NormalizedModel if present."
-    model = _unwrap_ddp(model)
-    return model.model if isinstance(model, NormalizedModel) else model
+        new_state = {"h": h0, "y_init": y_e[:, -1:].detach()}
+        return y_e if not self.return_state else (y_e, new_state)
 
 
 class SeqAggregation(nn.Module):

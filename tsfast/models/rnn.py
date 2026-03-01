@@ -2,7 +2,6 @@
 
 __all__ = [
     "RNN",
-    "Sequential_RNN",
     "SimpleRNN",
     "RNNLearner",
     "AR_RNNLearner",
@@ -14,24 +13,97 @@ __all__ = [
     "SeperateRNN",
 ]
 
-from functools import partial
+import warnings
 
 import torch
+import torch.nn.functional as F
 from torch import Tensor, nn
 
-from fastcore.meta import delegates
-from fastai.callback.tracker import EarlyStoppingCallback
-from fastai.data.core import DataLoaders
-from fastai.imports import noop
-from fastai.learner import Learner
-from fastai.optimizer import Adam
-from fastai.text.models.awdlstm import RNNDropout, WeightDropout
-from fastai.torch_basics import one_param, to_detach
+from ..training import (
+    ActivationRegularizer,
+    Learner,
+    TbpttLearner,
+    TemporalActivationRegularizer,
+    fun_rmse,
+    prediction_concat,
+)
+from ..tsdata import get_io_size
+from .layers import AR_Model, SeqLinear
+from .scaling import ScaledModel, StandardScaler
 
-from ..data.loader import TbpttResetCB, get_inp_out_size
-from ..learner.callbacks import ARInitCB, SkipFirstNCallback, TimeSeriesRegularizer
-from ..learner.losses import SkipNLoss, fun_rmse
-from .layers import AR_Model, BatchNorm_1D_Stateful, NormalizedModel, SeqLinear, StandardScaler1D
+
+def _dropout_mask(x: Tensor, sz: list, p: float) -> Tensor:
+    """Return a multiplicative dropout mask with probability ``p`` to zero an element."""
+    return x.new_empty(*sz).bernoulli_(1 - p).div_(1 - p)
+
+
+class RNNDropout(nn.Module):
+    """Dropout with probability ``p`` that is consistent on the seq_len dimension (variational dropout)."""
+
+    def __init__(self, p: float = 0.5):
+        super().__init__()
+        self.p = p
+
+    def forward(self, x: Tensor) -> Tensor:
+        if not self.training or self.p == 0.0:
+            return x
+        return x * _dropout_mask(x.data, (x.size(0), 1, *x.shape[2:]), self.p)
+
+
+class WeightDropout(nn.Module):
+    """A module that wraps another layer in which some weights will be replaced by 0 during training.
+
+    Args:
+        module: wrapped RNN module.
+        weight_p: weight dropout probability.
+        layer_names: name(s) of the parameters to apply dropout to.
+    """
+
+    def __init__(
+        self,
+        module: nn.Module,
+        weight_p: float,
+        layer_names: str | list[str] = "weight_hh_l0",
+    ):
+        super().__init__()
+        self.module = module
+        self.weight_p = weight_p
+        self.layer_names = [layer_names] if isinstance(layer_names, str) else list(layer_names)
+        for layer in self.layer_names:
+            # Makes a copy of the weights of the selected layers.
+            w = getattr(self.module, layer)
+            delattr(self.module, layer)
+            self.register_parameter(f"{layer}_raw", nn.Parameter(w.data))
+            setattr(self.module, layer, w.clone())
+            if isinstance(self.module, (nn.RNNBase, nn.modules.rnn.RNNBase)):
+                self.module.flatten_parameters = self._do_nothing
+
+    def _setweights(self):
+        """Apply dropout to the raw weights."""
+        for layer in self.layer_names:
+            raw_w = getattr(self, f"{layer}_raw")
+            if self.training:
+                w = F.dropout(raw_w, p=self.weight_p)
+            else:
+                w = raw_w.clone()
+            setattr(self.module, layer, w)
+
+    def forward(self, *args):
+        self._setweights()
+        with warnings.catch_warnings():
+            # To avoid the warning that comes because the weights aren't flattened.
+            warnings.simplefilter("ignore", category=UserWarning)
+            return self.module(*args)
+
+    def reset(self):
+        for layer in self.layer_names:
+            raw_w = getattr(self, f"{layer}_raw")
+            setattr(self.module, layer, raw_w.clone())
+        if hasattr(self.module, "reset"):
+            self.module.reset()
+
+    def _do_nothing(self):
+        pass
 
 
 class RNN(nn.Module):
@@ -46,8 +118,7 @@ class RNN(nn.Module):
         weight_p: weight dropout probability applied within each RNN cell.
         rnn_type: recurrent cell type, one of ``'gru'``, ``'lstm'``, or ``'rnn'``.
         ret_full_hidden: if True, return stacked hidden outputs from all layers.
-        stateful: if True, persist hidden state across forward calls.
-        normalization: normalization between layers (``''``, ``'layernorm'``, or ``'batchnorm'``).
+        normalization: normalization between layers (``''`` or ``'layernorm'``).
         **kwargs: additional keyword arguments forwarded to the underlying ``nn.RNN``/``nn.GRU``/``nn.LSTM``.
     """
 
@@ -61,7 +132,6 @@ class RNN(nn.Module):
         weight_p: float = 0.0,
         rnn_type: str = "gru",
         ret_full_hidden: bool = False,
-        stateful: bool = False,
         normalization: str = "",
         **kwargs,
     ):
@@ -74,9 +144,7 @@ class RNN(nn.Module):
         self.weight_p = weight_p
         self.rnn_type = rnn_type
         self.ret_full_hidden = ret_full_hidden
-        self.stateful = stateful
         self.normalization = normalization
-        self.bs = 1
 
         self.rnns = nn.ModuleList(
             [
@@ -94,27 +162,18 @@ class RNN(nn.Module):
             self.norm_layers = nn.ModuleList(
                 [nn.LayerNorm(hidden_size, elementwise_affine=False) for _ in range(num_layers)]
             )
-        elif normalization == "batchnorm":
-            self.norm_layers = nn.ModuleList(
-                [
-                    (BatchNorm_1D_Stateful(hidden_size, stateful=stateful, batch_first=True, affine=False))
-                    for i in range(num_layers)
-                ]
-            )
         else:
             raise ValueError("Invalid value for normalization")
-        self.reset_state()
 
-    def forward(self, inp: Tensor, h_init: list | None = None):
+    def forward(self, inp: Tensor, state: list | None = None):
         bs, seq_len, _ = inp.shape
-        if h_init is None and self.stateful:
-            h_init = self._get_hidden(bs)
-
         r_input = self.input_dp(inp) if self.input_p > 0 else inp
         full_hid, new_hidden = [], []
-        #         import pdb; pdb.set_trace()
         for layer_idx, (rnn, hid_dp, nrm) in enumerate(zip(self.rnns, self.hidden_dps, self.norm_layers)):
-            r_output, h = rnn(r_input.contiguous(), h_init[layer_idx] if h_init is not None else None)
+            r_output, h = rnn(
+                r_input.contiguous(),
+                state[layer_idx] if state is not None else None,
+            )
 
             if self.normalization != "":
                 r_output = nrm(r_output)
@@ -126,22 +185,9 @@ class RNN(nn.Module):
             new_hidden.append(h)
             r_input = r_output
 
-        if self.stateful:
-            self.hidden = to_detach(new_hidden, cpu=False, gather=False)
-            self.bs = bs
         output = r_output if not self.ret_full_hidden else torch.stack(full_hid, 0)
 
         return output, new_hidden
-
-    def _get_hidden(self, bs):
-        if self.hidden is None:
-            return None
-        if bs != self.bs:
-            return None
-        if self.hidden[0][0].device != one_param(self).device:
-            return None
-            #         import pdb; pdb.set_trace()
-        return self.hidden
 
     def _one_rnn(self, n_in, n_out, weight_p, rnn_type, **kwargs):
         if rnn_type == "gru":
@@ -160,16 +206,12 @@ class RNN(nn.Module):
             raise Exception
         return rnn
 
-    def reset_state(self) -> None:
-        """Clear the stored hidden state."""
-        self.hidden = None
-
 
 class Sequential_RNN(RNN):
     """RNN variant that returns only the output tensor, discarding hidden state."""
 
-    def forward(self, inp: Tensor, h_init: list | None = None):
-        return super().forward(inp, h_init)[0]
+    def forward(self, inp: Tensor, state: list | None = None):
+        return super().forward(inp, state)[0]
 
 
 class SimpleRNN(nn.Module):
@@ -185,7 +227,6 @@ class SimpleRNN(nn.Module):
         **kwargs: additional keyword arguments forwarded to ``RNN``.
     """
 
-    @delegates(RNN, keep=True)
     def __init__(
         self,
         input_size: int,
@@ -203,105 +244,118 @@ class SimpleRNN(nn.Module):
             hidden_size, output_size, hidden_size=hidden_size, hidden_layer=linear_layers, act=nn.LeakyReLU
         )
 
-    def forward(self, x: Tensor, h_init: list | None = None):
-        out, h = self.rnn(x, h_init)
+    def forward(self, x: Tensor, state: list | None = None):
+        out, h = self.rnn(x, state)
         out = self.final(out)
         return out if not self.return_state else (out, h)
 
 
-@delegates(SimpleRNN, keep=True)
 def RNNLearner(
-    dls: DataLoaders,
+    dls,
     loss_func=nn.L1Loss(),
-    metrics: list | None = [fun_rmse],
+    metrics: list | None = None,
     n_skip: int = 0,
     num_layers: int = 1,
     hidden_size: int = 100,
-    stateful: bool = False,
-    opt_func=Adam,
-    cbs: list | None = None,
-    input_norm: type | None = StandardScaler1D,
+    sub_seq_len: int | None = None,
+    opt_func=torch.optim.Adam,
+    input_norm: type | None = StandardScaler,
     output_norm: type | None = None,
+    augmentations: list | None = None,
+    transforms: list | None = None,
+    aux_losses: list | None = None,
+    grad_clip: float | None = None,
     **kwargs,
 ):
-    """Create a fastai Learner with a SimpleRNN model and standard training setup.
+    """Create a Learner with a SimpleRNN model and standard training setup.
 
     Args:
-        dls: fastai DataLoaders providing training and validation data.
+        dls: DataLoaders providing training and validation data.
         loss_func: loss function for training.
         metrics: list of metric functions evaluated during validation.
         n_skip: number of initial timesteps to skip in loss and metric computation.
         num_layers: number of stacked RNN layers.
         hidden_size: number of hidden units per RNN layer.
-        stateful: if True, enable stateful training with TBPTT reset callbacks.
+        sub_seq_len: sub-sequence length for TBPTT; enables stateful training when set.
         opt_func: optimizer constructor.
-        cbs: additional callbacks to include in the Learner.
         input_norm: scaler class for input normalization, or None to disable.
         output_norm: scaler class for output denormalization, or None to disable.
+        augmentations: list of augmentation transforms (train only).
+        transforms: list of transforms (train + valid).
+        aux_losses: list of auxiliary loss functions.
+        grad_clip: max gradient norm for clipping, or None to disable.
         **kwargs: additional keyword arguments forwarded to ``SimpleRNN``.
     """
-    if cbs is None:
-        cbs = []
+    if metrics is None:
+        metrics = [fun_rmse]
 
-    inp, out = get_inp_out_size(dls)
-    model = SimpleRNN(inp, out, num_layers, hidden_size, stateful=stateful, **kwargs)
-    model = NormalizedModel.from_dls(model, dls, input_norm, output_norm)
+    inp, out = get_io_size(dls)
+    model = SimpleRNN(inp, out, num_layers, hidden_size, **kwargs)
+    model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
 
-    skip = partial(SkipNLoss, n_skip=n_skip)
+    cls = TbpttLearner if sub_seq_len else Learner
+    extra = {"sub_seq_len": sub_seq_len} if sub_seq_len else {}
+    return cls(
+        model,
+        dls,
+        loss_func=loss_func,
+        metrics=metrics,
+        n_skip=n_skip,
+        opt_func=opt_func,
+        lr=3e-3,
+        augmentations=augmentations,
+        transforms=transforms,
+        aux_losses=aux_losses,
+        grad_clip=grad_clip,
+        **extra,
+    )
 
-    metrics = [skip(f) for f in metrics]
 
-    if stateful:
-        cbs.append(TbpttResetCB())
-        # if stateful apply n_skip with a callback for the first minibatch of a tbptt sequence
-        cbs.append(SkipFirstNCallback(n_skip))
-    else:
-        loss_func = skip(loss_func)
-
-    lrn = Learner(dls, model, loss_func=loss_func, opt_func=opt_func, metrics=metrics, cbs=cbs, lr=3e-3)
-    return lrn
-
-
-@delegates(SimpleRNN, keep=True)
 def AR_RNNLearner(
-    dls: DataLoaders,
+    dls,
     alpha: float = 0,
     beta: float = 0,
-    early_stop: int = 0,
     metrics: list | None = None,
     n_skip: int = 0,
-    opt_func=Adam,
-    input_norm: type | None = StandardScaler1D,
+    opt_func=torch.optim.Adam,
+    input_norm: type | None = StandardScaler,
     **kwargs,
 ):
-    """Create a fastai Learner with an autoregressive RNN model.
+    """Create a Learner with an autoregressive RNN model.
 
     Args:
-        dls: fastai DataLoaders providing training and validation data.
+        dls: DataLoaders providing training and validation data.
         alpha: activation regularization penalty weight.
         beta: temporal activation regularization penalty weight.
-        early_stop: patience for early stopping; 0 disables early stopping.
         metrics: metric functions for validation, or None for default RMSE.
         n_skip: number of initial timesteps to skip in metric computation.
         opt_func: optimizer constructor.
         input_norm: scaler class for input normalization, or None to disable.
         **kwargs: additional keyword arguments forwarded to ``SimpleRNN``.
     """
-    inp, out = get_inp_out_size(dls)
+    if metrics is None:
+        metrics = [fun_rmse]
+
+    inp, out = get_io_size(dls)
     ar_model = AR_Model(SimpleRNN(inp + out, out, **kwargs), ar=False)
     rnn_module = ar_model.model.rnn
 
-    model = NormalizedModel.from_dls(ar_model, dls, input_norm, autoregressive=True)
+    model = ScaledModel.from_dls(ar_model, dls, input_norm, autoregressive=True)
 
-    cbs = [ARInitCB(), TimeSeriesRegularizer(alpha=alpha, beta=beta, modules=[rnn_module])]  # SaveModelCallback()
-    if early_stop > 0:
-        cbs += [EarlyStoppingCallback(patience=early_stop)]
-
-    if metrics is None:
-        metrics = SkipNLoss(fun_rmse, n_skip)
-
-    lrn = Learner(dls, model, loss_func=nn.L1Loss(), opt_func=opt_func, metrics=metrics, cbs=cbs, lr=3e-3)
-    return lrn
+    return Learner(
+        model,
+        dls,
+        loss_func=nn.L1Loss(),
+        metrics=metrics,
+        n_skip=n_skip,
+        opt_func=opt_func,
+        lr=3e-3,
+        transforms=[prediction_concat(t_offset=0)],
+        aux_losses=[
+            ActivationRegularizer(modules=[rnn_module], alpha=alpha),
+            TemporalActivationRegularizer(modules=[rnn_module], beta=beta),
+        ],
+    )
 
 
 class ResidualBlock_RNN(nn.Module):
@@ -313,12 +367,13 @@ class ResidualBlock_RNN(nn.Module):
         **kwargs: additional keyword arguments forwarded to ``RNN``.
     """
 
-    @delegates(RNN, keep=True)
     def __init__(self, input_size: int, hidden_size: int, **kwargs):
         super().__init__()
         self.rnn1 = RNN(input_size, hidden_size, num_layers=1, **kwargs)
         self.rnn2 = RNN(hidden_size, hidden_size, num_layers=1, **kwargs)
-        self.residual = SeqLinear(input_size, hidden_size, hidden_layer=0) if hidden_size != input_size else noop
+        self.residual = (
+            SeqLinear(input_size, hidden_size, hidden_layer=0) if hidden_size != input_size else nn.Identity()
+        )
 
     def forward(self, x: Tensor):
         out, _ = self.rnn1(x)
@@ -337,7 +392,6 @@ class SimpleResidualRNN(nn.Sequential):
         **kwargs: additional keyword arguments forwarded to ``ResidualBlock_RNN``.
     """
 
-    @delegates(ResidualBlock_RNN, keep=True)
     def __init__(self, input_size: int, output_size: int, num_blocks: int = 1, hidden_size: int = 100, **kwargs):
         super().__init__()
         for i in range(num_blocks):
@@ -357,7 +411,6 @@ class DenseLayer_RNN(nn.Module):
         **kwargs: additional keyword arguments forwarded to ``RNN``.
     """
 
-    @delegates(RNN, keep=True)
     def __init__(self, input_size: int, hidden_size: int, **kwargs):
         super().__init__()
         self.rnn1 = RNN(input_size, hidden_size, num_layers=1, **kwargs)
@@ -379,7 +432,6 @@ class DenseBlock_RNN(nn.Sequential):
         **kwargs: additional keyword arguments forwarded to ``DenseLayer_RNN``.
     """
 
-    @delegates(DenseLayer_RNN, keep=True)
     def __init__(self, num_layers: int, num_input_features: int, growth_rate: int, **kwargs):
         super().__init__()
         for i in range(num_layers):
@@ -400,7 +452,6 @@ class DenseNet_RNN(nn.Sequential):
         **kwargs: additional keyword arguments forwarded to ``RNN``.
     """
 
-    @delegates(RNN, keep=True)
     def __init__(
         self,
         input_size: int,
@@ -438,7 +489,6 @@ class SeperateRNN(nn.Module):
         **kwargs: additional keyword arguments forwarded to ``RNN``.
     """
 
-    @delegates(RNN, keep=True)
     def __init__(
         self,
         input_list: list[list[int]],

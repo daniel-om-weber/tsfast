@@ -33,9 +33,9 @@
 # ## Setup
 
 # %%
-from tsfast.datasets.benchmark import create_dls_silverbox
+from tsfast.tsdata.benchmark import create_dls_silverbox
 from tsfast.models.rnn import RNNLearner
-from tsfast.learner.losses import fun_rmse
+from tsfast.training import fun_rmse
 
 # %% [markdown]
 # ## The Memory Problem
@@ -100,21 +100,21 @@ dls_tbptt = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10, sub_seq_len=100)
 #
 # Create a stateful RNN that maintains hidden state across sub-windows.
 #
-# - **`stateful=True`** -- the RNN does **not** reset its hidden state between
-#   forward passes. Instead, the state from the previous sub-window initializes
-#   the next one. This is what allows information to flow across sub-window
-#   boundaries.
+# - **`sub_seq_len=100`** -- enables TBPTT with 100-step sub-windows. The RNN
+#   does **not** reset its hidden state between forward passes. Instead, the
+#   state from the previous sub-window initializes the next one, allowing
+#   information to flow across sub-window boundaries.
 #
-# When `stateful=True` is set, `RNNLearner` automatically adds `TbpttResetCB`
-# to the learner. This callback monitors the DataLoader and resets the hidden
-# state whenever a new main window starts (i.e., at sequence boundaries).
+# When `sub_seq_len` is set, `RNNLearner` automatically uses `TbpttLearner`
+# with `TbpttResetCB`. This callback monitors the DataLoader and resets the
+# hidden state whenever a new main window starts (i.e., at sequence boundaries).
 # Without this reset, the hidden state from one training sample would bleed
 # into the next, unrelated sample.
 
 # %%
 lrn_tbptt = RNNLearner(
     dls_tbptt, rnn_type='lstm', hidden_size=40,
-    stateful=True, metrics=[fun_rmse],
+    sub_seq_len=100, metrics=[fun_rmse],
 )
 
 # %% [markdown]
@@ -168,11 +168,11 @@ print(f"Stateful (TBPTT):      {lrn_tbptt.validate()}")
 #
 # - **TBPTT splits long sequences into sub-windows** with the `sub_seq_len`
 #   parameter on `create_dls_silverbox` (or any `create_dls` variant).
-# - **`stateful=True`** makes the RNN carry its hidden state across sub-windows
-#   instead of resetting to zero each time.
+# - **`sub_seq_len`** in `RNNLearner` enables TBPTT and makes the RNN carry its
+#   hidden state across sub-windows instead of resetting to zero each time.
 # - **`TbpttResetCB`** resets hidden state at sequence boundaries so different
 #   training samples do not bleed into each other. It is added automatically
-#   when `stateful=True`.
+#   when `sub_seq_len` is set.
 # - **Gradients are truncated** to `sub_seq_len` timesteps, bounding memory
 #   usage regardless of the full sequence length.
 # - **Hidden state spans the full sequence**, preserving long-range information

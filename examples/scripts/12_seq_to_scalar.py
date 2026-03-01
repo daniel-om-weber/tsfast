@@ -19,8 +19,8 @@
 # Not all system identification tasks predict a full output sequence. Sometimes
 # the target is a single scalar -- a physical parameter, a classification label,
 # or a summary statistic. This example builds a custom data pipeline with
-# `ScalarBlock` and uses `SeqAggregation` to reduce RNN output to a scalar
-# prediction.
+# `HDF5Attrs` for scalar targets and uses `SeqAggregation` to reduce RNN output
+# to a scalar prediction.
 
 # %% [markdown]
 # ## Prerequisites
@@ -39,21 +39,15 @@
 from pathlib import Path
 
 import torch.nn as nn
-from fastai.data.block import DataBlock
-from tsfast.data.split import ParentSplitter
-from fastai.learner import Learner
-from fastai.optimizer import Adam
+from torch.utils.data import DataLoader
 
-from tsfast.data.block import SequenceBlock, ScalarBlock
-from tsfast.data.core import (
-    get_hdf_files,
-    CreateDict,
-    DfHDFCreateWindows,
-    TensorScalarsOutput,
+from tsfast.tsdata import (
+    WindowedDataset, HDF5Signals, HDF5Attrs, FileEntry,
+    DataLoaders, get_hdf_files, split_by_parent,
 )
 from tsfast.models.rnn import SimpleRNN
 from tsfast.models.layers import SeqAggregation
-from tsfast.learner.losses import fun_rmse
+from tsfast.training import Learner, fun_rmse
 
 # %% [markdown]
 # ## The Task: Estimating Initial Conditions
@@ -99,44 +93,62 @@ for f in files[:5]:
     print(f"  {f.parent.name}/{f.name}")
 
 # %% [markdown]
-# ## Building a Custom DataBlock
+# ## Building a Custom Data Pipeline
 #
 # Unlike `create_dls` which creates sequence-to-sequence pipelines, here we need
-# a custom `DataBlock` with:
+# a custom pipeline with:
 #
-# - **Input:** `SequenceBlock` reading `[u, x, v]` columns as a multi-channel
+# - **Input:** `HDF5Signals` reading `[u, x, v]` columns as a multi-channel
 #   time series
-# - **Target:** `ScalarBlock` reading `[x0, v0]` from HDF5 file attributes
+# - **Target:** `HDF5Attrs` reading `[x0, v0]` from HDF5 file attributes
 
 # %%
-dblock = DataBlock(
-    blocks=(
-        SequenceBlock.from_hdf(['u', 'x', 'v']),
-        ScalarBlock.from_hdf_attrs(['x0', 'v0'], scl_cls=TensorScalarsOutput),
-    ),
-    get_items=CreateDict([DfHDFCreateWindows(win_sz=500, stp_sz=500, clm='u')]),
-    splitter=ParentSplitter(),
-)
-
-dls = dblock.dataloaders(files, bs=16)
-dls.show_batch(max_n=4)
+inputs_block = HDF5Signals(['u', 'x', 'v'])
+targets_block = HDF5Attrs(['x0', 'v0'])
 
 # %% [markdown]
-# Each component of the `DataBlock`:
+# Create `FileEntry` objects from the discovered files. Each entry points to
+# an HDF5 file with a default resampling factor of 1.0.
+
+# %%
+entries = [FileEntry(path=str(f)) for f in files]
+train_idx, valid_idx = split_by_parent(files)
+
+train_entries = [entries[i] for i in train_idx]
+valid_entries = [entries[i] for i in valid_idx]
+
+# %% [markdown]
+# Build `WindowedDataset` for train and validation splits. Using
+# `win_sz=500, stp_sz=500` gives one window per file (the full trajectory).
+
+# %%
+train_ds = WindowedDataset(train_entries, inputs=inputs_block, targets=targets_block, win_sz=500, stp_sz=500)
+valid_ds = WindowedDataset(valid_entries, inputs=inputs_block, targets=targets_block, win_sz=500, stp_sz=500)
+
+print(f"Train samples: {len(train_ds)}")
+print(f"Valid samples: {len(valid_ds)}")
+
+# %% [markdown]
+# Wrap in DataLoaders. We construct standard PyTorch DataLoaders and wrap them
+# in `DataLoaders` for compatibility with the Learner.
+
+# %%
+train_dl = DataLoader(train_ds, batch_size=16, shuffle=True)
+valid_dl = DataLoader(valid_ds, batch_size=16, shuffle=False)
+dls = DataLoaders(train_dl, valid_dl)
+
+# %% [markdown]
+# Each component of the pipeline:
 #
-# - **`SequenceBlock.from_hdf(['u', 'x', 'v'])`** -- extracts named datasets
-#   from each HDF5 file as a 3-channel time series with shape
-#   `(seq_len, 3)`.
-# - **`ScalarBlock.from_hdf_attrs(['x0', 'v0'], scl_cls=TensorScalarsOutput)`**
-#   -- reads named attributes from HDF5 metadata as a scalar target vector of
-#   shape `(2,)`. We use `TensorScalarsOutput` so the target is not normalized
-#   by the `ScalarNormalize` batch transform.
-# - **`CreateDict([DfHDFCreateWindows(win_sz=500, stp_sz=500, clm='u')])`** --
-#   creates one window per file (500 samples = the full trajectory). The `clm`
-#   parameter tells the windowing transform which dataset to read for determining
-#   sequence length.
-# - **`ParentSplitter()`** -- uses the directory structure (`train/`, `valid/`,
-#   `test/`) to split data.
+# - **`HDF5Signals(['u', 'x', 'v'])`** -- extracts named datasets from each
+#   HDF5 file as a 3-channel time series with shape `(seq_len, 3)`.
+# - **`HDF5Attrs(['x0', 'v0'])`** -- reads named attributes from HDF5
+#   metadata as a scalar target vector of shape `(2,)`.
+# - **`WindowedDataset`** -- combines the blocks and slices files into
+#   windows. With `win_sz=500, stp_sz=500`, each file produces exactly one
+#   sample.
+# - **`split_by_parent`** -- uses the directory structure (`train/`, `valid/`)
+#   to split files into train and validation sets.
 
 # %% [markdown]
 # ## Modifying the Model for Scalar Output
@@ -146,9 +158,9 @@ dls.show_batch(max_n=4)
 # which selects the last timestep of the RNN output, reducing it to
 # `(batch, n_outputs)`.
 #
-# We build the model manually with `SimpleRNN` and wrap it in a fastai `Learner`
+# We build the model manually with `SimpleRNN` and wrap it in a `Learner`
 # because `RNNLearner` expects `dls.norm_stats` (computed by `create_dls`),
-# which our custom `DataBlock` does not provide.
+# which our custom pipeline does not provide.
 
 # %%
 input_size = 3   # u, x, v
@@ -161,10 +173,9 @@ model = nn.Sequential(
 )
 
 lrn = Learner(
-    dls,
     model,
+    dls,
     loss_func=nn.L1Loss(),
-    opt_func=Adam,
     metrics=[fun_rmse],
     lr=1e-3,
 )
@@ -206,12 +217,13 @@ for i in range(min(5, len(preds))):
 # - **Sequence-to-scalar tasks** predict a single value (or vector) from a time
 #   series -- useful for parameter estimation, classification, and condition
 #   monitoring.
-# - **`ScalarBlock.from_hdf_attrs`** reads scalar targets from HDF5 file
-#   attributes, complementing `SequenceBlock` for the input.
+# - **`HDF5Attrs`** reads scalar targets from HDF5 file attributes,
+#   complementing `HDF5Signals` for the input.
 # - **`SeqAggregation`** reduces RNN sequence output to a scalar by selecting
 #   the last timestep. It is a standard `nn.Module` that can be appended to any
 #   sequence model via `nn.Sequential`.
-# - **Custom `DataBlock` pipelines** combine `SequenceBlock` and `ScalarBlock`
-#   for flexible task definitions beyond the standard `create_dls` workflow.
+# - **Custom pipelines** combine `WindowedDataset`, `HDF5Signals`, `HDF5Attrs`,
+#   and `split_by_parent` for flexible task definitions beyond the standard
+#   `create_dls` workflow.
 # - The same RNN architectures work for both sequence-to-sequence and
 #   sequence-to-scalar problems -- only the output reduction changes.

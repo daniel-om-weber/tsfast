@@ -2,22 +2,16 @@
 
 __all__ = ["PIRNN", "AuxiliaryOutputLoss", "PIRNNLearner"]
 
+import random
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from collections.abc import Callable
-from functools import partial
 
-from fastai.data.core import DataLoaders
-from fastai.learner import Learner
-from fastai.optimizer import Adam
-from fastcore.imports import is_iter
-from fastcore.meta import delegates
-
-from ..learner.callbacks import CB_TruncateSequence
-from ..learner.losses import SkipNLoss
-from ..datasets.core import ensure_norm_stats
-from ..models.layers import NormalizedModel, SeqLinear, StandardScaler1D
+from ..training import Learner, fun_rmse, prediction_concat, truncate_sequence
+from ..models.layers import SeqLinear
+from ..models.scaling import ScaledModel, StandardScaler
 from ..models.rnn import RNN
 from ..prediction.fransys import Diag_RNN
 
@@ -42,7 +36,12 @@ class PIRNN(nn.Module):
         linear_layer: Linear layers in diagnosis RNN.
         final_layer: Final layer complexity.
         init_diag_only: Limit diagnosis to init_sz.
-        default_encoder_mode: Default encoder mode.
+        default_encoder_mode: Default encoder mode during inference.
+        p_state_encoder: Probability of using the state encoder per training batch.
+            When > 0, randomly alternates between sequence and state encoder during
+            training (like ``nn.Dropout``). Has no effect during inference.
+        init_sz_range: If set, randomize ``init_sz`` uniformly within ``(min, max)``
+            during training. Has no effect during inference.
         **kwargs: Additional arguments passed to RNN constructors.
     """
 
@@ -60,6 +59,8 @@ class PIRNN(nn.Module):
         final_layer: int = 0,
         init_diag_only: bool = False,
         default_encoder_mode: str = "sequence",
+        p_state_encoder: float = 0.0,
+        init_sz_range: tuple[int, int] | None = None,
         **kwargs,
     ):
         super().__init__()
@@ -73,6 +74,8 @@ class PIRNN(nn.Module):
         self.hidden_size = hidden_size
         self.rnn_layer = rnn_layer
         self.default_encoder_mode = default_encoder_mode
+        self.p_state_encoder = p_state_encoder
+        self.init_sz_range = init_sz_range
 
         # Instantiate FranSys components - diagnosis RNN uses supervised outputs only
         self.rnn_diagnosis = Diag_RNN(
@@ -113,19 +116,24 @@ class PIRNN(nn.Module):
             encoder_mode: Encoder selection - 'none', 'sequence', or 'state'.
         """
 
+        init_sz = random.randint(*self.init_sz_range) if self.training and self.init_sz_range else self.init_sz
+        self._effective_init_sz = init_sz
+
         u = x[:, :, : self.n_u]
         # Use n_y_supervised for initialization sequence (only supervised outputs in data)
-        x_init = x[:, : self.init_sz, : self.n_u + self.n_x + self.n_y_supervised]
+        x_init = x[:, :init_sz, : self.n_u + self.n_x + self.n_y_supervised]
         if encoder_mode == "default":
-            encoder_mode = self.default_encoder_mode
+            if self.training and self.p_state_encoder > 0:
+                encoder_mode = "state" if random.random() < self.p_state_encoder else "sequence"
+            else:
+                encoder_mode = self.default_encoder_mode
 
-        # Detect encoder mode based on input shape
         if encoder_mode == "none":
             return self._forward_predictor(u, init_state)
         elif encoder_mode == "sequence":
-            return self._forward_sequence_encoder(u[:, self.init_sz :], x_init, init_state)
+            return self._forward_sequence_encoder(u[:, init_sz:], x_init, init_state)
         elif encoder_mode == "state":
-            return self._forward_state_encoder(u[:, self.init_sz :], x_init, init_state)
+            return self._forward_state_encoder(u[:, init_sz:], x_init, init_state)
         else:
             raise ValueError(f"encoder_mode must be 'none', 'sequence', or 'state', got {encoder_mode}")
 
@@ -174,7 +182,7 @@ class PIRNN(nn.Module):
             init_state = x_init[:, -1, -self.n_y_supervised :]
         init_state = self.encode_single_state(init_state)
         pred = self._forward_predictor(u, init_state)
-        return F.pad(pred, (0, 0, self.init_sz, 0))  # Zero-pad init window
+        return F.pad(pred, (0, 0, self._effective_init_sz, 0))  # Zero-pad init window
 
     def _forward_predictor(
         self,
@@ -243,18 +251,19 @@ class AuxiliaryOutputLoss:
         return self.loss_func(pred[..., : self.n_supervised], targ)
 
 
-@delegates(PIRNN, keep=True)
 def PIRNNLearner(
-    dls: DataLoaders,
+    dls,
     init_sz: int,
     n_aux_outputs: int = 0,
     attach_output: bool = False,
     loss_func: Callable = nn.L1Loss(),
     metrics: list | None = None,
-    opt_func: Callable = Adam,
+    opt_func: Callable = torch.optim.Adam,
     lr: float = 3e-3,
-    cbs: list | None = None,
-    input_norm: type | None = StandardScaler1D,
+    transforms: list | None = None,
+    augmentations: list | None = None,
+    aux_losses: list | None = None,
+    input_norm: type | None = StandardScaler,
     output_norm: type | None = None,
     **kwargs,
 ) -> Learner:
@@ -264,69 +273,74 @@ def PIRNNLearner(
         dls: DataLoaders.
         init_sz: Initialization sequence length.
         n_aux_outputs: Number of auxiliary outputs (not in dataset).
-        attach_output: Whether to attach output to input via PredictionCallback.
+        attach_output: Whether to attach output to input via prediction_concat.
         loss_func: Loss function.
         metrics: Metrics.
         opt_func: Optimizer.
         lr: Learning rate.
-        cbs: Additional callbacks.
+        transforms: Additional transforms (train + valid).
+        augmentations: Additional augmentations (train only).
+        aux_losses: Additional auxiliary losses.
         input_norm: Input normalization Scaler class.
         output_norm: Output denormalization Scaler class.
         **kwargs: Additional arguments for PIRNN.
     """
-    from tsfast.prediction.core import PredictionCallback
-    from tsfast.learner.losses import fun_rmse
-
-    cbs = [] if cbs is None else list(cbs)
-    metrics = [fun_rmse] if metrics is None else list(metrics) if is_iter(metrics) else [metrics]
+    if metrics is None:
+        metrics = [fun_rmse]
+    transforms = list(transforms) if transforms else []
+    augmentations = list(augmentations) if augmentations else []
+    aux_losses = list(aux_losses) if aux_losses else []
 
     _batch = dls.one_batch()
     inp = _batch[0].shape[-1]
     out = _batch[1].shape[-1]  # Supervised outputs from dataset
     n_y_total = out + n_aux_outputs  # Total outputs (supervised + auxiliary)
 
-    ensure_norm_stats(dls)
-    norm_u, norm_x, norm_y = dls.norm_stats
+    norm_u, norm_y = dls.norm_stats
 
     if attach_output:
         model = PIRNN(inp, n_y_total, init_sz, n_y_supervised=out, **kwargs)
 
-        # Add PredictionCallback if not present
-        if not any(isinstance(cb, PredictionCallback) for cb in cbs):
-            cbs.append(PredictionCallback(0))
+        # Add prediction_concat transform if not present
+        if not any(isinstance(t, prediction_concat) for t in transforms):
+            transforms.insert(0, prediction_concat(t_offset=0))
 
-        # Input will be [u, y] after PredictionCallback concatenation
+        # Input will be [u, y] after prediction_concat
         combined_input_stats = norm_u + norm_y
     else:
         model = PIRNN(inp - out, n_y_total, init_sz, n_y_supervised=out, **kwargs)
 
-        # Input is [u, x?, y] from prediction-mode dls
-        parts = [norm_u] + ([norm_x] if norm_x else []) + [norm_y]
-        combined_input_stats = sum(parts[1:], parts[0])
+        # Input is [u, y] from prediction-mode dls
+        combined_input_stats = norm_u + norm_y
 
     # Wrap model with input normalization and optional output denormalization
     if input_norm is not None:
         in_scaler = input_norm.from_stats(combined_input_stats)
         out_scaler = output_norm.from_stats(norm_y) if output_norm is not None else None
-        model = NormalizedModel(model, in_scaler, out_scaler)
+        model = ScaledModel(model, in_scaler, out_scaler)
 
-    # For long sequences, add truncation callback
+    # For long sequences, add truncate_sequence augmentation
     seq_len = _batch[0].shape[1]
     LENGTH_THRESHOLD = 300
     if seq_len > init_sz + LENGTH_THRESHOLD:
-        if not any(isinstance(cb, CB_TruncateSequence) for cb in cbs):
+        if not any(isinstance(a, truncate_sequence) for a in augmentations):
             INITIAL_SEQ_LEN = 100
-            cbs.append(CB_TruncateSequence(init_sz + INITIAL_SEQ_LEN))
+            augmentations.append(truncate_sequence(init_sz + INITIAL_SEQ_LEN))
 
     # Wrap loss and metrics to only use supervised outputs when auxiliary outputs present
     if n_aux_outputs > 0:
         loss_func = AuxiliaryOutputLoss(loss_func, out)
         metrics = [AuxiliaryOutputLoss(m, out) for m in metrics]
 
-    # Skip initial timesteps in loss/metrics
-    skip = partial(SkipNLoss, n_skip=init_sz)
-    metrics = [skip(f) for f in metrics]
-    loss_func = skip(loss_func)
-
-    lrn = Learner(dls, model, loss_func=loss_func, metrics=metrics, cbs=cbs, opt_func=opt_func, lr=lr)
-    return lrn
+    return Learner(
+        model,
+        dls,
+        loss_func=loss_func,
+        metrics=metrics,
+        n_skip=init_sz,
+        opt_func=opt_func,
+        lr=lr,
+        transforms=transforms,
+        augmentations=augmentations,
+        aux_losses=aux_losses,
+    )

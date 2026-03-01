@@ -40,7 +40,7 @@
 # We use explicit imports so you can see exactly where each function comes from.
 
 # %%
-from tsfast.datasets.benchmark import create_dls_silverbox
+from tsfast.tsdata.benchmark import create_dls_silverbox
 from tsfast.models.rnn import RNNLearner
 
 # %% [markdown]
@@ -64,25 +64,25 @@ from tsfast.models.rnn import RNNLearner
 dls = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
 
 # %% [markdown]
-# ## Inspect the Data
-#
-# `show_batch` displays a few random windows from the training set. Each subplot
-# shows one window: the bottom panel is the input signal and the upper panel is
-# the output signal that we want the model to learn to predict.
-
-# %%
-dls.show_batch(max_n=4)
-
-# %% [markdown]
 # ## Create and Train an LSTM Model
 #
-# `RNNLearner` creates a recurrent neural network wrapped in a fastai Learner,
-# ready for training. Setting `rnn_type='lstm'` selects Long Short-Term Memory
+# `RNNLearner` creates a recurrent neural network wrapped in a Learner, ready
+# for training. Setting `rnn_type='lstm'` selects Long Short-Term Memory
 # cells, which are effective at capturing temporal dependencies. The model maps
 # input sequences to output sequences of the same length.
 
 # %%
 lrn = RNNLearner(dls, rnn_type='lstm')
+
+# %% [markdown]
+# ## Inspect the Data
+#
+# `show_batch` displays a few random windows from the validation set. Each subplot
+# shows one window: the bottom panel is the input signal and the upper panel is
+# the output signal that we want the model to learn to predict.
+
+# %%
+lrn.show_batch(max_n=4)
 
 # %% [markdown]
 # `fit_flat_cos` trains the model with a flat-then-cosine-annealing learning

@@ -2,13 +2,13 @@
 
 __all__ = ["ARProg"]
 
+import random
+
 import torch
 from torch import Tensor, nn
 
-from fastcore.meta import delegates
-
 from ..models.layers import AR_Model
-from ..models.rnn import RNN, SimpleRNN
+from ..models.rnn import SimpleRNN
 
 
 class ARProg(nn.Module):
@@ -22,15 +22,18 @@ class ARProg(nn.Module):
         n_x: number of external state signals.
         n_y: number of output signals.
         init_sz: number of time steps for teacher-forced initialization.
+        init_sz_range: if set, randomize init_sz within (min, max) during training.
     """
 
-    @delegates(RNN, keep=True)
-    def __init__(self, n_u: int, n_x: int, n_y: int, init_sz: int, **kwargs):
+    def __init__(
+        self, n_u: int, n_x: int, n_y: int, init_sz: int, init_sz_range: tuple[int, int] | None = None, **kwargs
+    ):
         super().__init__()
         self.n_u = n_u
         self.n_x = n_x
         self.n_y = n_y
         self.init_sz = init_sz
+        self.init_sz_range = init_sz_range
 
         self.rnn_model = AR_Model(
             SimpleRNN(input_size=n_u + n_x + n_y, output_size=n_x + n_y, return_state=True, **kwargs),
@@ -41,13 +44,20 @@ class ARProg(nn.Module):
         )
 
     def forward(self, x: Tensor) -> Tensor:
+        init_sz = random.randint(*self.init_sz_range) if self.training and self.init_sz_range else self.init_sz
+        self._effective_init_sz = init_sz
+
         y_x = x[..., self.n_u :]
         u = x[..., : self.n_u]
 
-        inp_tf = torch.cat([u[:, : self.init_sz], y_x[:, : self.init_sz]], dim=-1)
-        out_init, h = self.rnn_model(inp_tf, ar=False)
-        self.rnn_model.y_init = y_x[:, self.init_sz : self.init_sz + 1]
-        out_prog, _ = self.rnn_model(u[:, self.init_sz :], h_init=h, ar=True)
+        inp_tf = torch.cat([u[:, :init_sz], y_x[:, :init_sz]], dim=-1)
+        out_init, returned_state = self.rnn_model(inp_tf, ar=False)
+
+        prog_state = {
+            "h": returned_state["h"],
+            "y_init": y_x[:, init_sz : init_sz + 1],
+        }
+        out_prog, _ = self.rnn_model(u[:, init_sz:], state=prog_state, ar=True)
 
         result = torch.cat([out_init, out_prog], 1)
 

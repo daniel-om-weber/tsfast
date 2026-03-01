@@ -42,4 +42,3 @@ uv add tsfast --extra onnx
 
 - Python >= 3.10
 - PyTorch >= 2.1
-- fastai >= 2.7.0
