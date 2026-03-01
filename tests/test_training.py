@@ -723,3 +723,51 @@ class TestCudaGraphTbpttLearner:
         lrn.fit(1)
         assert math.isfinite(lrn.recorder.values[-1][1])
 
+    @pytest.mark.parametrize("rnn_type", ["gru", "lstm"])
+    def test_cuda_graph_tbptt_matches_tbptt(self, rnn_type):
+        """CudaGraphTbpttLearner should produce the same results as TbpttLearner."""
+        import copy
+
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import CudaGraphTbpttLearner, TbpttLearner
+
+        seq_len, n_u, n_y, n_train, bs = 100, 1, 1, 8, 4
+        sub_seq_len = 25
+
+        # Fixed data — no shuffle so both learners see identical batches.
+        torch.manual_seed(42)
+        x_train = torch.randn(n_train, seq_len, n_u)
+        y_train = torch.randn(n_train, seq_len, n_y)
+        x_valid = torch.randn(n_train // 2, seq_len, n_u)
+        y_valid = torch.randn(n_train // 2, seq_len, n_y)
+
+        class _FixedDls:
+            def __init__(self):
+                self.train = DataLoader(TensorDataset(x_train, y_train), batch_size=bs, shuffle=False)
+                self.valid = DataLoader(TensorDataset(x_valid, y_valid), batch_size=bs)
+                self.test = None
+
+        torch.manual_seed(0)
+        model = SimpleRNN(n_u, n_y, hidden_size=20, return_state=True, rnn_type=rnn_type)
+        model_copy = copy.deepcopy(model)
+
+        n_epoch = 3
+
+        torch.manual_seed(0)
+        lrn_tbptt = TbpttLearner(model, _FixedDls(), loss_func=nn.MSELoss(), sub_seq_len=sub_seq_len)
+        lrn_tbptt.fit(n_epoch)
+
+        torch.manual_seed(0)
+        lrn_cuda = CudaGraphTbpttLearner(model_copy, _FixedDls(), loss_func=nn.MSELoss(), sub_seq_len=sub_seq_len)
+        lrn_cuda.fit(n_epoch)
+
+        # Validation losses should match closely.
+        for (e_tbptt, e_cuda) in zip(lrn_tbptt.recorder.values, lrn_cuda.recorder.values):
+            assert abs(e_tbptt[1] - e_cuda[1]) < 1e-4, (
+                f"Val losses diverged: tbptt={e_tbptt[1]:.6f} vs cuda={e_cuda[1]:.6f}"
+            )
+
+        # Model parameters should be nearly identical.
+        for p1, p2 in zip(model.parameters(), model_copy.parameters()):
+            assert torch.allclose(p1, p2, atol=1e-4), "Model parameters diverged"
+
