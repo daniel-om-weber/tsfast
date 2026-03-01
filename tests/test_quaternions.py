@@ -1,4 +1,5 @@
 """Tests for tsfast.quaternions module."""
+
 import pytest
 import torch
 import numpy as np
@@ -7,6 +8,7 @@ import numpy as np
 class TestQuaternionMath:
     def test_multiply_quat_identity(self):
         from tsfast.quaternions import multiplyQuat
+
         q = torch.tensor([[0.5, 0.5, 0.5, 0.5]])  # unit quaternion
         identity = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
         result = multiplyQuat(q, identity)
@@ -14,6 +16,7 @@ class TestQuaternionMath:
 
     def test_conj_quat_property(self):
         from tsfast.quaternions import multiplyQuat, conjQuat, norm_quaternion
+
         q = norm_quaternion(torch.rand(4, 4))
         result = multiplyQuat(q, conjQuat(q))
         # q * conj(q) should give [1, 0, 0, 0] for unit quaternions
@@ -22,6 +25,7 @@ class TestQuaternionMath:
 
     def test_relative_quat_same_is_identity(self):
         from tsfast.quaternions import relativeQuat, norm_quaternion
+
         q = norm_quaternion(torch.rand(4, 4))
         result = relativeQuat(q, q)
         assert torch.allclose(result[..., 0].abs(), torch.ones(4), atol=1e-5)
@@ -29,6 +33,7 @@ class TestQuaternionMath:
 
     def test_norm_quaternion_unit(self):
         from tsfast.quaternions import norm_quaternion
+
         q = torch.rand(10, 4) * 5  # non-unit
         normed = norm_quaternion(q)
         norms = normed.norm(dim=-1)
@@ -36,6 +41,7 @@ class TestQuaternionMath:
 
     def test_inclination_angle_same_is_zero(self):
         from tsfast.quaternions import inclinationAngle, norm_quaternion
+
         # Use plain tensors to avoid torch.compile issues with TensorBase subclasses
         q = norm_quaternion(torch.rand(4, 100, 4)).as_subclass(torch.Tensor)
         angle = inclinationAngle(q, q)
@@ -44,12 +50,14 @@ class TestQuaternionMath:
 
     def test_relative_angle_same_is_zero(self):
         from tsfast.quaternions import relativeAngle, norm_quaternion
+
         q = norm_quaternion(torch.rand(4, 100, 4)).as_subclass(torch.Tensor)
         angle = relativeAngle(q, q)
         assert angle.abs().max().item() < 2e-3
 
     def test_rand_quat_unit_norm(self):
         from tsfast.quaternions import rand_quat
+
         for _ in range(10):
             q = rand_quat()
             assert q.norm().item() == pytest.approx(1.0, abs=1e-5)
@@ -58,18 +66,21 @@ class TestQuaternionMath:
 class TestQuaternionLosses:
     def test_inclination_loss_same_zero(self):
         from tsfast.quaternions import inclination_loss, norm_quaternion
+
         q = norm_quaternion(torch.rand(4, 100, 4))
         loss = inclination_loss(q, q)
         assert loss.item() < 1e-4
 
     def test_angle_loss_same_zero(self):
         from tsfast.quaternions import angle_loss, norm_quaternion
+
         q = norm_quaternion(torch.rand(4, 100, 4))
         loss = angle_loss(q, q)
         assert loss.item() < 1e-4
 
     def test_rms_inclination_deg_positive(self):
         from tsfast.quaternions import rms_inclination_deg, norm_quaternion
+
         q1 = norm_quaternion(torch.rand(4, 100, 4))
         q2 = norm_quaternion(torch.rand(4, 100, 4))
         val = rms_inclination_deg(q1, q2)
@@ -79,11 +90,13 @@ class TestQuaternionLosses:
 class TestQuaternionAugmentation:
     def test_augmentation_groups_function(self):
         from tsfast.quaternions import augmentation_groups
+
         groups = augmentation_groups([3, 4, 3])
         assert groups == [[0, 2], [3, 6], [7, 9]]
 
     def test_quaternion_augmentation_modifies_input(self):
         from tsfast.quaternions import QuaternionAugmentation, norm_quaternion
+
         tfm = QuaternionAugmentation(inp_groups=[[0, 3]])
         xb = norm_quaternion(torch.rand(2, 100, 4))  # batch of quaternion sequences
         yb = norm_quaternion(torch.rand(2, 100, 4))  # batch of quaternion targets
@@ -98,6 +111,7 @@ class TestQuaternionAugmentation:
 class TestNumpyQuaternionMath:
     def test_multiply_quat_np_identity(self):
         from tsfast.quaternions import multiplyQuat_np
+
         q = np.array([[0.5, 0.5, 0.5, 0.5]])
         identity = np.array([[1.0, 0.0, 0.0, 0.0]])
         result = multiplyQuat_np(q, identity)
@@ -105,6 +119,7 @@ class TestNumpyQuaternionMath:
 
     def test_relative_quat_np_same_is_identity(self):
         from tsfast.quaternions import relativeQuat_np
+
         q = np.array([[0.5, 0.5, 0.5, 0.5], [1.0, 0.0, 0.0, 0.0]])
         result = relativeQuat_np(q, q)
         np.testing.assert_allclose(np.abs(result[:, 0]), np.ones(2), atol=1e-10)
@@ -112,11 +127,13 @@ class TestNumpyQuaternionMath:
 
     def test_quat_from_angle_axis_np_zero_angle(self):
         from tsfast.quaternions import quatFromAngleAxis_np
+
         result = quatFromAngleAxis_np(0.0, np.array([1.0, 0.0, 0.0]))
         np.testing.assert_allclose(result, np.array([1.0, 0.0, 0.0, 0.0]), atol=1e-10)
 
     def test_quat_from_angle_axis_np_batch(self):
         from tsfast.quaternions import quatFromAngleAxis_np
+
         angles = np.array([0.0, np.pi / 2, np.pi])
         axis = np.array([1.0, 0.0, 0.0])
         result = quatFromAngleAxis_np(angles, axis)
@@ -127,16 +144,20 @@ class TestNumpyQuaternionMath:
 
     def test_quat_interp_np_integer_indices(self):
         from tsfast.quaternions import quatInterp_np
-        quats = np.array([
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0],
-        ])
+
+        quats = np.array(
+            [
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0],
+            ]
+        )
         result = quatInterp_np(quats, np.array([0.0, 1.0, 2.0]))
         np.testing.assert_allclose(result, quats, atol=1e-10)
 
     def test_quat_interp_np_midpoint(self):
-        from tsfast.quaternions import quatInterp_np, multiplyQuat_np
+        from tsfast.quaternions import quatInterp_np
+
         q0 = np.array([[1.0, 0.0, 0.0, 0.0]])
         q1 = np.array([[0.0, 1.0, 0.0, 0.0]])  # 180 deg rotation
         quats = np.vstack([q0, q1])
@@ -149,17 +170,21 @@ class TestNumpyQuaternionMath:
 
     def test_quat_interp_np_extend_false(self):
         from tsfast.quaternions import quatInterp_np
-        quats = np.array([
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0],
-        ])
+
+        quats = np.array(
+            [
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0],
+            ]
+        )
         result = quatInterp_np(quats, np.array([-0.5, 0.5, 1.5]), extend=False)
-        assert np.all(np.isnan(result[0]))   # out of range
+        assert np.all(np.isnan(result[0]))  # out of range
         assert not np.any(np.isnan(result[1]))  # in range
-        assert np.all(np.isnan(result[2]))   # out of range
+        assert np.all(np.isnan(result[2]))  # out of range
 
     def test_np_torch_multiply_consistency(self):
         from tsfast.quaternions import multiplyQuat, multiplyQuat_np
+
         q1_np = np.array([[0.5, 0.5, 0.5, 0.5]])
         q2_np = np.array([[0.7071, 0.7071, 0.0, 0.0]])
         q1_t = torch.tensor(q1_np, dtype=torch.float64)
@@ -170,6 +195,7 @@ class TestNumpyQuaternionMath:
 
     def test_multiply_quat_np_non_commutative(self):
         from tsfast.quaternions import multiplyQuat_np
+
         q1 = np.array([[0.5, 0.5, 0.5, 0.5]])
         q2 = np.array([[0.7071, 0.7071, 0.0, 0.0]])
         assert not np.allclose(multiplyQuat_np(q1, q2), multiplyQuat_np(q2, q1))

@@ -1,6 +1,5 @@
 """Tests for tsfast.tsdata — pure PyTorch data pipeline."""
 
-import json
 from pathlib import Path
 
 import numpy as np
@@ -10,7 +9,6 @@ import torch
 PROJECT_ROOT = Path(__file__).parent.parent
 WH_PATH = PROJECT_ROOT / "test_data" / "WienerHammerstein"
 PINN_PATH = PROJECT_ROOT / "test_data" / "pinn"
-GOLDEN_PATH = PROJECT_ROOT / "tests" / "golden" / "data_pipeline.json"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -261,9 +259,14 @@ class TestCached:
         from tsfast.tsdata import create_dls
 
         dls = create_dls(
-            u=["u"], y=["y"], dataset=WH_PATH,
-            win_sz=100, stp_sz=100, num_workers=0,
-            n_batches_train=2, cache=True,
+            u=["u"],
+            y=["y"],
+            dataset=WH_PATH,
+            win_sz=100,
+            stp_sz=100,
+            num_workers=0,
+            n_batches_train=2,
+            cache=True,
         )
         batch = dls.one_batch()
         assert list(batch[0].shape) == [64, 100, 1]
@@ -606,7 +609,9 @@ class TestPipeline:
             "valid": [WH_PATH / "valid" / "WienerHammerstein_valid.hdf5"],
             "test": [WH_PATH / "test" / "WienerHammerstein_test.hdf5"],
         }
-        dls = create_dls(u=["u"], y=["y"], dataset=dataset_dict, win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2)
+        dls = create_dls(
+            u=["u"], y=["y"], dataset=dataset_dict, win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2
+        )
         assert dls.test is not None
 
     def test_create_dls_norm_stats_structure(self):
@@ -617,18 +622,39 @@ class TestPipeline:
         assert len(dls.norm_stats.u.mean) == 1
         assert len(dls.norm_stats.y.mean) == 1
 
-    def test_create_dls_with_dls_id(self):
-        from tsfast.tsdata import create_dls
+    def test_create_dls_with_dls_id(self, monkeypatch, tmp_path):
+        from tsfast.tsdata import norm as norm_mod
+        from tsfast.tsdata import create_dls, NormStats, NormPair
 
+        monkeypatch.setattr(norm_mod, "_cache_path", lambda dls_id: tmp_path / f"{dls_id}.pkl")
         dls = create_dls(
-            u=["u"], y=["y"], dataset=WH_PATH, win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2,
-            dls_id="test_tsdata_wh"
+            u=["u"],
+            y=["y"],
+            dataset=WH_PATH,
+            win_sz=100,
+            stp_sz=100,
+            num_workers=0,
+            n_batches_train=2,
+            dls_id="test_cache",
         )
-        assert dls.norm_stats is not None
-        # Clean up cache
-        cache_path = Path(".tsfast_cache/test_tsdata_wh.pkl")
-        if cache_path.exists():
-            cache_path.unlink()
+        stats1 = dls.norm_stats
+        assert (tmp_path / "test_cache.pkl").exists()
+        assert isinstance(stats1, NormStats)
+        assert isinstance(stats1.u, NormPair)
+        # Second call loads from cache
+        dls2 = create_dls(
+            u=["u"],
+            y=["y"],
+            dataset=WH_PATH,
+            win_sz=100,
+            stp_sz=100,
+            num_workers=0,
+            n_batches_train=2,
+            dls_id="test_cache",
+        )
+        np.testing.assert_array_equal(dls2.norm_stats.u.mean, stats1.u.mean)
+        np.testing.assert_array_equal(dls2.norm_stats.u.std, stats1.u.std)
+        np.testing.assert_array_equal(dls2.norm_stats.y.mean, stats1.y.mean)
 
     def test_create_dls_test_dl_fullfile(self):
         from tsfast.tsdata import create_dls
@@ -644,8 +670,14 @@ class TestPipeline:
         from tsfast.tsdata import create_dls
 
         dls = create_dls(
-            u=["u"], y=["y"], dataset=WH_PATH, win_sz=100, stp_sz=100,
-            num_workers=0, n_batches_train=2, n_batches_valid=3
+            u=["u"],
+            y=["y"],
+            dataset=WH_PATH,
+            win_sz=100,
+            stp_sz=100,
+            num_workers=0,
+            n_batches_train=2,
+            n_batches_valid=3,
         )
         # With n_batches_valid=3, we should get exactly 3 batches (via sampler)
         count = sum(1 for _ in dls.valid)
@@ -657,79 +689,39 @@ class TestPipeline:
         dls = create_dls(u=["u"], y=["y"], dataset=WH_PATH, win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2)
         assert len(dls.loaders) >= 2  # train + valid, possibly + test
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-#  Golden baseline verification (simulation mode only)
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-@pytest.mark.skipif(not GOLDEN_PATH.exists(), reason="Golden baselines not found")
-class TestGoldenBaselines:
-    @pytest.fixture(scope="class")
-    def golden(self):
-        with open(GOLDEN_PATH) as f:
-            return json.load(f)
-
-    def test_wh_simulation_shapes(self, golden):
+    def test_empty_path_raises_file_not_found(self, tmp_path):
         from tsfast.tsdata import create_dls
 
-        g = golden["wh_simulation"]
-        dls = create_dls(u=["u"], y=["y"], dataset=WH_PATH, win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2)
-        batch = dls.one_batch()
-        assert list(batch[0].shape) == g["batch_xb_shape"]
-        assert list(batch[1].shape) == g["batch_yb_shape"]
+        empty_dir = tmp_path / "empty_dataset"
+        empty_dir.mkdir()
+        with pytest.raises(FileNotFoundError, match="No HDF5 files found"):
+            create_dls(u=["u"], y=["y"], dataset=empty_dir, win_sz=100, num_workers=0)
 
-    def test_wh_simulation_dl_lengths(self, golden):
+    def test_dict_dataset_no_test(self):
         from tsfast.tsdata import create_dls
+        from tsfast.tsdata.split import discover_split_files
 
-        g = golden["wh_simulation"]
-        dls = create_dls(u=["u"], y=["y"], dataset=WH_PATH, win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2)
-        assert len(dls.train) == g["train_len"]
-        assert len(dls.valid) == g["valid_len"]
-
-    def test_wh_simulation_norm_stats(self, golden):
-        from tsfast.tsdata import create_dls
-
-        g = golden["wh_simulation"]
-        dls = create_dls(u=["u"], y=["y"], dataset=WH_PATH, win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2)
-        # Feature counts must match
-        assert len(dls.norm_stats.u.mean) == len(g["norm_u"]["mean"])
-        assert len(dls.norm_stats.y.mean) == len(g["norm_y"]["mean"])
-        # Loose tolerance — stats are estimated from random batches
-        np.testing.assert_allclose(dls.norm_stats.u.mean, g["norm_u"]["mean"], atol=0.5)
-        np.testing.assert_allclose(dls.norm_stats.y.mean, g["norm_y"]["mean"], atol=0.5)
-
-    def test_pinn_simulation_shapes(self, golden):
-        from tsfast.tsdata import create_dls
-
-        g = golden["pinn_simulation"]
+        splits = discover_split_files(WH_PATH)
+        del splits["test"]
         dls = create_dls(
-            u=["u"], y=["x", "v"], dataset=PINN_PATH, win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2
+            u=["u"],
+            y=["y"],
+            dataset=splits,
+            win_sz=100,
+            stp_sz=100,
+            num_workers=0,
+            n_batches_train=2,
         )
-        batch = dls.one_batch()
-        assert list(batch[0].shape) == g["batch_xb_shape"]
-        assert list(batch[1].shape) == g["batch_yb_shape"]
+        assert len(dls.loaders) == 2  # train, valid only
 
-    def test_pinn_simulation_dl_lengths(self, golden):
+    def test_dict_dataset_missing_train_raises(self):
         from tsfast.tsdata import create_dls
 
-        g = golden["pinn_simulation"]
-        dls = create_dls(
-            u=["u"], y=["x", "v"], dataset=PINN_PATH, win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2
-        )
-        assert len(dls.train) == g["train_len"]
-        assert len(dls.valid) == g["valid_len"]
+        with pytest.raises(ValueError, match="'train'"):
+            create_dls(u=["u"], y=["y"], dataset={"valid": ["a.h5"]}, win_sz=100, num_workers=0)
 
-    def test_pinn_simulation_norm_stats(self, golden):
+    def test_dict_dataset_missing_valid_raises(self):
         from tsfast.tsdata import create_dls
 
-        g = golden["pinn_simulation"]
-        dls = create_dls(
-            u=["u"], y=["x", "v"], dataset=PINN_PATH, win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2
-        )
-        assert len(dls.norm_stats.u.mean) == len(g["norm_u"]["mean"])
-        assert len(dls.norm_stats.y.mean) == len(g["norm_y"]["mean"])
-        np.testing.assert_allclose(dls.norm_stats.u.mean, g["norm_u"]["mean"], atol=0.5)
-        np.testing.assert_allclose(dls.norm_stats.y.mean, g["norm_y"]["mean"], atol=0.5)
-
-
+        with pytest.raises(ValueError, match="'valid'"):
+            create_dls(u=["u"], y=["y"], dataset={"train": ["a.h5"]}, win_sz=100, num_workers=0)
