@@ -23,7 +23,8 @@ from torch.nn.utils.parametrizations import weight_norm
 
 from ..training import ActivationRegularizer, Learner, TemporalActivationRegularizer, fun_rmse, prediction_concat
 from ..tsdata import get_io_size
-from .layers import AR_Model, NormalizedModel, Scaler, SeqLinear, StandardScaler1D
+from .layers import AR_Model, SeqLinear
+from .scaling import ScaledModel, Scaler, StandardScaler
 from .rnn import SimpleRNN
 
 
@@ -255,7 +256,7 @@ def TCNLearner(
     metrics: list | None = None,
     n_skip: int | None = None,
     opt_func: type = torch.optim.Adam,
-    input_norm: type[Scaler] | None = StandardScaler1D,
+    input_norm: type[Scaler] | None = StandardScaler,
     output_norm: type[Scaler] | None = None,
     **kwargs,
 ) -> Learner:
@@ -279,7 +280,7 @@ def TCNLearner(
     inp, out = get_io_size(dls)
     n_skip = 2**num_layers if n_skip is None else n_skip
     model = TCN(inp, out, num_layers, hidden_size, **kwargs)
-    model = NormalizedModel.from_dls(model, dls, input_norm, output_norm)
+    model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
 
     return Learner(model, dls, loss_func=loss_func, opt_func=opt_func, metrics=metrics, n_skip=n_skip, lr=3e-3)
 
@@ -385,7 +386,7 @@ def CRNNLearner(
     metrics: list | None = None,
     n_skip: int = 0,
     opt_func: type = torch.optim.Adam,
-    input_norm: type[Scaler] | None = StandardScaler1D,
+    input_norm: type[Scaler] | None = StandardScaler,
     output_norm: type[Scaler] | None = None,
     **kwargs,
 ) -> Learner:
@@ -406,7 +407,7 @@ def CRNNLearner(
 
     inp, out = get_io_size(dls)
     model = CRNN(inp, out, **kwargs)
-    model = NormalizedModel.from_dls(model, dls, input_norm, output_norm)
+    model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
 
     return Learner(model, dls, loss_func=loss_func, opt_func=opt_func, metrics=metrics, n_skip=n_skip, lr=3e-3)
 
@@ -419,7 +420,7 @@ def AR_TCNLearner(
     metrics: list | None = None,
     n_skip: int | None = None,
     opt_func: type = torch.optim.Adam,
-    input_norm: type[Scaler] | None = StandardScaler1D,
+    input_norm: type[Scaler] | None = StandardScaler,
     **kwargs,
 ) -> Learner:
     """Create a Learner with an autoregressive TCN model.
@@ -443,7 +444,7 @@ def AR_TCNLearner(
     ar_model = AR_Model(TCN(inp + out, out, hl_depth, **kwargs), ar=False)
     conv_module = ar_model.model.conv_layers[-1]
 
-    model = NormalizedModel.from_dls(ar_model, dls, input_norm, autoregressive=True)
+    model = ScaledModel.from_dls(ar_model, dls, input_norm, autoregressive=True)
 
     return Learner(
         model,

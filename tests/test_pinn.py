@@ -231,7 +231,7 @@ class TestPINNCallbacks:
 
         lrn = PIRNNLearner(dls_pinn, init_sz=20, hidden_size=20, rnn_layer=1, attach_output=True, p_state_encoder=0.3)
         lrn.fit(1, 3e-3)
-        from tsfast.models.layers import unwrap_model
+        from tsfast.models.scaling import unwrap_model
 
         assert unwrap_model(lrn.model).default_encoder_mode == "sequence"
 

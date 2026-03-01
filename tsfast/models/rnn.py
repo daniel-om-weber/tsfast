@@ -28,7 +28,8 @@ from ..training import (
     prediction_concat,
 )
 from ..tsdata import get_io_size
-from .layers import AR_Model, BatchNorm_1D_Stateful, NormalizedModel, SeqLinear, StandardScaler1D
+from .layers import AR_Model, BatchNorm_1D_Stateful, SeqLinear
+from .scaling import ScaledModel, StandardScaler
 
 
 def _dropout_mask(x: Tensor, sz: list, p: float) -> Tensor:
@@ -268,7 +269,7 @@ def RNNLearner(
     stateful: bool = False,
     sub_seq_len: int | None = None,
     opt_func=torch.optim.Adam,
-    input_norm: type | None = StandardScaler1D,
+    input_norm: type | None = StandardScaler,
     output_norm: type | None = None,
     augmentations: list | None = None,
     transforms: list | None = None,
@@ -301,7 +302,7 @@ def RNNLearner(
 
     inp, out = get_io_size(dls)
     model = SimpleRNN(inp, out, num_layers, hidden_size, stateful=stateful, **kwargs)
-    model = NormalizedModel.from_dls(model, dls, input_norm, output_norm)
+    model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
 
     cls = TbpttLearner if stateful else Learner
     extra = {"sub_seq_len": sub_seq_len or 100} if stateful else {}
@@ -328,7 +329,7 @@ def AR_RNNLearner(
     metrics: list | None = None,
     n_skip: int = 0,
     opt_func=torch.optim.Adam,
-    input_norm: type | None = StandardScaler1D,
+    input_norm: type | None = StandardScaler,
     **kwargs,
 ):
     """Create a Learner with an autoregressive RNN model.
@@ -350,7 +351,7 @@ def AR_RNNLearner(
     ar_model = AR_Model(SimpleRNN(inp + out, out, **kwargs), ar=False)
     rnn_module = ar_model.model.rnn
 
-    model = NormalizedModel.from_dls(ar_model, dls, input_norm, autoregressive=True)
+    model = ScaledModel.from_dls(ar_model, dls, input_norm, autoregressive=True)
 
     return Learner(
         model,

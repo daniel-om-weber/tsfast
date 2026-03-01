@@ -35,7 +35,7 @@
 # %%
 from tsfast.tsdata.benchmark import create_dls_cascaded_tanks
 from tsfast.prediction.fransys import FranSysLearner
-from tsfast.models.layers import unwrap_model
+from tsfast.models.scaling import unwrap_model
 from tsfast.training import fun_rmse, FranSysRegularizer, ActivationRegularizer, TemporalActivationRegularizer
 
 # %% [markdown]

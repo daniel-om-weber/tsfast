@@ -17,7 +17,8 @@ from torch import nn
 
 from ..training import Learner, fun_rmse, prediction_concat, truncate_sequence
 from ..models.cnn import TCN
-from ..models.layers import AR_Model, NormalizedModel, SeqLinear, StandardScaler1D
+from ..models.layers import AR_Model, SeqLinear
+from ..models.scaling import ScaledModel, StandardScaler
 from ..models.rnn import RNN, SimpleRNN
 
 
@@ -389,7 +390,7 @@ def FranSysLearner(
     transforms: list | None = None,
     augmentations: list | None = None,
     aux_losses: list | None = None,
-    input_norm: type | None = StandardScaler1D,
+    input_norm: type | None = StandardScaler,
     output_norm: type | None = None,
     **kwargs,
 ) -> Learner:
@@ -440,7 +441,7 @@ def FranSysLearner(
     if input_norm is not None:
         in_scaler = input_norm.from_stats(combined_input_stats)
         out_scaler = output_norm.from_stats(norm_y) if output_norm is not None else None
-        model = NormalizedModel(model, in_scaler, out_scaler)
+        model = ScaledModel(model, in_scaler, out_scaler)
 
     # For long sequences, add truncate_sequence augmentation
     seq_len = _batch[0].shape[1]
