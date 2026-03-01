@@ -202,6 +202,15 @@ class FranSysRegularizer:
         model: explicit FranSys model reference (auto-detected via unwrap_model if None)
     """
 
+    _SYNC_FNS: dict[str, Callable] = {
+        "mse": lambda d, p: ((p - d) / d.norm()).pow(2).mean(),
+        "mae": lambda d, p: ((p - d) / d.norm()).abs().mean(),
+        "mspe": lambda d, p: ((d - p) / torch.linalg.norm(d, dim=(0, 1), keepdim=True)).pow(2).mean(),
+        "mape": lambda d, p: ((d - p) / torch.linalg.norm(d, dim=(0, 1), keepdim=True)).abs().mean(),
+        "cos": lambda d, p: cos_sim_loss(d, p),
+        "cos_pow": lambda d, p: cos_sim_loss_pow(d, p),
+    }
+
     def __init__(
         self,
         modules: list[nn.Module],
@@ -215,6 +224,8 @@ class FranSysRegularizer:
         osp_n_skip: int | None = None,
         model: nn.Module | None = None,
     ):
+        if sync_type not in self._SYNC_FNS:
+            raise ValueError(f"Unknown sync_type: {sync_type!r}")
         self.modules = modules
         self.p_state_sync = p_state_sync
         self.p_diag_loss = p_diag_loss
@@ -255,87 +266,72 @@ class FranSysRegularizer:
         self._out_diag = None
         self._out_prog = None
 
+    def _state_sync_loss(self, diag_trunc: Tensor, prog: Tensor) -> Tensor:
+        if self.p_state_sync <= 0:
+            return torch.tensor(0.0, device=prog.device)
+        return self.p_state_sync * self._SYNC_FNS[self.sync_type](diag_trunc, prog)
+
+    def _diag_loss(self, diag_trunc: Tensor, yb: Tensor, model: nn.Module) -> Tensor:
+        if self.p_diag_loss <= 0:
+            return torch.tensor(0.0, device=yb.device)
+        y_diag = model.final(diag_trunc[-1])
+        if self._output_norm is not None:
+            y_diag = self._output_norm.denormalize(y_diag)
+        return self.p_diag_loss * self.targ_loss_func(y_diag, yb[:, -y_diag.shape[1] :])
+
+    def _osp_loss(self, diag: Tensor, xb: Tensor, yb: Tensor, model: nn.Module, win_reg: int) -> Tensor:
+        if self.p_osp_loss <= 0 and self.p_osp_sync <= 0:
+            return torch.tensor(0.0, device=xb.device)
+
+        inp = xb[:, win_reg:]
+        bs, n, _ = inp.shape
+        inp = torch.flatten(inp[:, :, : model.n_u], start_dim=0, end_dim=1)[:, None, :]
+        h_init = torch.flatten(diag[:, :, win_reg - 1 : -1], start_dim=1, end_dim=2)[:, None]
+
+        out, _ = model.rnn_prognosis(inp, h_init)
+        h_out = out[:, :, 0]
+        out = out[-1].unflatten(0, (bs, n))[:, :, 0]
+
+        loss = torch.tensor(0.0, device=xb.device)
+
+        # hidden sync
+        h_out_targ = torch.flatten(diag[:, :, win_reg:], start_dim=1, end_dim=2)
+        loss = loss + self.p_osp_sync * ((h_out_targ - h_out) / (h_out.norm() + h_out_targ.norm())).pow(2).mean()
+
+        # target loss
+        y_osp = model.final(out)
+        if self._output_norm is not None:
+            y_osp = self._output_norm.denormalize(y_osp)
+        loss = loss + self.p_osp_loss * self.targ_loss_func(y_osp, yb[:, -y_osp.shape[1] :])
+
+        return loss
+
+    def _tar_loss(self, diag: Tensor, prog: Tensor, model: nn.Module) -> Tensor:
+        if self.p_tar_loss <= 0:
+            return torch.tensor(0.0, device=prog.device)
+        h = torch.cat([diag[:, :, : getattr(model, "_effective_init_sz", model.init_sz)], prog], 2)
+        h_diff = h[:, :, 1:] - h[:, :, :-1]
+        return self.p_tar_loss * h_diff.pow(2).mean()
+
     def __call__(self, pred: Tensor, yb: Tensor, xb: Tensor) -> Tensor:
         if self._out_diag is None or self._out_prog is None:
             self._clear()
             return torch.tensor(0.0, device=pred.device)
 
-        diag = self._out_diag
-        prog = self._out_prog
+        diag, prog = self._out_diag, self._out_prog
         self._clear()
         model = self.inner_model
         win_reg = (
             self.osp_n_skip if self.osp_n_skip is not None else getattr(model, "_effective_init_sz", model.init_sz)
         )
+        diag_trunc = diag[:, :, -prog.shape[2] :] if diag.shape[2] > prog.shape[2] else diag
 
-        diag_trunc = diag
-        if diag.shape[2] > prog.shape[2]:
-            diag_trunc = diag_trunc[:, :, -prog.shape[2] :]
-
-        loss = torch.tensor(0.0, device=pred.device)
-
-        # sync diag prog hidden states loss
-        if self.p_state_sync > 0:
-            if self.sync_type == "mse":
-                hidden_loss = ((prog - diag_trunc) / (diag_trunc.norm())).pow(2).mean()
-            elif self.sync_type == "mae":
-                hidden_loss = ((prog - diag_trunc) / (diag_trunc.norm())).abs().mean()
-            elif self.sync_type == "mspe":
-                hidden_loss = (
-                    ((diag_trunc - prog) / torch.linalg.norm(diag_trunc, dim=(0, 1), keepdim=True)).pow(2).mean()
-                )
-            elif self.sync_type == "mape":
-                hidden_loss = (
-                    ((diag_trunc - prog) / torch.linalg.norm(diag_trunc, dim=(0, 1), keepdim=True)).abs().mean()
-                )
-            elif self.sync_type == "cos":
-                hidden_loss = cos_sim_loss(diag_trunc, prog)
-            elif self.sync_type == "cos_pow":
-                hidden_loss = cos_sim_loss_pow(diag_trunc, prog)
-            else:
-                raise ValueError(f"Unknown sync_type: {self.sync_type}")
-
-            loss = loss + self.p_state_sync * hidden_loss
-
-        # diagnosis loss
-        if self.p_diag_loss > 0:
-            y_diag = model.final(diag_trunc[-1])
-            if self._output_norm is not None:
-                y_diag = self._output_norm.denormalize(y_diag)
-            hidden_loss = self.targ_loss_func(y_diag, yb[:, -y_diag.shape[1] :])
-            loss = loss + self.p_diag_loss * hidden_loss
-
-        # osp loss - one step prediction on every element of the sequence
-        if self.p_osp_loss > 0 or self.p_osp_sync > 0:
-            inp = xb[:, win_reg:]
-            bs, n, _ = inp.shape
-            inp = torch.flatten(inp[:, :, : model.n_u], start_dim=0, end_dim=1)[:, None, :]
-            h_init = torch.flatten(diag[:, :, win_reg - 1 : -1], start_dim=1, end_dim=2)[:, None]
-
-            out, _ = model.rnn_prognosis(inp, h_init)
-            h_out = out[:, :, 0]
-            out = out[-1].unflatten(0, (bs, n))[:, :, 0]
-
-            # osp hidden sync loss
-            h_out_targ = torch.flatten(diag[:, :, win_reg:], start_dim=1, end_dim=2)
-            hidden_loss = ((h_out_targ - h_out) / (h_out.norm() + h_out_targ.norm())).pow(2).mean()
-            loss = loss + self.p_osp_sync * hidden_loss
-
-            # osp target loss
-            y_osp = model.final(out)
-            if self._output_norm is not None:
-                y_osp = self._output_norm.denormalize(y_osp)
-            hidden_loss = self.targ_loss_func(y_osp, yb[:, -y_osp.shape[1] :])
-            loss = loss + self.p_osp_loss * hidden_loss
-
-        # tar hidden loss
-        if self.p_tar_loss > 0:
-            h = torch.cat([diag[:, :, : getattr(model, "_effective_init_sz", model.init_sz)], prog], 2)
-            h_diff = h[:, :, 1:] - h[:, :, :-1]
-            hidden_loss = h_diff.pow(2).mean()
-            loss = loss + self.p_tar_loss * hidden_loss
-
-        return loss
+        return (
+            self._state_sync_loss(diag_trunc, prog)
+            + self._diag_loss(diag_trunc, yb, model)
+            + self._osp_loss(diag, xb, yb, model, win_reg)
+            + self._tar_loss(diag, prog, model)
+        )
 
 
 class ConsistencyLoss:
