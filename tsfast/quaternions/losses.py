@@ -145,7 +145,7 @@ def smooth_inclination(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
 
 def rms_inclination_deg(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
     """RMS inclination angle in degrees."""
-    return rad2deg(inclination_angle(q1, q2)).mean().sqrt()
+    return rad2deg(inclination_angle(q1, q2)).pow(2).mean().sqrt()
 
 
 def mean_inclination_deg(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
