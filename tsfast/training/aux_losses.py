@@ -1,12 +1,12 @@
 """Auxiliary loss callables for training."""
 
 __all__ = [
-    "add_loss",
-    "physics_loss",
-    "transition_smoothness",
+    "AddLoss",
+    "PhysicsLoss",
+    "TransitionSmoothness",
     "TimeSeriesRegularizerLoss",
     "FranSysRegularizer",
-    "consistency_loss",
+    "ConsistencyLoss",
 ]
 
 from collections.abc import Callable
@@ -24,7 +24,7 @@ from .losses import cos_sim_loss, cos_sim_loss_pow
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class add_loss:
+class AddLoss:
     """Auxiliary loss that applies a loss function to predictions and targets.
 
     Args:
@@ -40,7 +40,7 @@ class add_loss:
         return self.alpha * self.loss_func(pred, yb)
 
 
-class physics_loss:
+class PhysicsLoss:
     """Auxiliary loss using a physics-informed loss function.
 
     Args:
@@ -83,7 +83,7 @@ class physics_loss:
         return self.weight * total
 
 
-class transition_smoothness:
+class TransitionSmoothness:
     """Penalizes curvature at the init-to-prognosis transition boundary.
 
     Args:
@@ -338,7 +338,7 @@ class FranSysRegularizer:
         return loss
 
 
-class consistency_loss:
+class ConsistencyLoss:
     """Trains SequenceEncoder and StateEncoder compatibility on real data.
 
     Hooks ``rnn_diagnosis`` and computes MSE between sequence encoder hidden

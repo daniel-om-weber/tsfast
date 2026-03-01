@@ -5,11 +5,11 @@ __all__ = [
     "mse_nan",
     "ignore_nan",
     "float64_func",
-    "SkipNLoss",
-    "CutLoss",
-    "NormLoss",
+    "skip_n_loss",
+    "cut_loss",
+    "norm_loss",
     "weighted_mae",
-    "RandSeqLenLoss",
+    "rand_seq_len_loss",
     "fun_rmse",
     "cos_sim_loss",
     "cos_sim_loss_pow",
@@ -85,7 +85,7 @@ def float64_func(func: Callable) -> Callable:
     return float64_func_decorator
 
 
-def SkipNLoss(fn: Callable, n_skip: int = 0) -> Callable:
+def skip_n_loss(fn: Callable, n_skip: int = 0) -> Callable:
     """Loss-function modifier that skips the first n time steps of sequential data.
 
     Args:
@@ -100,7 +100,7 @@ def SkipNLoss(fn: Callable, n_skip: int = 0) -> Callable:
     return _inner
 
 
-def CutLoss(fn: Callable, l_cut: int = 0, r_cut: int | None = None) -> Callable:
+def cut_loss(fn: Callable, l_cut: int = 0, r_cut: int | None = None) -> Callable:
     """Loss-function modifier that slices the sequence from l_cut to r_cut.
 
     Args:
@@ -116,7 +116,7 @@ def CutLoss(fn: Callable, l_cut: int = 0, r_cut: int | None = None) -> Callable:
     return _inner
 
 
-def NormLoss(fn: Callable, norm_stats, scaler_cls: type | None = None) -> Callable:
+def norm_loss(fn: Callable, norm_stats, scaler_cls: type | None = None) -> Callable:
     """Loss wrapper that normalizes predictions and targets before computing loss.
 
     Args:
@@ -163,7 +163,9 @@ def weighted_mae(input: Tensor, target: Tensor) -> Tensor:
     return ((input - target).abs() * weights).sum(dim=1).mean()
 
 
-def RandSeqLenLoss(fn: Callable, min_idx: int = 1, max_idx: int | None = None, mid_idx: int | None = None) -> Callable:
+def rand_seq_len_loss(
+    fn: Callable, min_idx: int = 1, max_idx: int | None = None, mid_idx: int | None = None
+) -> Callable:
     """Loss-function modifier that randomly truncates each sequence in the minibatch individually.
 
     Uses a triangular distribution. Slow for very large batch sizes.

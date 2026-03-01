@@ -2,7 +2,6 @@
 
 __all__ = [
     "prediction_concat",
-    "ar_init",
     "noise",
     "noise_varying",
     "noise_grouped",
@@ -45,14 +44,6 @@ class prediction_concat:
             yb = yb[:, self.t_offset :, :]
 
         return torch.cat((x, y), dim=-1), yb
-
-
-class ar_init:
-    """Concatenate the target variable to the input for autoregression."""
-
-    def __call__(self, xb: Tensor, yb: Tensor) -> tuple[Tensor, Tensor]:
-        y = yb.as_subclass(type(xb))
-        return torch.cat((xb, y), dim=-1), yb
 
 
 # ──────────────────────────────────────────────────────────────────────────────

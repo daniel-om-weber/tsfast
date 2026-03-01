@@ -21,7 +21,7 @@ from torch import Tensor, nn
 from torch.nn import Mish
 from torch.nn.utils.parametrizations import weight_norm
 
-from ..training import Learner, TimeSeriesRegularizerLoss, ar_init, fun_rmse
+from ..training import Learner, TimeSeriesRegularizerLoss, fun_rmse, prediction_concat
 from ..tsdata import get_io_size
 from .layers import AR_Model, NormalizedModel, Scaler, SeqLinear, StandardScaler1D
 from .rnn import SimpleRNN
@@ -453,7 +453,7 @@ def AR_TCNLearner(
         metrics=metrics,
         n_skip=n_skip,
         lr=3e-3,
-        transforms=[ar_init()],
+        transforms=[prediction_concat(t_offset=0)],
         aux_losses=[TimeSeriesRegularizerLoss(modules=[conv_module], alpha=alpha, beta=beta)],
     )
 
