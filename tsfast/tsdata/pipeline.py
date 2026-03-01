@@ -100,13 +100,11 @@ class DataLoaders:
 
 
 def _get_block_names(blocks: tuple) -> list[str] | None:
-    """Extract signal names from blocks, unwrapping Cached/Resampled layers."""
+    """Extract signal names from blocks."""
     names = []
     for b in blocks:
-        while hasattr(b, "block"):
-            b = b.block
-        if hasattr(b, "names"):
-            names.extend(b.names)
+        if hasattr(b, "signal_names"):
+            names.extend(b.signal_names)
         else:
             return None
     return names
