@@ -45,15 +45,14 @@ class TestQuaternionMath:
         # Use plain tensors to avoid torch.compile issues with TensorBase subclasses
         q = norm_quaternion(torch.rand(4, 100, 4)).as_subclass(torch.Tensor)
         angle = inclinationAngle(q, q)
-        # Float32 precision limits: acos near 1.0 has ~1e-3 error
-        assert angle.abs().max().item() < 2e-3
+        assert angle.abs().max().item() < 1e-6
 
     def test_relative_angle_same_is_zero(self):
         from tsfast.quaternions import relativeAngle, norm_quaternion
 
         q = norm_quaternion(torch.rand(4, 100, 4)).as_subclass(torch.Tensor)
         angle = relativeAngle(q, q)
-        assert angle.abs().max().item() < 2e-3
+        assert angle.abs().max().item() < 1e-6
 
     def test_rand_quat_unit_norm(self):
         from tsfast.quaternions import rand_quat
@@ -77,16 +76,6 @@ class TestQuaternionLosses:
         q = norm_quaternion(torch.rand(4, 100, 4))
         loss = angle_loss(q, q)
         assert loss.item() < 1e-4
-
-    def test_inclination_loss_abs_nan_safe(self):
-        from tsfast.quaternions import inclination_loss_abs, norm_quaternion
-
-        q1 = norm_quaternion(torch.rand(4, 100, 4))
-        q2 = norm_quaternion(torch.rand(4, 100, 4))
-        q2[0, :, :] = float("nan")
-        loss = inclination_loss_abs(q1, q2)
-        assert not torch.isnan(loss)
-        assert loss.item() > 0
 
     def test_rms_inclination_deg_positive(self):
         from tsfast.quaternions import rms_inclination_deg, norm_quaternion

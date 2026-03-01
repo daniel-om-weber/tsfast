@@ -106,15 +106,24 @@ def safe_acos_double(t: torch.Tensor, eps: float = 1e-16) -> torch.Tensor:
 
 
 def inclinationAngle(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
-    """Compute the inclination angle between two quaternions."""
+    """Inclination (tilt) angle between two quaternions.
+
+    Uses ``atan2`` instead of ``acos`` for numerical stability.
+    """
     q = diffQuat(q1, q2)
-    return 2 * safe_acos_double((q[..., 3] ** 2 + q[..., 0] ** 2).sqrt())
+    return 2 * torch.atan2(
+        (q[..., 1] ** 2 + q[..., 2] ** 2).sqrt(),
+        (q[..., 0] ** 2 + q[..., 3] ** 2).sqrt(),
+    )
 
 
 def relativeAngle(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
-    """Compute the relative rotation angle between two quaternions."""
+    """Full rotation angle between two quaternions.
+
+    Uses ``atan2`` instead of ``acos`` for numerical stability.
+    """
     q = diffQuat(q1, q2)
-    return 2 * safe_acos_double((q[..., 0]).abs())
+    return 2 * torch.atan2(q[..., 1:].norm(dim=-1), q[..., 0].abs())
 
 
 def rollAngle(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
@@ -127,21 +136,31 @@ def rollAngle(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
 
 
 def pitchAngle(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
-    """Compute the pitch angle between two quaternions."""
+    """Euler pitch angle of the difference quaternion.
+
+    Uses ``atan2(sin, cos)`` instead of ``asin`` for numerical stability
+    near gimbal lock (``+/-pi/2``).
+    """
     q = diffQuat(q1, q2)
     w, x, y, z = q[..., 0], q[..., 1], q[..., 2], q[..., 3]
-    t2 = +2.0 * (w * y - z * x)
-    t2 = t2.clamp(-1.0, 1.0)
-    return torch.asin(t2)
+    sin_p = (2.0 * (w * y - z * x)).clamp(-1.0, 1.0)
+    cos_p = (1.0 - sin_p**2).sqrt()
+    return torch.atan2(sin_p, cos_p)
 
 
 _unit_quaternion = torch.tensor([1.0, 0, 0, 0])
 
 
 def inclinationAngleAbs(q: torch.Tensor) -> torch.Tensor:
-    """Compute the absolute inclination angle relative to the identity quaternion."""
+    """Absolute inclination angle relative to the identity quaternion.
+
+    Uses ``atan2`` instead of ``acos`` for numerical stability.
+    """
     q = diffQuat(q, _unit_quaternion[None, :].to(q.device))
-    return 2 * ((q[..., 3] ** 2 + q[..., 0] ** 2).sqrt()).acos()
+    return 2 * torch.atan2(
+        (q[..., 1] ** 2 + q[..., 2] ** 2).sqrt(),
+        (q[..., 0] ** 2 + q[..., 3] ** 2).sqrt(),
+    )
 
 
 # --- Generation / manipulation ---
@@ -214,7 +233,7 @@ def quatInterp(quat: torch.Tensor, ind: torch.Tensor, extend: bool = False) -> t
     invert_sign_ind = q_1_0[..., 0] < 0
     q_1_0[invert_sign_ind] = -q_1_0[invert_sign_ind]
 
-    angle = 2 * safe_acos_double((q_1_0[..., 0]))
+    angle = 2 * torch.atan2(q_1_0[..., 1:].norm(dim=-1), q_1_0[..., 0])
     axis = q_1_0[..., 1:]
 
     # copy over (almost) direct hits
