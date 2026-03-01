@@ -16,8 +16,9 @@ from torch import Tensor, nn
 from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
 
+from ..models.layers import _detach_state
 from ..tsdata.pipeline import get_signal_names
-from .viz import layout_samples, plot_sequence
+from . import viz
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -117,10 +118,10 @@ class Learner:
         self.aux_losses = aux_losses or []
         self.n_skip = n_skip
         self.grad_clip = grad_clip
-        self.plot_fn = plot_fn or plot_sequence
+        self.plot_fn = plot_fn or viz.plot_sequence
         self.device = device or _auto_device()
         self.recorder = Recorder()
-        self._pct_train: float = 0.0
+        self.pct_train: float = 0.0
         self._show_bar: bool = True
 
     # ── post-construction helpers ─────────────────────────────────────────
@@ -136,16 +137,6 @@ class Learner:
     def add_augmentation(self, obj):
         """Append an augmentation composable (applied train only)."""
         self.augmentations.append(obj)
-
-    # ── properties ────────────────────────────────────────────────────────
-
-    @property
-    def pct_train(self) -> float:
-        return self._pct_train
-
-    @pct_train.setter
-    def pct_train(self, value: float):
-        self._pct_train = value
 
     # ── context managers ──────────────────────────────────────────────────
 
@@ -238,8 +229,6 @@ class Learner:
         optimizer.step()
         optimizer.zero_grad()
 
-        from ..models.layers import _detach_state
-
         return loss.item(), _detach_state(new_state)
 
     # ── validation ────────────────────────────────────────────────────────
@@ -251,23 +240,7 @@ class Learner:
             (val_loss, {metric_name: value})
         """
         dl = dl or self.dls.valid
-        self.model.eval()
-        all_preds, all_targs = [], []
-
-        with torch.no_grad():
-            for batch in dl:
-                xb, yb = self._to_device(batch)
-                for t in self.transforms:
-                    xb, yb = t(xb, yb)
-
-                result = self.model(xb)
-                pred = result[0] if isinstance(result, tuple) else result
-
-                all_preds.append(pred.cpu())
-                all_targs.append(yb.cpu())
-
-        preds = torch.cat(all_preds, dim=0)
-        targs = torch.cat(all_targs, dim=0)
+        preds, targs = self.get_preds(dl=dl)
 
         pred_skip = preds[:, self.n_skip :] if self.n_skip > 0 else preds
         targ_skip = targs[:, self.n_skip :] if self.n_skip > 0 else targs
@@ -282,6 +255,13 @@ class Learner:
         return val_loss, metrics_dict
 
     # ── fit methods ───────────────────────────────────────────────────────
+
+    def _train_one_batch(self, batch, optimizer, step: int, total_steps: int) -> list[float]:
+        """Process one training batch. Override for custom batch processing (e.g. TBPTT)."""
+        xb, yb = self._to_device(batch)
+        self.pct_train = step / max(1, total_steps)
+        loss_val, _ = self.training_step((xb, yb), optimizer)
+        return [loss_val] if loss_val is not None else []
 
     def fit(
         self,
@@ -308,7 +288,6 @@ class Learner:
         try:
             step = 0
             for epoch in range(n_epoch):
-                # Train
                 self.model.train()
                 train_losses = []
                 with tqdm(
@@ -318,11 +297,7 @@ class Learner:
                     mininterval=0.5,
                 ) as pbar:
                     for batch in self.dls.train:
-                        xb, yb = self._to_device(batch)
-                        self._pct_train = step / max(1, total_steps)
-                        loss_val, _ = self.training_step((xb, yb), optimizer)
-                        if loss_val is not None:
-                            train_losses.append(loss_val)
+                        train_losses.extend(self._train_one_batch(batch, optimizer, step, total_steps))
                         if scheduler is not None:
                             scheduler.step()
                         step += 1
@@ -359,16 +334,18 @@ class Learner:
 
     # ── predictions ───────────────────────────────────────────────────────
 
-    def get_preds(self, ds_idx: int = 1) -> tuple[Tensor, Tensor]:
+    def get_preds(self, ds_idx: int = 1, dl=None, with_inputs: bool = False):
         """Batch-concatenated predictions and targets.
 
         Args:
             ds_idx: DataLoader index (0=train, 1=valid)
+            dl: explicit DataLoader (overrides ds_idx)
+            with_inputs: if True, also return concatenated inputs
         """
-        dl = self._get_dl(ds_idx)
+        dl = dl or self._get_dl(ds_idx)
         self.model.to(self.device)
         self.model.eval()
-        all_preds, all_targs = [], []
+        all_preds, all_targs, all_inputs = [], [], []
 
         with torch.no_grad():
             for batch in dl:
@@ -381,8 +358,29 @@ class Learner:
 
                 all_preds.append(pred.cpu())
                 all_targs.append(yb.cpu())
+                if with_inputs:
+                    all_inputs.append(xb.cpu())
 
-        return torch.cat(all_preds, dim=0), torch.cat(all_targs, dim=0)
+        preds = torch.cat(all_preds, dim=0)
+        targs = torch.cat(all_targs, dim=0)
+        if with_inputs:
+            return preds, targs, torch.cat(all_inputs, dim=0)
+        return preds, targs
+
+    # ── worst-sample selection ──────────────────────────────────────────
+
+    def get_worst(self, max_n: int = 4, ds_idx: int = 1) -> tuple[Tensor, Tensor, Tensor]:
+        """Inputs, targets, and predictions for the samples with highest loss.
+
+        Returns:
+            (inputs, targets, predictions) sliced to the ``max_n`` worst samples
+        """
+        preds, targs, inputs = self.get_preds(ds_idx=ds_idx, with_inputs=True)
+        per_sample = torch.tensor(
+            [self.loss_func(preds[i : i + 1], targs[i : i + 1]).item() for i in range(len(preds))]
+        )
+        idxs = per_sample.argsort(descending=True)[:max_n]
+        return inputs[idxs], targs[idxs], preds[idxs]
 
     # ── visualization ─────────────────────────────────────────────────────
 
@@ -394,10 +392,9 @@ class Learner:
         for t in self.transforms:
             xb, yb = t(xb, yb)
 
-        n_samples = min(xb.shape[0], max_n)
-        n_targ = yb.shape[-1]
-        samples = [(xb[i].cpu(), yb[i].cpu()) for i in range(n_samples)]
-        layout_samples(n_samples, n_targ, samples, self.plot_fn, signal_names=get_signal_names(dl))
+        n = min(xb.shape[0], max_n)
+        samples = [(xb[i].cpu(), yb[i].cpu()) for i in range(n)]
+        viz.layout_samples(n, yb.shape[-1], samples, self.plot_fn, signal_names=get_signal_names(dl))
 
     def show_results(self, max_n: int = 4, ds_idx: int = 1):
         """Plot predictions vs targets."""
@@ -414,44 +411,18 @@ class Learner:
             result = self.model(xb)
             pred = result[0] if isinstance(result, tuple) else result
 
-        n_samples = min(xb.shape[0], max_n)
-        n_targ = yb.shape[-1]
-        samples = [(xb[i].cpu(), yb[i].cpu()) for i in range(n_samples)]
-        outs = [(pred[i].cpu(),) for i in range(n_samples)]
-        layout_samples(n_samples, n_targ, samples, self.plot_fn, outs, signal_names=get_signal_names(dl))
+        n = min(xb.shape[0], max_n)
+        samples = [(xb[i].cpu(), yb[i].cpu()) for i in range(n)]
+        outs = [(pred[i].cpu(),) for i in range(n)]
+        viz.layout_samples(n, yb.shape[-1], samples, self.plot_fn, outs, signal_names=get_signal_names(dl))
 
     def show_worst(self, max_n: int = 4, ds_idx: int = 1):
         """Plot samples with highest per-sample loss."""
+        inputs, targs, preds = self.get_worst(max_n=max_n, ds_idx=ds_idx)
         dl = self._get_dl(ds_idx)
-        self.model.to(self.device)
-        self.model.eval()
-
-        all_preds, all_targs, all_inputs = [], [], []
-        with torch.no_grad():
-            for batch in dl:
-                xb, yb = self._to_device(batch)
-                for t in self.transforms:
-                    xb, yb = t(xb, yb)
-                result = self.model(xb)
-                pred = result[0] if isinstance(result, tuple) else result
-                all_preds.append(pred.cpu())
-                all_targs.append(yb.cpu())
-                all_inputs.append(xb.cpu())
-
-        preds = torch.cat(all_preds, dim=0)
-        targs = torch.cat(all_targs, dim=0)
-        inputs = torch.cat(all_inputs, dim=0)
-
-        # Per-sample loss
-        per_sample = torch.tensor(
-            [self.loss_func(preds[i : i + 1], targs[i : i + 1]).item() for i in range(preds.shape[0])]
-        )
-        idxs = per_sample.argsort(descending=True)[:max_n]
-
-        n_targ = targs.shape[-1]
-        samples = [(inputs[i], targs[i]) for i in idxs]
-        outs = [(preds[i],) for i in idxs]
-        layout_samples(len(idxs), n_targ, samples, self.plot_fn, outs, signal_names=get_signal_names(dl))
+        samples = [(inputs[i], targs[i]) for i in range(len(inputs))]
+        outs = [(preds[i],) for i in range(len(preds))]
+        viz.layout_samples(len(inputs), targs.shape[-1], samples, self.plot_fn, outs, signal_names=get_signal_names(dl))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -474,65 +445,23 @@ class TbpttLearner(Learner):
         super().__init__(*args, **kwargs)
         self.sub_seq_len = sub_seq_len
 
-    def fit(
-        self,
-        n_epoch: int,
-        lr: float | None = None,
-        make_scheduler: Callable | None = None,
-    ):
-        lr = lr or self.lr
-        self.model.to(self.device)
-        optimizer = self.opt_func(self.model.parameters(), lr=lr)
+    def _train_one_batch(self, batch, optimizer, step: int, total_steps: int) -> list[float]:
+        xb, yb = self._to_device(batch)
 
-        n_batches = len(self.dls.train)
-        # Estimate total optimizer steps (each batch may have multiple sub-seq steps)
-        # Use n_batches as a rough estimate for scheduler; actual step count varies
-        total_steps = n_epoch * n_batches
-        scheduler = make_scheduler(optimizer, total_steps) if make_scheduler is not None else None
+        # Apply transforms + augmentations on full sequence before chunking
+        for t in self.transforms:
+            xb, yb = t(xb, yb)
+        for a in self.augmentations:
+            xb, yb = a(xb, yb)
 
-        self._setup_composables()
-        try:
-            step = 0
-            for epoch in range(n_epoch):
-                self.model.train()
-                train_losses = []
-                with tqdm(
-                    total=n_batches,
-                    desc=f"Epoch {epoch + 1}/{n_epoch}",
-                    disable=not self._show_bar,
-                    mininterval=0.5,
-                ) as pbar:
-                    for batch in self.dls.train:
-                        xb, yb = self._to_device(batch)
+        xb_chunks = xb.split(self.sub_seq_len, dim=1)
+        yb_chunks = yb.split(self.sub_seq_len, dim=1)
 
-                        # Apply transforms + augmentations on full sequence
-                        for t in self.transforms:
-                            xb, yb = t(xb, yb)
-                        for a in self.augmentations:
-                            xb, yb = a(xb, yb)
-
-                        # Split into sub-sequences
-                        xb_chunks = xb.split(self.sub_seq_len, dim=1)
-                        yb_chunks = yb.split(self.sub_seq_len, dim=1)
-
-                        state = None  # reset state at each new batch
-                        self._pct_train = step / max(1, total_steps)
-
-                        for xb_sub, yb_sub in zip(xb_chunks, yb_chunks):
-                            loss_val, state = self.training_step((xb_sub, yb_sub), optimizer, state)
-                            if loss_val is not None:
-                                train_losses.append(loss_val)
-
-                        if scheduler is not None:
-                            scheduler.step()
-                        step += 1
-                        pbar.update(1)
-
-                    train_loss = sum(train_losses) / max(1, len(train_losses))
-                    val_loss, metrics_dict = self.validate()
-
-                    row = [train_loss, val_loss] + [metrics_dict[k] for k in sorted(metrics_dict)]
-                    self.recorder.append(row)
-                    self._log_epoch(epoch, train_loss, val_loss, metrics_dict, pbar)
-        finally:
-            self._teardown_composables()
+        state = None
+        self.pct_train = step / max(1, total_steps)
+        losses = []
+        for xb_sub, yb_sub in zip(xb_chunks, yb_chunks):
+            loss_val, state = self.training_step((xb_sub, yb_sub), optimizer, state)
+            if loss_val is not None:
+                losses.append(loss_val)
+        return losses
