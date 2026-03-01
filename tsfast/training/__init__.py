@@ -1,4 +1,4 @@
-"""Lightweight training framework replacing fastai Learner."""
+"""Lightweight pure-PyTorch training framework."""
 
 from .core import Learner, Recorder, TbpttLearner
 from .losses import (

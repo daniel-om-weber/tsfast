@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-TSFast is a deep learning library for time series analysis and system identification, built on PyTorch and fastai.
+TSFast is a deep learning library for time series analysis and system identification, built on PyTorch.
 
 ## Development Workflow
 
@@ -65,5 +65,5 @@ Use `uv sync --extra dev` to install dependencies — it creates/manages the `.v
 - Skip `Args:` for obvious signatures (`forward(self, x)`, `__call__`)
 - `Returns:` only when non-obvious from type hint
 - One-liner docstrings are fine for simple utility functions
-- No docstrings needed for: private helpers, fastai callback lifecycle methods, trivial property accessors
+- No docstrings needed for: private helpers, trivial property accessors
 - Use pattern matching (`match/case`) for type checking

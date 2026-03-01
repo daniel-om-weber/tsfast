@@ -20,44 +20,6 @@ from .viz import layout_samples, plot_sequence
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  DataLoaders adapter
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-class _DlsAdapter:
-    """Wraps old-style fastai DataLoaders to expose ``.train``, ``.valid``, ``.test``."""
-
-    def __init__(self, dls):
-        self._dls = dls
-
-    @property
-    def train(self):
-        return self._dls.loaders[0]
-
-    @property
-    def valid(self):
-        return self._dls.loaders[1]
-
-    @property
-    def test(self):
-        return self._dls.loaders[2] if len(self._dls.loaders) > 2 else None
-
-    @property
-    def norm_stats(self):
-        return self._dls.norm_stats
-
-    def one_batch(self):
-        return self._dls.one_batch()
-
-
-def _wrap_dls(dls):
-    """If *dls* already has ``.train``/``.valid`` attributes, return as-is; otherwise wrap."""
-    if hasattr(dls, "train") and hasattr(dls, "valid"):
-        return dls
-    return _DlsAdapter(dls)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
 #  Utilities
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -144,7 +106,7 @@ class Learner:
         device: torch.device | None = None,
     ):
         self.model = model
-        self.dls = _wrap_dls(dls)
+        self.dls = dls
         self.loss_func = loss_func
         self.metrics = metrics or []
         self.lr = lr
@@ -376,7 +338,7 @@ class Learner:
             self._teardown_composables()
 
     def fit_flat_cos(self, n_epoch: int, lr: float | None = None, pct_start: float = 0.75):
-        """Convenience: flat LR then cosine decay, matching fastai fit_flat_cos."""
+        """Convenience: flat LR then cosine decay."""
         self.fit(
             n_epoch,
             lr=lr,

@@ -14,25 +14,23 @@ Versions](https://img.shields.io/pypi/pyversions/tsfast.png)](https://pypi.org/p
 ## Description
 
 > `tsfast` is an open-source deep learning library for time series
-> analysis and system identification tasks. Built on PyTorch & fastai,
+> analysis and system identification tasks. Built on PyTorch,
 > it offers efficient deep learning models and utilities.
 
 `tsfast` is an open-source deep learning package that focuses on system
-identification and time series analysis tasks. Built on the foundations
-of PyTorch and fastai, it provides efficient implementations of various
-deep learning models and utilities.
+identification and time series analysis tasks. Built on PyTorch, it
+provides efficient implementations of various deep learning models and
+utilities.
 
 ## Key Features
 
 - **Specialized Data Handling for Time Series**:
-  - Employs `SequenceBlock` (built on `fastai.TransformBlock`) for
-    robust sequence data processing pipelines.
+  - HDF5-backed data pipeline with signal blocks for flexible sequence
+    data processing.
   - Includes a range of transforms tailored for sequences, such as
-    `SeqSlice`, `SeqNoiseInjection`, and `Normalize` adapted for time
-    series tensors.
-  - Features advanced data loading with `TbpttDl` (for Truncated
-    Backpropagation Through Time), and factories for `WeightedDL` and
-    `BatchLimitDL`.
+    noise injection and normalization adapted for time series tensors.
+  - Features advanced data loading with TBPTT (Truncated
+    Backpropagation Through Time) support.
 - **Predefined Datasets & Helpers**: Offers easy-to-use benchmark
   datasets (e.g., `create_dls_silverbox` from `identibench`) for rapid
   prototyping and experimentation.
@@ -42,11 +40,10 @@ deep learning models and utilities.
   and combined architectures (`CRNN`, `SeperateCRNN`)
   specifically designed for sequence modeling. Includes building blocks
   like `SeqLinear` and stateful batch normalization.
-- **Integrated `fastai` Learner**: Features `RNNLearner`, `TCNLearner`,
-  `CRNNLearner`, etc., extending `fastai`’s `Learner` for streamlined
-  model training, equipped with custom time-series losses (e.g.,
-  `fun_rmse`, `nrmse`) and callbacks (e.g., `TbpttResetCB`, `ARInitCB`,
-  `SkipFirstNCallback`).
+- **Integrated Training**: Features `RNNLearner`, `TCNLearner`,
+  `CRNNLearner`, etc., with a lightweight pure-PyTorch training loop,
+  custom time-series losses (e.g., `fun_rmse`, `nrmse`), and composable
+  transforms for augmentation and regularization.
 - **System Identification & Prediction**:
   - Supports simulation (prediction based on inputs) and N-step ahead
     forecasting.
