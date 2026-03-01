@@ -6,7 +6,6 @@ __all__ = [
     "Recorder",
 ]
 
-import math
 import os
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -16,14 +15,27 @@ from torch import Tensor, nn
 from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
 
-from ..models.layers import _detach_state
 from ..tsdata.pipeline import get_signal_names
 from . import viz
+from .schedulers import sched_flat_cos
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Utilities
 # ──────────────────────────────────────────────────────────────────────────────
+
+
+def _detach_state(state):
+    """Recursively detach tensors from the computation graph."""
+    if state is None:
+        return None
+    if isinstance(state, torch.Tensor):
+        return state.detach()
+    if isinstance(state, (list, tuple)):
+        return type(state)(_detach_state(s) for s in state)
+    if isinstance(state, dict):
+        return {k: _detach_state(v) for k, v in state.items()}
+    return state
 
 
 def _auto_device() -> torch.device:
@@ -37,19 +49,6 @@ def _auto_device() -> torch.device:
     if os.environ.get("TSFAST_ENABLE_MPS") and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         return torch.device("mps")
     return torch.device("cpu")
-
-
-def _make_flat_cos_scheduler(optimizer, total_steps: int, pct_start: float = 0.75) -> LambdaLR:
-    """Flat LR for pct_start fraction, then cosine decay to zero. Stepped per batch."""
-    flat_steps = int(total_steps * pct_start)
-
-    def _lr_lambda(step):
-        if step < flat_steps:
-            return 1.0
-        progress = (step - flat_steps) / max(1, total_steps - flat_steps)
-        return 0.5 * (1.0 + math.cos(math.pi * progress))
-
-    return LambdaLR(optimizer, _lr_lambda)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -327,7 +326,7 @@ class Learner:
         self.fit(
             n_epoch,
             lr=lr,
-            make_scheduler=lambda opt, steps: _make_flat_cos_scheduler(opt, steps, pct_start),
+            make_scheduler=lambda opt, steps: LambdaLR(opt, lambda s: sched_flat_cos(s / steps, pct_start)),
         )
 
     # ── logging ───────────────────────────────────────────────────────────
@@ -383,9 +382,16 @@ class Learner:
             (inputs, targets, predictions) sliced to the ``max_n`` worst samples
         """
         preds, targs, inputs = self.get_preds(ds_idx=ds_idx, with_inputs=True)
-        per_sample = torch.tensor(
-            [self.loss_func(preds[i : i + 1], targs[i : i + 1]).item() for i in range(len(preds))]
-        )
+        if hasattr(self.loss_func, "reduction"):
+            orig = self.loss_func.reduction
+            self.loss_func.reduction = "none"
+            raw = self.loss_func(preds, targs)
+            self.loss_func.reduction = orig
+            per_sample = raw.reshape(len(preds), -1).mean(dim=1)
+        else:
+            per_sample = torch.tensor(
+                [self.loss_func(preds[i : i + 1], targs[i : i + 1]).item() for i in range(len(preds))]
+            )
         idxs = per_sample.argsort(descending=True)[:max_n]
         return inputs[idxs], targs[idxs], preds[idxs]
 

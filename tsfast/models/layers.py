@@ -1,7 +1,6 @@
 """Reusable model layers and wrappers."""
 
 __all__ = [
-    "_detach_state",
     "SeqLinear",
     "AR_Model",
     "SeqAggregation",
@@ -12,19 +11,6 @@ from collections.abc import Callable
 import torch
 from torch import nn
 from torch.nn import Mish
-
-
-def _detach_state(state):
-    """Recursively detach tensors from the computation graph."""
-    if state is None:
-        return None
-    if isinstance(state, torch.Tensor):
-        return state.detach()
-    if isinstance(state, (list, tuple)):
-        return type(state)(_detach_state(s) for s in state)
-    if isinstance(state, dict):
-        return {k: _detach_state(v) for k, v in state.items()}
-    return state
 
 
 class SeqLinear(nn.Module):
