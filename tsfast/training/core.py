@@ -15,7 +15,7 @@ from torch import Tensor, nn
 from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
 
-from ..tsdata.pipeline import get_signal_names
+from ..tsdata.pipeline import DataLoaders, get_signal_names
 from . import viz
 from .schedulers import sched_flat_cos
 
@@ -76,7 +76,7 @@ class Learner:
 
     Args:
         model: the model to train
-        dls: DataLoaders container with ``.train`` and ``.valid`` attributes
+        dls: train/valid/test DataLoaders
         loss_func: primary loss function
         metrics: list of metric functions ``(pred, targ) -> scalar``
         lr: default learning rate
@@ -93,7 +93,7 @@ class Learner:
     def __init__(
         self,
         model: nn.Module,
-        dls,
+        dls: DataLoaders,
         loss_func: Callable,
         metrics: list[Callable] | None = None,
         lr: float = 3e-3,
