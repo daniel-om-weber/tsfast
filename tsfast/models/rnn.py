@@ -333,6 +333,8 @@ def RNNLearner(
         metrics = [fun_rmse]
 
     inp, out = get_io_size(dls)
+    if sub_seq_len:
+        kwargs.setdefault("return_state", True)
     model = SimpleRNN(inp, out, num_layers, hidden_size, **kwargs)
     model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
 
