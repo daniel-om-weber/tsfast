@@ -129,6 +129,8 @@ def get_signal_names(dl) -> tuple[list[str], list[str]] | None:
     Returns None if readers don't expose signal names (non-HDF5 readers).
     """
     ds = dl.dataset
+    if not hasattr(ds, "_inputs") or not hasattr(ds, "_targets"):
+        return None
     u = _get_reader_names(ds._inputs)
     y = _get_reader_names(ds._targets)
     if u is None or y is None:
