@@ -2,7 +2,6 @@
 
 import math
 import re
-from dataclasses import dataclass
 from pathlib import Path
 
 import h5py
@@ -11,15 +10,6 @@ import numpy as np
 from scipy.signal import resample as fft_resample
 
 from .signal import resample_interp
-
-
-@dataclass
-class _MmapInfo:
-    """Byte-level metadata for a single contiguous HDF5 dataset."""
-
-    offset: int
-    dtype: np.dtype
-    shape: tuple[int, ...]
 
 
 class HDF5Signals:
@@ -47,52 +37,54 @@ class HDF5Signals:
         self.fs_idx = fs_idx
         self.dt_idx = dt_idx
         self._len_cache: dict[str, int] = {}
-        self._mmap_info: dict[str, dict[str, _MmapInfo | None]] = {}
+        self._mmap_cache: dict[str, dict[str, np.ndarray | None]] = {}
+        self._dtype: np.dtype | None = None
 
     def _probe(self, path: str) -> None:
-        """Probe HDF5 datasets for contiguous layout; cache byte offsets."""
-        if path in self._mmap_info:
+        """Probe HDF5 datasets and cache memmap views for contiguous ones."""
+        if path in self._mmap_cache:
             return
-        info = {}
+        mmaps = {}
         with h5py.File(path, "r") as f:
             ds = f if self.dataset is None else f[self.dataset]
             for name in self.names:
                 dataset = ds[name]
+                if self._dtype is None:
+                    self._dtype = dataset.dtype
                 if dataset.chunks is not None:
-                    info[name] = None
+                    mmaps[name] = None
                     continue
                 byte_offset = dataset.id.get_offset()
                 if byte_offset is None or byte_offset == 0:
-                    info[name] = None
+                    mmaps[name] = None
                     continue
-                info[name] = _MmapInfo(
-                    offset=byte_offset,
-                    dtype=dataset.dtype,
-                    shape=dataset.shape,
+                mmaps[name] = np.memmap(
+                    path, dtype=dataset.dtype, mode="r",
+                    offset=byte_offset, shape=dataset.shape,
                 )
             if path not in self._len_cache:
                 self._len_cache[path] = ds[self.names[0]].shape[0]
-        self._mmap_info[path] = info
+        self._mmap_cache[path] = mmaps
 
     def read(self, path: str, l_slc: int, r_slc: int) -> np.ndarray:
-        """Read columns and stack -> [seq_len, n_features]."""
+        """Read columns into pre-allocated array -> [seq_len, n_features]."""
         self._probe(path)
-        path_info = self._mmap_info[path]
-        cols = [None] * len(self.names)
+        mmaps = self._mmap_cache[path]
+        n = len(self.names)
+        out = np.empty((r_slc - l_slc, n), dtype=self._dtype)
         h5py_indices = []
         for i, name in enumerate(self.names):
-            mi = path_info[name]
-            if mi is not None:
-                mm = np.memmap(path, dtype=mi.dtype, mode="r", offset=mi.offset, shape=mi.shape)
-                cols[i] = np.array(mm[l_slc:r_slc])
+            mm = mmaps[name]
+            if mm is not None:
+                out[:, i] = mm[l_slc:r_slc]
             else:
                 h5py_indices.append(i)
         if h5py_indices:
             with h5py.File(path, "r") as f:
                 ds = f if self.dataset is None else f[self.dataset]
                 for i in h5py_indices:
-                    cols[i] = ds[self.names[i]][l_slc:r_slc]
-        return np.stack(cols, axis=-1)
+                    out[:, i] = ds[self.names[i]][l_slc:r_slc]
+        return out
 
     def file_len(self, path: str) -> int:
         """Length of first named dataset. Cached per path."""

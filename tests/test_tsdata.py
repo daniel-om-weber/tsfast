@@ -134,10 +134,10 @@ class TestBlocks:
         path = str(PINN_PATH / "train" / "trajectory_sine_1hz.h5")
         arr = block.read(path, 0, 100)
         assert arr.shape == (100, 3)
-        # Verify mmap info was populated with actual offsets
-        assert path in block._mmap_info
+        # Verify mmap cache was populated with memmap views
+        assert path in block._mmap_cache
         for name in ["u", "x", "v"]:
-            assert block._mmap_info[path][name] is not None
+            assert block._mmap_cache[path][name] is not None
         # Verify values match direct h5py read
         with h5.File(path, "r") as f:
             expected = np.stack([f["u"][:100], f["x"][:100], f["v"][:100]], axis=-1)
@@ -153,10 +153,10 @@ class TestBlocks:
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
         arr = block.read(path, 0, 100)
         assert arr.shape == (100, 2)
-        # Chunked datasets should have None in mmap_info
-        assert path in block._mmap_info
+        # Chunked datasets should have None in mmap cache
+        assert path in block._mmap_cache
         for name in ["u", "y"]:
-            assert block._mmap_info[path][name] is None
+            assert block._mmap_cache[path][name] is None
         # Verify values match direct h5py read
         with h5.File(path, "r") as f:
             expected = np.stack([f["u"][:100], f["y"][:100]], axis=-1)
