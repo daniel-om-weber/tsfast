@@ -178,19 +178,19 @@ class FranSysRegularizer:
         self._output_norm = wrapper.output_norm if isinstance(wrapper, ScaledModel) else None
         if self.inner_model is None:
             self.inner_model = unwrap_model(trainer.model)
-        for m in self.modules:
-            self._hooks.append(m.register_forward_hook(self._hook_fn))
+        self._hooks.append(self.modules[0].register_forward_hook(self._hook_fn_diag))
+        self._hooks.append(self.modules[1].register_forward_hook(self._hook_fn_prog))
 
     def teardown(self, trainer):
         for h in self._hooks:
             h.remove()
         self._hooks.clear()
 
-    def _hook_fn(self, m, i, o):
-        if "Diag" in type(m).__name__:
-            self._out_diag = o[0]
-        else:
-            self._out_prog = o[0]
+    def _hook_fn_diag(self, m, i, o):
+        self._out_diag = o[0] if isinstance(o, tuple) else o
+
+    def _hook_fn_prog(self, m, i, o):
+        self._out_prog = o[0] if isinstance(o, tuple) else o
 
     def _clear(self):
         self._out_diag = None
@@ -251,6 +251,10 @@ class FranSysRegularizer:
         diag, prog = self._out_diag, self._out_prog
         self._clear()
         model = self.inner_model
+
+        # Unflatten flat diagnosis output [batch, seq, state_dim] to stacked format
+        if diag.dim() == 3:
+            diag = model.rnn_prognosis.unflatten_sequence(diag)
         win_reg = (
             self.osp_n_skip if self.osp_n_skip is not None else getattr(model, "_effective_init_sz", model.init_sz)
         )

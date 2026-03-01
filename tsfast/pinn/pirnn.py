@@ -77,29 +77,28 @@ class PIRNN(nn.Module):
         self.p_state_encoder = p_state_encoder
         self.init_sz_range = init_sz_range
 
-        # Instantiate FranSys components - diagnosis RNN uses supervised outputs only
+        rnn_kwargs = dict(hidden_size=hidden_size, num_layers=rnn_layer, ret_full_hidden=True)
+        rnn_kwargs = dict(rnn_kwargs, **kwargs)
+        self.rnn_prognosis = RNN(n_u, **rnn_kwargs)
+
+        # Diagnosis RNN uses supervised outputs only
         self.rnn_diagnosis = Diag_RNN(
             n_u + n_x + n_y_supervised,
-            hidden_size,
+            self.rnn_prognosis.state_size,
             hidden_size=hidden_size,
-            output_layer=rnn_layer,
             rnn_layer=rnn_layer,
             linear_layer=linear_layer,
             **kwargs,
         )
 
-        rnn_kwargs = dict(hidden_size=hidden_size, num_layers=rnn_layer, ret_full_hidden=True)
-        rnn_kwargs = dict(rnn_kwargs, **kwargs)
-        self.rnn_prognosis = RNN(n_u, **rnn_kwargs)
-
         # Final layer outputs all channels (supervised + auxiliary)
         self.final = SeqLinear(hidden_size, n_y, hidden_layer=final_layer)
 
-        # State encoder: physical state -> hidden state (uses supervised outputs)
+        # State encoder: physical state -> flat hidden state
         self.state_encoder = nn.Sequential(
             nn.Linear(n_y_supervised, state_encoder_hidden),
             nn.ReLU(),
-            nn.Linear(state_encoder_hidden, hidden_size * rnn_layer),
+            nn.Linear(state_encoder_hidden, self.rnn_prognosis.state_size),
         )
 
     def forward(
@@ -137,6 +136,11 @@ class PIRNN(nn.Module):
         else:
             raise ValueError(f"encoder_mode must be 'none', 'sequence', or 'state', got {encoder_mode}")
 
+    @staticmethod
+    def _diag_output(result) -> torch.Tensor:
+        """Extract flat diagnosis tensor from model output (handles tuple or tensor)."""
+        return result[0] if isinstance(result, tuple) else result
+
     def _forward_sequence_encoder(
         self,
         u: torch.Tensor,
@@ -153,11 +157,12 @@ class PIRNN(nn.Module):
         Returns:
             Predictions [batch, seq, n_y] covering both init and prognosis windows.
         """
-        out_init, _ = self.rnn_diagnosis(x_init)
+        out_init = self._diag_output(self.rnn_diagnosis(x_init))
         if init_state is None:
-            init_state = self.rnn_diagnosis.output_to_hidden(out_init, -1)
+            init_state = self.rnn_prognosis.unflatten_state(out_init[:, -1])
         out_prog, self.new_hidden = self.rnn_prognosis(u, init_state)
-        out_prog = torch.cat([out_init, out_prog], 2)  # [n_layers, batch, seq ,n_y]
+        out_init_seq = self.rnn_prognosis.unflatten_sequence(out_init)
+        out_prog = torch.cat([out_init_seq, out_prog], 2)
 
         result = self.final(out_prog[-1])
         return result
@@ -180,7 +185,7 @@ class PIRNN(nn.Module):
         """
         if init_state is None:  # If init_state is not provided, use last initialization step
             init_state = x_init[:, -1, -self.n_y_supervised :]
-        init_state = self.encode_single_state(init_state)
+        init_state = self.rnn_prognosis.unflatten_state(self.encode_single_state(init_state))
         pred = self._forward_predictor(u, init_state)
         return F.pad(pred, (0, 0, self._effective_init_sz, 0))  # Zero-pad init window
 
@@ -201,29 +206,16 @@ class PIRNN(nn.Module):
         out_prog, _ = self.rnn_prognosis(u, init_state)
         return self.final(out_prog[-1])
 
-    def encode_single_state(
-        self,
-        physical_state: torch.Tensor,
-    ) -> list:
-        """Convert single physical state to RNN-compatible hidden state.
+    def encode_single_state(self, physical_state: torch.Tensor) -> torch.Tensor:
+        """Convert single physical state to flat hidden state vector.
 
         Args:
-            physical_state: Physical state [batch, n_y_supervised].
+            physical_state: Physical state ``[batch, n_y_supervised]``.
 
         Returns:
-            Hidden state as list of [1, batch, hidden_size] tensors, one per RNN layer.
+            Flat hidden state ``[batch, state_size]``.
         """
-        batch_size = physical_state.shape[0]
-
-        # Encode: [batch, n_y_supervised] -> [batch, hidden_size * rnn_layer]
-        h_flat = self.state_encoder(physical_state)
-
-        # Reshape to RNN format: [rnn_layer, batch, hidden_size]
-        h = h_flat.view(batch_size, self.rnn_layer, self.hidden_size)
-        h = h.transpose(0, 1).contiguous()  # [rnn_layer, batch, hidden_size]
-
-        # Convert to list format expected by Diag_RNN.output_to_hidden
-        return [h[i : i + 1] for i in range(self.rnn_layer)]
+        return self.state_encoder(physical_state)
 
 
 class AuxiliaryOutputLoss:

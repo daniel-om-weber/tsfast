@@ -185,11 +185,9 @@ class CollocationLoss:
 
         elif self.init_mode == "random_hidden":
             if hasattr(self.inner_model, "rnn_prognosis"):
-                hidden_size = self.inner_model.hidden_size
-                rnn_layer = self.inner_model.rnn_layer
-                init_hidden = [
-                    torch.randn(1, batch_size, hidden_size, device=device) * self.hidden_std for _ in range(rnn_layer)
-                ]
+                state_size = self.inner_model.rnn_prognosis.state_size
+                init_flat = torch.randn(batch_size, state_size, device=device) * self.hidden_std
+                init_hidden = self.inner_model.rnn_prognosis.unflatten_state(init_flat)
                 with torch.enable_grad():
                     y_pred = self.model(u_coloc, init_state=init_hidden, encoder_mode="none")
                 y_ref = None
@@ -240,7 +238,7 @@ class ConsistencyLoss:
 
     def _capture_diag(self, module, input, output):
         """Hook callback to capture diagnosis RNN output."""
-        self._diag_output = output[0]
+        self._diag_output = output[0] if isinstance(output, tuple) else output
 
     def setup(self, trainer):
         """Register forward hook on rnn_diagnosis if model supports it."""
@@ -271,13 +269,11 @@ class ConsistencyLoss:
         elif timestep is None:
             timestep = -1
 
-        h_sequence = self.inner_model.rnn_diagnosis.output_to_hidden(self._diag_output, timestep)
+        h_sequence = self._diag_output[:, timestep]
         physical_state = yb[:, timestep, :]
         h_state = self.inner_model.encode_single_state(physical_state)
 
-        consistency_loss = 0.0
-        for h_seq, h_st in zip(h_sequence, h_state):
-            consistency_loss += F.mse_loss(h_seq, h_st)
+        consistency_loss = F.mse_loss(h_sequence, h_state)
 
         self._diag_output = None
 
