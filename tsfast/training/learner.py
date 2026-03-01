@@ -524,9 +524,9 @@ class CudaGraphTbpttLearner(TbpttLearner):
         self._graph_skip: torch.cuda.CUDAGraph | None = None
         self._s_xb: Tensor | None = None
         self._s_yb: Tensor | None = None
-        self._s_state: list[Tensor] | None = None
-        self._s_new_state: list[Tensor] | None = None
-        self._s_new_state_skip: list[Tensor] | None = None
+        self._s_state: list | None = None
+        self._s_new_state: list | None = None
+        self._s_new_state_skip: list | None = None
         self._s_loss: Tensor | None = None
         self._s_loss_skip: Tensor | None = None
 
@@ -564,10 +564,13 @@ class CudaGraphTbpttLearner(TbpttLearner):
         self._s_xb = torch.empty_like(xb_chunk)
         self._s_yb = torch.empty_like(yb_chunk)
 
-        # Allocate static state buffers — discover shape from a warmup forward
+        # Allocate static state buffers — discover shape from a warmup forward.
+        # LSTM state is list[tuple[h, c]]; GRU/RNN state is list[Tensor].
         with torch.no_grad():
             _, warmup_state = self.model(xb_chunk, state=None)
-        self._s_state = [torch.zeros_like(s) for s in warmup_state]
+        self._s_state = [
+            tuple(torch.zeros_like(t) for t in s) if isinstance(s, tuple) else torch.zeros_like(s) for s in warmup_state
+        ]
 
         # Suppress the harmless AccumulateGrad stream-mismatch warning that
         # fires during side-stream warmup backward.
@@ -576,6 +579,24 @@ class CudaGraphTbpttLearner(TbpttLearner):
             self._warmup_and_capture(xb_chunk, yb_chunk, n_skip=0)
             if self.n_skip > 0:
                 self._warmup_and_capture(xb_chunk, yb_chunk, n_skip=self.n_skip)
+
+    @staticmethod
+    def _zero_state(state):
+        for s in state:
+            if isinstance(s, tuple):
+                for t in s:
+                    t.zero_()
+            else:
+                s.zero_()
+
+    @staticmethod
+    def _copy_state(dst, src):
+        for d, s in zip(dst, src):
+            if isinstance(d, tuple):
+                for dt, st in zip(d, s):
+                    dt.copy_(st)
+            else:
+                d.copy_(s)
 
     def _warmup_and_capture(self, xb_chunk, yb_chunk, n_skip: int):
         """Run warmup iterations then capture a graph for the given n_skip."""
@@ -586,15 +607,13 @@ class CudaGraphTbpttLearner(TbpttLearner):
             for _ in range(3):
                 self._s_xb.copy_(xb_chunk)
                 self._s_yb.copy_(yb_chunk)
-                for st in self._s_state:
-                    st.zero_()
+                self._zero_state(self._s_state)
                 self._captured_fwd_bwd(n_skip)
         torch.cuda.current_stream().wait_stream(s)
 
         # Capture the graph
         graph = torch.cuda.CUDAGraph()
-        for st in self._s_state:
-            st.zero_()
+        self._zero_state(self._s_state)
         with torch.cuda.graph(graph):
             new_state, loss = self._captured_fwd_bwd(n_skip)
 
@@ -614,8 +633,7 @@ class CudaGraphTbpttLearner(TbpttLearner):
             self._init_graph(xb_chunks[0], yb_chunks[0])
 
         # Zero state for first chunk
-        for s in self._s_state:
-            s.zero_()
+        self._zero_state(self._s_state)
 
         self.pct_train = step / max(1, total_steps)
 
@@ -627,13 +645,11 @@ class CudaGraphTbpttLearner(TbpttLearner):
             if i == 0 and self._graph_skip is not None:
                 self._graph_skip.replay()
                 losses.append(self._s_loss_skip.item())
-                for s_in, s_out in zip(self._s_state, self._s_new_state_skip):
-                    s_in.copy_(s_out)
+                self._copy_state(self._s_state, self._s_new_state_skip)
             else:
                 self._graph.replay()
                 losses.append(self._s_loss.item())
-                for s_in, s_out in zip(self._s_state, self._s_new_state):
-                    s_in.copy_(s_out)
+                self._copy_state(self._s_state, self._s_new_state)
 
             # Optimizer step outside graph — reads current LR from scheduler
             if self.grad_clip is not None:
