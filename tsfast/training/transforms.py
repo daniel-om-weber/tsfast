@@ -17,7 +17,7 @@ from collections.abc import Callable
 import torch
 from torch import Tensor
 
-from .losses import sched_ramp
+from .schedulers import sched_ramp
 
 
 # ──────────────────────────────────────────────────────────────────────────────
