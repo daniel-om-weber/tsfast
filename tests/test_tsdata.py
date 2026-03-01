@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import h5py
 import numpy as np
 import pytest
 import torch
@@ -521,6 +522,23 @@ class TestNorm:
         stats = compute_stats_from_files(train_files, ["u"])
         assert stats is not None
         assert len(stats.mean) == 1
+
+    def test_compute_stats_from_files_with_nans(self, tmp_path):
+        from tsfast.tsdata.norm import compute_stats_from_files
+
+        # Create two HDF5 files with some NaN values
+        data1 = np.array([1.0, 2.0, np.nan, 4.0])
+        data2 = np.array([np.nan, 3.0, 5.0, 6.0])
+        for name, data in [("a.h5", data1), ("b.h5", data2)]:
+            with h5py.File(tmp_path / name, "w") as f:
+                f.create_dataset("sig", data=data)
+
+        stats = compute_stats_from_files([tmp_path / "a.h5", tmp_path / "b.h5"], ["sig"])
+        valid = np.array([1.0, 2.0, 4.0, 3.0, 5.0, 6.0])
+        np.testing.assert_allclose(stats.mean, [valid.mean()], rtol=1e-5)
+        np.testing.assert_allclose(stats.std, [valid.std()], rtol=1e-5)
+        np.testing.assert_allclose(stats.min, [1.0])
+        np.testing.assert_allclose(stats.max, [6.0])
 
     def test_compute_stats_from_dl(self):
         from tsfast.tsdata import create_dls

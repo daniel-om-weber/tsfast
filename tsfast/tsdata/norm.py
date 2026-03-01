@@ -90,11 +90,11 @@ def compute_stats_from_files(files: list, signals: list[str]) -> NormPair | None
                 data = f[signal][:]
                 if data.ndim > 1:
                     raise ValueError(f"Each dataset in a file has to be 1d. {signal} is {data.ndim}.")
-                sums[i] += np.sum(data)
-                squares[i] += np.sum(data**2)
-                mins[i] = min(mins[i], np.min(data))
-                maxs[i] = max(maxs[i], np.max(data))
-                counts[i] += data.size
+                sums[i] += np.nansum(data)
+                squares[i] += np.nansum(data**2)
+                mins[i] = min(mins[i], np.nanmin(data))
+                maxs[i] = max(maxs[i], np.nanmax(data))
+                counts[i] += np.sum(~np.isnan(data))
 
     means = sums / counts
     stds = np.sqrt((squares / counts) - (means**2))
@@ -126,12 +126,16 @@ def compute_stats(dl, n_batches: int = 10) -> tuple[NormPair, ...]:
     stats = []
     for tensors in acc:
         t = torch.cat(tensors).flatten(0, -2)  # [total_samples, features]
+        mean = torch.nanmean(t, 0)
+        std = torch.nanmean((t - mean).pow(2), 0).sqrt()
+        t_min = torch.where(torch.isnan(t), torch.tensor(float("inf")), t).min(0).values
+        t_max = torch.where(torch.isnan(t), torch.tensor(float("-inf")), t).max(0).values
         stats.append(
             NormPair(
-                mean=t.mean(0).cpu().numpy().astype(np.float32),
-                std=t.std(0).cpu().numpy().astype(np.float32),
-                min=t.min(0).values.cpu().numpy().astype(np.float32),
-                max=t.max(0).values.cpu().numpy().astype(np.float32),
+                mean=mean.cpu().numpy().astype(np.float32),
+                std=std.cpu().numpy().astype(np.float32),
+                min=t_min.cpu().numpy().astype(np.float32),
+                max=t_max.cpu().numpy().astype(np.float32),
             )
         )
     return tuple(stats)
