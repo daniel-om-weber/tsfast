@@ -2,13 +2,14 @@
 
 from .learner import CudaGraphTbpttLearner, Learner, Recorder, TbpttLearner
 from .losses import (
+    LossFn,
     cos_sim_loss,
     cos_sim_loss_pow,
     cut_loss,
     float64_func,
     fun_rmse,
     ignore_nan,
-    nan_reduce,
+    loss_fn,
     mean_vaf,
     mse,
     mse_nan,
@@ -44,10 +45,11 @@ __all__ = [
     "CudaGraphTbpttLearner",
     "Recorder",
     # losses & metrics
+    "LossFn",
+    "loss_fn",
     "mse",
     "mse_nan",
     "ignore_nan",
-    "nan_reduce",
     "float64_func",
     "cut_loss",
     "norm_loss",
