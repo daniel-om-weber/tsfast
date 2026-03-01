@@ -1,4 +1,4 @@
-"""Signal reader blocks for time series data."""
+"""Signal readers for time series data."""
 
 import math
 import re
@@ -13,7 +13,7 @@ from .signal import resample_interp
 
 
 class HDF5Signals:
-    """Temporal block: reads named 1-D datasets from HDF5 files.
+    """Temporal reader: reads named 1-D datasets from HDF5 files.
 
     Uses np.memmap for contiguous datasets (~2x faster than h5py),
     falls back to h5py for chunked/compressed datasets.
@@ -102,7 +102,7 @@ class HDF5Signals:
 
 
 class HDF5Attrs:
-    """Scalar block: reads named HDF5 attributes.
+    """Scalar reader: reads named HDF5 attributes.
 
     Args:
         names: attribute names to extract
@@ -135,10 +135,10 @@ class HDF5Attrs:
 
 
 class Resampled:
-    """Wraps a temporal block, reading in original space and resampling to target rate.
+    """Wraps a temporal reader, reading in original space and resampling to target rate.
 
     Args:
-        block: temporal block with read(path, l_slc, r_slc) and file_len(path)
+        block: temporal reader with read(path, l_slc, r_slc) and file_len(path)
         fast_resample: use linear interpolation (True) or FFT resampling (False)
     """
 
@@ -182,7 +182,7 @@ class Resampled:
 
 
 class CSVSignals:
-    """Temporal block: reads named columns from CSV files.
+    """Temporal reader: reads named columns from CSV files.
 
     Args:
         columns: column names to extract
@@ -230,7 +230,7 @@ class Cached:
     """Wrapper that caches full file data in memory on first read.
 
     Args:
-        block: any signal reader block to wrap
+        block: any signal reader to wrap
     """
 
     def __init__(self, block):
@@ -252,7 +252,7 @@ class Cached:
 
 
 class FilenameScalar:
-    """Scalar block: extracts numbers from filenames via regex.
+    """Scalar reader: extracts numbers from filenames via regex.
 
     Args:
         pattern: regex with capture groups to extract from the filename stem

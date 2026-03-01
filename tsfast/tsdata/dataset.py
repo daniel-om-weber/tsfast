@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from .blocks import Resampled
+from .readers import Resampled
 
 
 @dataclass
@@ -27,8 +27,8 @@ class WindowedDataset(Dataset):
 
     Args:
         entries: list of FileEntry (path + resampling_factor)
-        inputs: single block or tuple of blocks for input signals
-        targets: single block or tuple of blocks for target signals
+        inputs: single reader or tuple of readers for input signals
+        targets: single reader or tuple of readers for target signals
         win_sz: window size in (resampled) samples, None = full-file mode
         stp_sz: step size between windows
     """
@@ -78,8 +78,8 @@ class WindowedDataset(Dataset):
             l_slc = offset * self.stp_sz
             r_slc = l_slc + self.win_sz
 
-        inp = self._read_blocks(self._inputs, entry, l_slc, r_slc)
-        tgt = self._read_blocks(self._targets, entry, l_slc, r_slc)
+        inp = self._read_readers(self._inputs, entry, l_slc, r_slc)
+        tgt = self._read_readers(self._targets, entry, l_slc, r_slc)
 
         if self._single_input:
             inp = inp[0]
@@ -87,9 +87,9 @@ class WindowedDataset(Dataset):
             tgt = tgt[0]
         return inp, tgt
 
-    def _read_blocks(self, blocks: tuple, entry: FileEntry, l_slc: int, r_slc: int) -> tuple[torch.Tensor, ...]:
+    def _read_readers(self, readers: tuple, entry: FileEntry, l_slc: int, r_slc: int) -> tuple[torch.Tensor, ...]:
         results = []
-        for block in blocks:
+        for block in readers:
             if isinstance(block, Resampled):
                 arr = block.read(entry.path, l_slc, r_slc, entry.resampling_factor)
             elif hasattr(block, "file_len"):
@@ -100,11 +100,11 @@ class WindowedDataset(Dataset):
         return tuple(results)
 
     @staticmethod
-    def _find_temporal(*blocks):
-        """Find first temporal block (has file_len method)."""
-        for b in blocks:
+    def _find_temporal(*readers):
+        """Find first temporal reader (has file_len method)."""
+        for b in readers:
             if isinstance(b, Resampled):
                 return b
             if hasattr(b, "file_len"):
                 return b
-        raise ValueError("At least one temporal block required")
+        raise ValueError("At least one temporal reader required")

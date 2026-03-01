@@ -65,13 +65,13 @@ class TestSignal:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  blocks.py
+#  readers.py
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class TestBlocks:
+class TestReaders:
     def test_hdf5signals_read(self):
-        from tsfast.tsdata.blocks import HDF5Signals
+        from tsfast.tsdata.readers import HDF5Signals
 
         block = HDF5Signals(["u", "y"])
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
@@ -79,7 +79,7 @@ class TestBlocks:
         assert arr.shape == (100, 2)
 
     def test_hdf5signals_file_len(self):
-        from tsfast.tsdata.blocks import HDF5Signals
+        from tsfast.tsdata.readers import HDF5Signals
 
         block = HDF5Signals(["u"])
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
@@ -87,7 +87,7 @@ class TestBlocks:
         assert length == 80000
 
     def test_hdf5signals_len_cache(self):
-        from tsfast.tsdata.blocks import HDF5Signals
+        from tsfast.tsdata.readers import HDF5Signals
 
         block = HDF5Signals(["u"])
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
@@ -97,7 +97,7 @@ class TestBlocks:
         assert block.file_len(path) == 80000
 
     def test_hdf5attrs_read(self):
-        from tsfast.tsdata.blocks import HDF5Attrs
+        from tsfast.tsdata.readers import HDF5Attrs
 
         block = HDF5Attrs(["mass", "spring_constant"])
         path = str(PINN_PATH / "train" / "trajectory_sine_1hz.h5")
@@ -106,7 +106,7 @@ class TestBlocks:
         np.testing.assert_allclose(arr, [1.0, 1.0], rtol=1e-5)
 
     def test_resampled_identity(self):
-        from tsfast.tsdata.blocks import HDF5Signals, Resampled
+        from tsfast.tsdata.readers import HDF5Signals, Resampled
 
         block = HDF5Signals(["u"])
         resampled = Resampled(block)
@@ -116,7 +116,7 @@ class TestBlocks:
         np.testing.assert_array_equal(arr, arr_direct)
 
     def test_resampled_upsample(self):
-        from tsfast.tsdata.blocks import HDF5Signals, Resampled
+        from tsfast.tsdata.readers import HDF5Signals, Resampled
 
         block = HDF5Signals(["u"])
         resampled = Resampled(block)
@@ -128,7 +128,7 @@ class TestBlocks:
         """Contiguous datasets use mmap path and produce correct results."""
         import h5py as h5
 
-        from tsfast.tsdata.blocks import HDF5Signals
+        from tsfast.tsdata.readers import HDF5Signals
 
         block = HDF5Signals(["u", "x", "v"])
         path = str(PINN_PATH / "train" / "trajectory_sine_1hz.h5")
@@ -147,7 +147,7 @@ class TestBlocks:
         """Chunked datasets fall back to h5py and still return correct results."""
         import h5py as h5
 
-        from tsfast.tsdata.blocks import HDF5Signals
+        from tsfast.tsdata.readers import HDF5Signals
 
         block = HDF5Signals(["u", "y"])
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
@@ -166,7 +166,7 @@ class TestBlocks:
         """Block survives pickle (simulating multiprocessing worker spawn)."""
         import pickle
 
-        from tsfast.tsdata.blocks import HDF5Signals
+        from tsfast.tsdata.readers import HDF5Signals
 
         block = HDF5Signals(["u", "x"])
         path = str(PINN_PATH / "train" / "trajectory_sine_1hz.h5")
@@ -183,7 +183,7 @@ class TestBlocks:
 
 class TestCached:
     def test_cached_hdf5signals_matches_uncached(self):
-        from tsfast.tsdata.blocks import Cached, HDF5Signals
+        from tsfast.tsdata.readers import Cached, HDF5Signals
 
         block = HDF5Signals(["u", "y"])
         cached = Cached(HDF5Signals(["u", "y"]))
@@ -193,7 +193,7 @@ class TestCached:
         np.testing.assert_array_equal(arr, arr_cached)
 
     def test_cached_populates_data_cache(self):
-        from tsfast.tsdata.blocks import Cached, HDF5Signals
+        from tsfast.tsdata.readers import Cached, HDF5Signals
 
         cached = Cached(HDF5Signals(["u"]))
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
@@ -202,20 +202,20 @@ class TestCached:
         assert cached._data_cache[path].shape == (80000, 1)
 
     def test_cached_delegates_n_features(self):
-        from tsfast.tsdata.blocks import Cached, HDF5Signals
+        from tsfast.tsdata.readers import Cached, HDF5Signals
 
         cached = Cached(HDF5Signals(["u", "y"]))
         assert cached.n_features == 2
 
     def test_cached_delegates_file_len(self):
-        from tsfast.tsdata.blocks import Cached, HDF5Signals
+        from tsfast.tsdata.readers import Cached, HDF5Signals
 
         cached = Cached(HDF5Signals(["u"]))
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
         assert cached.file_len(path) == 80000
 
     def test_cached_hdf5attrs(self):
-        from tsfast.tsdata.blocks import Cached, HDF5Attrs
+        from tsfast.tsdata.readers import Cached, HDF5Attrs
 
         cached = Cached(HDF5Attrs(["mass", "spring_constant"]))
         path = str(PINN_PATH / "train" / "trajectory_sine_1hz.h5")
@@ -225,13 +225,13 @@ class TestCached:
         assert path in cached._data_cache
 
     def test_cached_scalar_no_file_len(self):
-        from tsfast.tsdata.blocks import Cached, HDF5Attrs
+        from tsfast.tsdata.readers import Cached, HDF5Attrs
 
         cached = Cached(HDF5Attrs(["mass"]))
         assert not hasattr(cached, "file_len")
 
     def test_cached_with_resampled(self):
-        from tsfast.tsdata.blocks import Cached, HDF5Signals, Resampled
+        from tsfast.tsdata.readers import Cached, HDF5Signals, Resampled
 
         cached = Cached(HDF5Signals(["u"]))
         resampled = Resampled(cached)
@@ -242,7 +242,7 @@ class TestCached:
         assert path in cached._data_cache
 
     def test_cached_with_windowed_dataset(self):
-        from tsfast.tsdata.blocks import Cached, HDF5Signals
+        from tsfast.tsdata.readers import Cached, HDF5Signals
         from tsfast.tsdata.dataset import FileEntry, WindowedDataset
 
         cached_u = Cached(HDF5Signals(["u"]))
@@ -271,13 +271,13 @@ class TestCached:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Alternative blocks: CSVSignals, FilenameScalar
+#  Alternative readers: CSVSignals, FilenameScalar
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class TestAltBlocks:
+class TestAltReaders:
     def test_csv_signals_read(self, tmp_path):
-        from tsfast.tsdata.blocks import CSVSignals
+        from tsfast.tsdata.readers import CSVSignals
 
         csv_file = tmp_path / "data.csv"
         csv_file.write_text("voltage,current\n1.0,2.0\n3.0,4.0\n5.0,6.0\n")
@@ -287,7 +287,7 @@ class TestAltBlocks:
         np.testing.assert_allclose(arr, [[1.0, 2.0], [3.0, 4.0]])
 
     def test_csv_signals_file_len(self, tmp_path):
-        from tsfast.tsdata.blocks import CSVSignals
+        from tsfast.tsdata.readers import CSVSignals
 
         csv_file = tmp_path / "data.csv"
         csv_file.write_text("a,b\n1,2\n3,4\n5,6\n7,8\n")
@@ -298,13 +298,13 @@ class TestAltBlocks:
         assert block.file_len(str(csv_file)) == 4
 
     def test_csv_signals_n_features(self):
-        from tsfast.tsdata.blocks import CSVSignals
+        from tsfast.tsdata.readers import CSVSignals
 
         block = CSVSignals(["x", "y", "z"])
         assert block.n_features == 3
 
     def test_csv_signals_with_dataset(self, tmp_path):
-        from tsfast.tsdata.blocks import CSVSignals
+        from tsfast.tsdata.readers import CSVSignals
         from tsfast.tsdata.dataset import FileEntry, WindowedDataset
 
         csv_file = tmp_path / "signals.csv"
@@ -322,7 +322,7 @@ class TestAltBlocks:
         assert isinstance(xb, torch.Tensor)
 
     def test_csv_signals_custom_delimiter(self, tmp_path):
-        from tsfast.tsdata.blocks import CSVSignals
+        from tsfast.tsdata.readers import CSVSignals
 
         csv_file = tmp_path / "data.csv"
         csv_file.write_text("a;b\n1.5;2.5\n3.5;4.5\n")
@@ -332,7 +332,7 @@ class TestAltBlocks:
         np.testing.assert_allclose(arr, [[1.5, 2.5], [3.5, 4.5]])
 
     def test_filename_scalar_single_group(self, tmp_path):
-        from tsfast.tsdata.blocks import FilenameScalar
+        from tsfast.tsdata.readers import FilenameScalar
 
         f = tmp_path / "test_25C.csv"
         f.touch()
@@ -342,7 +342,7 @@ class TestAltBlocks:
         assert arr[0] == 25.0
 
     def test_filename_scalar_multi_group(self, tmp_path):
-        from tsfast.tsdata.blocks import FilenameScalar
+        from tsfast.tsdata.readers import FilenameScalar
 
         f = tmp_path / "test_25C_100Hz.csv"
         f.touch()
@@ -352,7 +352,7 @@ class TestAltBlocks:
         np.testing.assert_allclose(arr, [25.0, 100.0])
 
     def test_filename_scalar_no_match(self, tmp_path):
-        from tsfast.tsdata.blocks import FilenameScalar
+        from tsfast.tsdata.readers import FilenameScalar
 
         f = tmp_path / "nodata.csv"
         f.touch()
@@ -361,14 +361,14 @@ class TestAltBlocks:
             block.read(str(f))
 
     def test_filename_scalar_n_features(self):
-        from tsfast.tsdata.blocks import FilenameScalar
+        from tsfast.tsdata.readers import FilenameScalar
 
         assert FilenameScalar(r"(\d+)C").n_features == 1
         assert FilenameScalar(r"(\d+)C_(\d+)Hz").n_features == 2
         assert FilenameScalar(r"(\d+)_(\d+)_(\d+)").n_features == 3
 
     def test_mixed_csv_filename_dataset(self, tmp_path):
-        from tsfast.tsdata.blocks import CSVSignals, FilenameScalar
+        from tsfast.tsdata.readers import CSVSignals, FilenameScalar
         from tsfast.tsdata.dataset import FileEntry, WindowedDataset
 
         csv_file = tmp_path / "trial_25C.csv"
@@ -395,7 +395,7 @@ class TestAltBlocks:
 
 class TestDataset:
     def test_windowed_dataset_window_count(self):
-        from tsfast.tsdata.blocks import HDF5Signals
+        from tsfast.tsdata.readers import HDF5Signals
         from tsfast.tsdata.dataset import FileEntry, WindowedDataset
 
         block_u = HDF5Signals(["u"])
@@ -407,7 +407,7 @@ class TestDataset:
         assert len(ds) == 800
 
     def test_windowed_dataset_getitem(self):
-        from tsfast.tsdata.blocks import HDF5Signals
+        from tsfast.tsdata.readers import HDF5Signals
         from tsfast.tsdata.dataset import FileEntry, WindowedDataset
 
         block_u = HDF5Signals(["u"])
@@ -422,7 +422,7 @@ class TestDataset:
         assert isinstance(yb, torch.Tensor)
 
     def test_windowed_dataset_fullfile(self):
-        from tsfast.tsdata.blocks import HDF5Signals
+        from tsfast.tsdata.readers import HDF5Signals
         from tsfast.tsdata.dataset import FileEntry, WindowedDataset
 
         block_u = HDF5Signals(["u"])
@@ -436,7 +436,7 @@ class TestDataset:
         assert yb.shape == (80000, 1)
 
     def test_windowed_dataset_multi_file(self):
-        from tsfast.tsdata.blocks import HDF5Signals
+        from tsfast.tsdata.readers import HDF5Signals
         from tsfast.tsdata.dataset import FileEntry, WindowedDataset
 
         block_u = HDF5Signals(["u"])
@@ -450,7 +450,7 @@ class TestDataset:
         assert len(ds) > 800
 
     def test_windowed_dataset_multi_block_tuple(self):
-        from tsfast.tsdata.blocks import HDF5Signals
+        from tsfast.tsdata.readers import HDF5Signals
         from tsfast.tsdata.dataset import FileEntry, WindowedDataset
 
         block_u = HDF5Signals(["u"])

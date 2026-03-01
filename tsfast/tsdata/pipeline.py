@@ -5,7 +5,7 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 
-from .blocks import Cached, HDF5Signals, Resampled
+from .readers import Cached, HDF5Signals, Resampled
 from .dataset import FileEntry, WindowedDataset
 from .norm import (
     NormStats,
@@ -78,8 +78,8 @@ class DataLoaders:
         file_paths = get_file_paths(self.train)
         if signal_names is None or not file_paths:
             raise ValueError(
-                "File-based stats require HDF5Signals blocks with signal names. "
-                "Use create_dls() or create_dls_from_blocks() with HDF5Signals blocks."
+                "File-based stats require HDF5Signals readers with signal names. "
+                "Use create_dls() or create_dls_from_readers() with HDF5Signals readers."
             )
         u_names, y_names = signal_names
         norm_u = compute_stats_from_files(file_paths, u_names)
@@ -100,17 +100,17 @@ class DataLoaders:
 
 
 def get_io_size(dls) -> tuple[int, int]:
-    """Get total input/output feature counts from DataLoaders blocks."""
+    """Get total input/output feature counts from DataLoaders readers."""
     ds = dls.train.dataset
     inp = sum(b.n_features for b in ds._inputs)
     out = sum(b.n_features for b in ds._targets)
     return inp, out
 
 
-def _get_block_names(blocks: tuple) -> list[str] | None:
-    """Extract signal names from blocks."""
+def _get_reader_names(readers: tuple) -> list[str] | None:
+    """Extract signal names from readers."""
     names = []
-    for b in blocks:
+    for b in readers:
         if hasattr(b, "signal_names"):
             names.extend(b.signal_names)
         else:
@@ -124,13 +124,13 @@ def get_file_paths(dl) -> list[str]:
 
 
 def get_signal_names(dl) -> tuple[list[str], list[str]] | None:
-    """Extract (input_names, target_names) from a DataLoader's blocks.
+    """Extract (input_names, target_names) from a DataLoader's readers.
 
-    Returns None if blocks don't expose signal names (non-HDF5 blocks).
+    Returns None if readers don't expose signal names (non-HDF5 readers).
     """
     ds = dl.dataset
-    u = _get_block_names(ds._inputs)
-    y = _get_block_names(ds._targets)
+    u = _get_reader_names(ds._inputs)
+    y = _get_reader_names(ds._targets)
     if u is None or y is None:
         return None
     return (u, y)
@@ -168,7 +168,7 @@ def _compute_resampling_factors(
 
 
 def _wrap_one(block):
-    """Wrap a single temporal block in Resampled if needed."""
+    """Wrap a single temporal reader in Resampled if needed."""
     if isinstance(block, Resampled):
         return block
     if hasattr(block, "file_len"):
@@ -177,20 +177,20 @@ def _wrap_one(block):
 
 
 def _wrap_resampled(blocks):
-    """Wrap temporal blocks in Resampled, leave scalar/already-wrapped blocks untouched."""
+    """Wrap temporal readers in Resampled, leave scalar/already-wrapped readers untouched."""
     if not isinstance(blocks, tuple):
         return _wrap_one(blocks)
     return tuple(_wrap_one(b) for b in blocks)
 
 
 def _wrap_cached(blocks):
-    """Wrap blocks in Cached, leave already-cached blocks untouched."""
+    """Wrap readers in Cached, leave already-cached readers untouched."""
     if not isinstance(blocks, tuple):
         return blocks if isinstance(blocks, Cached) else Cached(blocks)
     return tuple(b if isinstance(b, Cached) else Cached(b) for b in blocks)
 
 
-def create_dls_from_blocks(
+def create_dls_from_readers(
     inputs,
     targets,
     train_files: list[Path | str],
@@ -208,11 +208,11 @@ def create_dls_from_blocks(
     cache: bool = False,
     dls_id: str | None = None,
 ) -> DataLoaders:
-    """Create DataLoaders from user-provided blocks and file lists.
+    """Create DataLoaders from user-provided readers and file lists.
 
     Args:
-        inputs: input block or tuple of blocks
-        targets: target block or tuple of blocks
+        inputs: input reader or tuple of readers
+        targets: target reader or tuple of readers
         train_files: training HDF5 files
         valid_files: validation HDF5 files
         test_files: test HDF5 files, or None
@@ -379,7 +379,7 @@ def create_dls(
     else:
         raise ValueError(f"dataset must be a Path, list, or dict. {type(dataset)} was given.")
 
-    return create_dls_from_blocks(
+    return create_dls_from_readers(
         inputs=HDF5Signals(u),
         targets=HDF5Signals(y),
         train_files=train_files,
