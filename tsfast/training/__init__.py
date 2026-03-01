@@ -35,6 +35,7 @@ from .transforms import (
     truncate_sequence,
     vary_seq_len,
 )
+from .profiling import DataProfiler, benchmark_dataloaders
 from .viz import grad_norm, layout_samples, plot_grad_flow, plot_sequence
 
 __all__ = [
@@ -76,6 +77,9 @@ __all__ = [
     "bias",
     "vary_seq_len",
     "truncate_sequence",
+    # profiling
+    "DataProfiler",
+    "benchmark_dataloaders",
     # viz
     "plot_sequence",
     "plot_grad_flow",
