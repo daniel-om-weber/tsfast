@@ -11,6 +11,8 @@ from torch.utils.data import DataLoader, TensorDataset
 
 matplotlib.use("Agg")
 
+requires_cuda = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Helpers
@@ -580,5 +582,76 @@ class TestTbpttLearner:
             augmentations=[noise(std=0.05)],
             device=torch.device("cpu"),
         )
+        lrn.fit(1)
+        assert math.isfinite(lrn.recorder.values[-1][1])
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  CudaGraphTbpttLearner
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@requires_cuda
+class TestCudaGraphTbpttLearner:
+    def test_cuda_graph_tbptt_smoke(self):
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import CudaGraphTbpttLearner
+
+        dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True)
+        lrn = CudaGraphTbpttLearner(model, dls, loss_func=nn.MSELoss(), sub_seq_len=25)
+        lrn.fit(1)
+        assert math.isfinite(lrn.recorder.values[-1][1])
+
+    def test_cuda_graph_tbptt_n_skip(self):
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import CudaGraphTbpttLearner
+
+        dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True)
+        lrn = CudaGraphTbpttLearner(
+            model, dls, loss_func=nn.MSELoss(), sub_seq_len=25, n_skip=10
+        )
+        lrn.fit(1)
+        assert math.isfinite(lrn.recorder.values[-1][1])
+        assert lrn.n_skip == 10
+
+    def test_cuda_graph_tbptt_with_augmentations(self):
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import CudaGraphTbpttLearner
+        from tsfast.training.transforms import noise
+
+        dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True)
+        lrn = CudaGraphTbpttLearner(
+            model, dls, loss_func=nn.MSELoss(), sub_seq_len=25, augmentations=[noise(std=0.05)]
+        )
+        lrn.fit(1)
+        assert math.isfinite(lrn.recorder.values[-1][1])
+
+    def test_cuda_graph_tbptt_aux_losses(self):
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import CudaGraphTbpttLearner
+        from tsfast.training.aux_losses import AuxiliaryLoss
+
+        dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True)
+        lrn = CudaGraphTbpttLearner(
+            model, dls, loss_func=nn.MSELoss(), sub_seq_len=25,
+            aux_losses=[AuxiliaryLoss(nn.MSELoss(), alpha=0.1)],
+        )
+        lrn.fit(1)
+        assert math.isfinite(lrn.recorder.values[-1][1])
+
+    def test_cuda_graph_tbptt_graph_reset(self):
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import CudaGraphTbpttLearner
+
+        dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True)
+        lrn = CudaGraphTbpttLearner(model, dls, loss_func=nn.MSELoss(), sub_seq_len=25)
+        lrn.fit(1)
+        assert math.isfinite(lrn.recorder.values[-1][1])
+        # Second fit should re-capture the graph and succeed
         lrn.fit(1)
         assert math.isfinite(lrn.recorder.values[-1][1])

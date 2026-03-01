@@ -20,32 +20,32 @@ A pre-commit hook syncs the pair automatically on commit. Edit either file.
 
 ```bash
 # Manually sync all paired notebooks
-cd examples && jupytext --sync notebooks/*.ipynb
+cd examples && uv run jupytext --sync notebooks/*.ipynb
 
 # Convert a new notebook to paired format
-cd examples && jupytext --set-formats notebooks//ipynb,scripts//py:percent notebooks/new_notebook.ipynb
+cd examples && uv run jupytext --set-formats notebooks//ipynb,scripts//py:percent notebooks/new_notebook.ipynb
 ```
 
 ## Commands
 
 ```bash
 # Run all tests
-pytest tests/ -v
+uv run pytest tests/ -v
 
 # Run a specific test file
-pytest tests/test_models.py -v
+uv run pytest tests/test_models.py -v
 
 # Run example notebooks (verify they execute)
-pytest --nbmake examples/notebooks/00_minimal_example.ipynb
+uv run pytest --nbmake examples/notebooks/00_minimal_example.ipynb
 
 # Run all example notebooks and save outputs in-place (takes a long time)
-jupyter nbconvert --to notebook --execute --inplace examples/notebooks/*.ipynb
+uv run jupyter nbconvert --to notebook --execute --inplace examples/notebooks/*.ipynb
 
 # Lint
-ruff check tsfast/
+uv run ruff check tsfast/
 
 # Format
-ruff format tsfast/
+uv run ruff format tsfast/
 
 # Install/sync dependencies (uses uv.lock)
 uv sync --extra dev

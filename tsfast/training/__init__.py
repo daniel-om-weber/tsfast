@@ -1,6 +1,6 @@
 """Lightweight pure-PyTorch training framework."""
 
-from .learner import Learner, Recorder, TbpttLearner
+from .learner import CudaGraphTbpttLearner, Learner, Recorder, TbpttLearner
 from .losses import (
     cos_sim_loss,
     cos_sim_loss_pow,
@@ -8,6 +8,7 @@ from .losses import (
     float64_func,
     fun_rmse,
     ignore_nan,
+    mask_nan,
     mean_vaf,
     mse,
     mse_nan,
@@ -40,11 +41,13 @@ __all__ = [
     # core
     "Learner",
     "TbpttLearner",
+    "CudaGraphTbpttLearner",
     "Recorder",
     # losses & metrics
     "mse",
     "mse_nan",
     "ignore_nan",
+    "mask_nan",
     "float64_func",
     "cut_loss",
     "norm_loss",
