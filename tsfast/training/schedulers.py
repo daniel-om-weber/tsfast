@@ -1,9 +1,20 @@
 """Training schedule functions."""
 
+import math
+
 __all__ = [
+    "sched_flat_cos",
     "sched_lin_p",
     "sched_ramp",
 ]
+
+
+def sched_flat_cos(pos: float, pct_start: float = 0.75) -> float:
+    """Flat (1.0) until pct_start, then cosine decay to zero."""
+    if pos < pct_start:
+        return 1.0
+    progress = (pos - pct_start) / (1.0 - pct_start)
+    return 0.5 * (1.0 + math.cos(math.pi * progress))
 
 
 def sched_lin_p(start: float, end: float, pos: float, p: float = 0.75) -> float:
