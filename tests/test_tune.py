@@ -1,7 +1,6 @@
 """Tests for the Ray Tune hyperparameter optimization integration."""
 
 import pytest
-import torch
 
 ray = pytest.importorskip("ray")
 tune = pytest.importorskip("ray.tune")

@@ -101,6 +101,57 @@ class TestLosses:
         assert sched_ramp(0, 1, 1.0) == 1.0
         assert 0 < sched_ramp(0, 1, 0.4) < 1
 
+    def test_cut_loss(self):
+        from tsfast.training.losses import CutLoss
+
+        fn = CutLoss(nn.MSELoss(), l_cut=5, r_cut=-5)
+        x = torch.rand(2, 100, 1)
+        y = torch.rand(2, 100, 1)
+        loss = fn(x, y)
+        assert loss.item() >= 0
+
+    def test_weighted_mae(self):
+        from tsfast.training.losses import weighted_mae
+
+        x = torch.rand(4, 100, 1)
+        y = torch.rand(4, 100, 1)
+        loss = weighted_mae(x, y)
+        assert loss.item() > 0
+
+    def test_rand_seq_len_loss(self):
+        from tsfast.training.losses import RandSeqLenLoss
+
+        fn = RandSeqLenLoss(nn.MSELoss(), min_idx=10)
+        x = torch.rand(4, 100, 1)
+        y = torch.rand(4, 100, 1)
+        loss = fn(x, y)
+        assert loss.item() >= 0
+
+    def test_cos_sim_loss_pow(self):
+        from tsfast.training.losses import cos_sim_loss_pow
+
+        x = torch.rand(4, 100, 2)
+        loss_same = cos_sim_loss_pow(x, x)
+        assert loss_same.item() < 1e-5
+        y = torch.rand(4, 100, 2)
+        loss_diff = cos_sim_loss_pow(x, y)
+        assert loss_diff.item() > 0
+
+    def test_nrmse_std(self):
+        from tsfast.training.losses import nrmse_std
+
+        x = torch.rand(4, 100, 1)
+        y = torch.rand(4, 100, 1)
+        loss = nrmse_std(x, y)
+        assert loss.item() > 0
+
+    def test_mean_vaf_perfect(self):
+        from tsfast.training.losses import mean_vaf
+
+        x = torch.rand(4, 100, 1)
+        vaf = mean_vaf(x, x)
+        assert vaf.item() == pytest.approx(100.0, abs=0.1)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Unit tests — transforms
@@ -483,9 +534,7 @@ class TestTbpttLearner:
 
         dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
         model = SimpleRNN(1, 1, hidden_size=20, return_state=True)
-        lrn = TbpttLearner(
-            model, dls, loss_func=nn.MSELoss(), sub_seq_len=25, device=torch.device("cpu")
-        )
+        lrn = TbpttLearner(model, dls, loss_func=nn.MSELoss(), sub_seq_len=25, device=torch.device("cpu"))
         lrn.fit(1)
         assert math.isfinite(lrn.recorder.values[-1][1])
 
