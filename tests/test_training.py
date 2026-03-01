@@ -711,3 +711,4 @@ class TestCudaGraphTbpttLearner:
         # Second fit should re-capture the graph and succeed
         lrn.fit(1)
         assert math.isfinite(lrn.recorder.values[-1][1])
+

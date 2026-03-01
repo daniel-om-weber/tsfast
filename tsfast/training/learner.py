@@ -355,7 +355,12 @@ class Learner:
             with_inputs: if True, also return concatenated inputs
         """
         dl = dl or self._get_dl(ds_idx)
-        self.model.to(self.device)
+        # Only move when truly needed — a redundant .to() triggers
+        # nn.RNN flatten_parameters which reallocates weight memory and
+        # would invalidate any captured CUDA graph.
+        p = next(self.model.parameters())
+        if p.device.type != self.device.type or (p.device.index or 0) != (self.device.index or 0):
+            self.model.to(self.device)
         self.model.eval()
         all_preds, all_targs, all_inputs = [], [], []
 
@@ -499,8 +504,9 @@ class TbpttLearner(Learner):
 class CudaGraphTbpttLearner(TbpttLearner):
     """TbpttLearner accelerated with CUDA Graphs.
 
-    Captures the forward + backward + optimizer step for a single TBPTT chunk
-    into a CUDA graph and replays it, eliminating per-kernel CPU launch overhead.
+    Captures the forward + backward pass for a single TBPTT chunk into a CUDA
+    graph and replays it, eliminating per-kernel CPU launch overhead.  The
+    optimizer step runs *outside* the graph so that LR schedulers work normally.
 
     When ``n_skip > 0``, a second graph is captured for the first chunk (which
     has different loss tensor shapes due to skip-slicing).
@@ -525,28 +531,22 @@ class CudaGraphTbpttLearner(TbpttLearner):
         self._s_loss_skip: Tensor | None = None
 
     def fit(self, n_epoch, lr=None, make_scheduler=None):
-        # Reset captured graphs so shapes are re-discovered each fit() call
+        # Reset captured graphs so shapes are re-discovered each fit() call.
         self._graph = None
         self._graph_skip = None
+        super().fit(n_epoch, lr=lr, make_scheduler=make_scheduler)
 
-        orig_opt = self.opt_func
+    def _captured_fwd_bwd(self, n_skip: int = 0) -> tuple[list[Tensor], Tensor]:
+        """Forward + loss + backward on static buffers (no optimizer step).
 
-        def _capturable_opt(params, **kw):
-            return orig_opt(params, capturable=True, **kw)
-
-        self.opt_func = _capturable_opt
-        try:
-            super().fit(n_epoch, lr=lr, make_scheduler=make_scheduler)
-        finally:
-            self.opt_func = orig_opt
-
-    def _captured_step(self, n_skip: int = 0) -> tuple[Tensor, list[Tensor]]:
-        """Forward + loss + backward + optimizer step on static buffers.
-
-        Returns graph-owned (pred_state, loss) tensors — only meaningful
+        Returns graph-owned (new_state, loss) tensors — only meaningful
         during CUDA graph capture (the returned references become the
         static output tensors replayed on each ``graph.replay()``).
         """
+        # Zero gradients so backward accumulates from zero.
+        for p in self.model.parameters():
+            if p.grad is not None:
+                p.grad.zero_()
         pred, new_state = self.model(self._s_xb, state=self._s_state)
         pred_l = pred[:, n_skip:] if n_skip > 0 else pred
         yb_l = self._s_yb[:, n_skip:] if n_skip > 0 else self._s_yb
@@ -554,16 +554,11 @@ class CudaGraphTbpttLearner(TbpttLearner):
         for aux in self.aux_losses:
             loss = loss + aux(pred, self._s_yb, self._s_xb)
         loss.backward()
-        if self.grad_clip is not None:
-            nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
-        self._optimizer.step()
-        self._optimizer.zero_grad()
         return new_state, loss
 
-    def _init_graph(self, xb_chunk, yb_chunk, optimizer):
+    def _init_graph(self, xb_chunk, yb_chunk):
         """Allocate static buffers and capture TBPTT-chunk graph(s)."""
         assert self.device.type == "cuda", "CudaGraphTbpttLearner requires a CUDA device"
-        self._optimizer = optimizer
 
         # Allocate static input/target buffers
         self._s_xb = torch.empty_like(xb_chunk)
@@ -593,7 +588,7 @@ class CudaGraphTbpttLearner(TbpttLearner):
                 self._s_yb.copy_(yb_chunk)
                 for st in self._s_state:
                     st.zero_()
-                self._captured_step(n_skip)
+                self._captured_fwd_bwd(n_skip)
         torch.cuda.current_stream().wait_stream(s)
 
         # Capture the graph
@@ -601,7 +596,7 @@ class CudaGraphTbpttLearner(TbpttLearner):
         for st in self._s_state:
             st.zero_()
         with torch.cuda.graph(graph):
-            new_state, loss = self._captured_step(n_skip)
+            new_state, loss = self._captured_fwd_bwd(n_skip)
 
         if n_skip > 0:
             self._graph_skip = graph
@@ -616,7 +611,7 @@ class CudaGraphTbpttLearner(TbpttLearner):
         xb_chunks, yb_chunks = self._prepare_chunks(batch)
 
         if self._graph is None:
-            self._init_graph(xb_chunks[0], yb_chunks[0], optimizer)
+            self._init_graph(xb_chunks[0], yb_chunks[0])
 
         # Zero state for first chunk
         for s in self._s_state:
@@ -639,5 +634,11 @@ class CudaGraphTbpttLearner(TbpttLearner):
                 losses.append(self._s_loss.item())
                 for s_in, s_out in zip(self._s_state, self._s_new_state):
                     s_in.copy_(s_out)
+
+            # Optimizer step outside graph — reads current LR from scheduler
+            if self.grad_clip is not None:
+                nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
+            optimizer.step()
+            optimizer.zero_grad(set_to_none=False)
 
         return losses
