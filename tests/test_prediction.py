@@ -43,8 +43,8 @@ class TestFranSys:
 
 class TestFranSysRegularization:
     def _get_model(self, lrn):
-        """Unwrap NormalizedModel to access FranSys internals."""
-        from tsfast.models.layers import unwrap_model
+        """Unwrap ScaledModel to access FranSys internals."""
+        from tsfast.models.scaling import unwrap_model
         return unwrap_model(lrn.model)
 
     @pytest.mark.slow
@@ -115,10 +115,10 @@ class TestFranSysRegularization:
         """Verify diag_loss denormalizes predictions when output_norm is used."""
         from tsfast.prediction.fransys import FranSysLearner
         from tsfast.training import FranSysRegularizer
-        from tsfast.models.layers import StandardScaler1D
+        from tsfast.models.scaling import StandardScaler
         lrn = FranSysLearner(
             dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1,
-            attach_output=True, output_norm=StandardScaler1D,
+            attach_output=True, output_norm=StandardScaler,
         )
         model = self._get_model(lrn)
         lrn.add_aux_loss(FranSysRegularizer(
@@ -133,10 +133,10 @@ class TestFranSysRegularization:
         """Verify osp_loss denormalizes predictions when output_norm is used."""
         from tsfast.prediction.fransys import FranSysLearner
         from tsfast.training import FranSysRegularizer
-        from tsfast.models.layers import StandardScaler1D
+        from tsfast.models.scaling import StandardScaler
         lrn = FranSysLearner(
             dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1,
-            attach_output=True, output_norm=StandardScaler1D,
+            attach_output=True, output_norm=StandardScaler,
         )
         model = self._get_model(lrn)
         lrn.add_aux_loss(FranSysRegularizer(
@@ -147,16 +147,16 @@ class TestFranSysRegularization:
         assert not math.isnan(lrn.recorder.values[-1][1])
 
     def test_fransys_callback_captures_output_norm(self, dls_prediction):
-        """Verify FranSysRegularizer detects output_norm from NormalizedModel."""
+        """Verify FranSysRegularizer detects output_norm from ScaledModel."""
         from tsfast.prediction.fransys import FranSysLearner
         from tsfast.training import FranSysRegularizer
-        from tsfast.models.layers import NormalizedModel, StandardScaler1D
+        from tsfast.models.scaling import ScaledModel, StandardScaler
 
         lrn = FranSysLearner(
             dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1,
-            attach_output=True, output_norm=StandardScaler1D,
+            attach_output=True, output_norm=StandardScaler,
         )
-        assert isinstance(lrn.model, NormalizedModel)
+        assert isinstance(lrn.model, ScaledModel)
         assert lrn.model.output_norm is not None
 
         model = self._get_model(lrn)
@@ -171,13 +171,13 @@ class TestFranSysRegularization:
         reg.teardown(lrn)
 
     def test_fransys_callback_no_output_norm(self, dls_prediction):
-        """Verify output_norm is None when NormalizedModel has no output scaler."""
+        """Verify output_norm is None when ScaledModel has no output scaler."""
         from tsfast.prediction.fransys import FranSysLearner
         from tsfast.training import FranSysRegularizer
-        from tsfast.models.layers import NormalizedModel
+        from tsfast.models.scaling import ScaledModel
 
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
-        assert isinstance(lrn.model, NormalizedModel)
+        assert isinstance(lrn.model, ScaledModel)
         assert lrn.model.output_norm is None
 
         model = self._get_model(lrn)
@@ -193,11 +193,11 @@ class TestFranSysRegularization:
     def test_fransys_variable_init_writes_through_unwrap(self, dls_prediction):
         """Verify that unwrap_model returns the inner model and writes reach forward()."""
         from tsfast.prediction.fransys import FranSysLearner
-        from tsfast.models.layers import NormalizedModel, unwrap_model
+        from tsfast.models.scaling import ScaledModel, unwrap_model
 
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
         wrapper = lrn.model
-        assert isinstance(wrapper, NormalizedModel), "Test requires NormalizedModel wrapping"
+        assert isinstance(wrapper, ScaledModel), "Test requires ScaledModel wrapping"
         inner = unwrap_model(wrapper)
         assert inner is wrapper.model, "unwrap_model should return the inner model"
 
@@ -225,11 +225,11 @@ class TestDDPUnwrap:
     def test_unwrap_model_through_ddp(self):
         """unwrap_model returns the inner FranSys model through a DDP-like wrapper."""
         from tsfast.prediction.fransys import FranSys
-        from tsfast.models.layers import NormalizedModel, StandardScaler1D, unwrap_model
+        from tsfast.models.scaling import ScaledModel, StandardScaler, unwrap_model
         import numpy as np
 
         inner = FranSys(1, 1, init_sz=10, hidden_size=10, rnn_layer=1)
-        norm = NormalizedModel(inner, StandardScaler1D(np.zeros(2), np.ones(2)))
+        norm = ScaledModel(inner, StandardScaler(np.zeros(2), np.ones(2)))
 
         # Simulate DDP wrapper: an nn.Module with a .module attribute
         class FakeDDP(torch.nn.Module):
@@ -241,14 +241,14 @@ class TestDDPUnwrap:
         assert unwrap_model(wrapped) is inner
 
     def test_unwrap_ddp_finds_normalized_model(self):
-        """_unwrap_ddp + isinstance check finds NormalizedModel through DDP wrapper."""
-        from tsfast.models.layers import NormalizedModel, StandardScaler1D, _unwrap_ddp
+        """_unwrap_ddp + isinstance check finds ScaledModel through DDP wrapper."""
+        from tsfast.models.scaling import ScaledModel, StandardScaler, _unwrap_ddp
         from tsfast.prediction.fransys import FranSys
         import numpy as np
 
         inner = FranSys(1, 1, init_sz=10, hidden_size=10, rnn_layer=1)
-        out_scaler = StandardScaler1D(np.zeros(1), np.ones(1))
-        norm = NormalizedModel(inner, StandardScaler1D(np.zeros(2), np.ones(2)), out_scaler)
+        out_scaler = StandardScaler(np.zeros(1), np.ones(1))
+        norm = ScaledModel(inner, StandardScaler(np.zeros(2), np.ones(2)), out_scaler)
 
         class FakeDDP(torch.nn.Module):
             def __init__(self, module):
@@ -257,17 +257,17 @@ class TestDDPUnwrap:
 
         wrapped = FakeDDP(norm)
         unwrapped = _unwrap_ddp(wrapped)
-        assert isinstance(unwrapped, NormalizedModel)
+        assert isinstance(unwrapped, ScaledModel)
         assert unwrapped.output_norm is out_scaler
 
     def test_unwrap_model_no_ddp(self):
         """unwrap_model still works when there is no DDP wrapper."""
         from tsfast.prediction.fransys import FranSys
-        from tsfast.models.layers import NormalizedModel, StandardScaler1D, unwrap_model
+        from tsfast.models.scaling import ScaledModel, StandardScaler, unwrap_model
         import numpy as np
 
         inner = FranSys(1, 1, init_sz=10, hidden_size=10, rnn_layer=1)
-        norm = NormalizedModel(inner, StandardScaler1D(np.zeros(2), np.ones(2)))
+        norm = ScaledModel(inner, StandardScaler(np.zeros(2), np.ones(2)))
         assert unwrap_model(norm) is inner
         assert unwrap_model(inner) is inner
 

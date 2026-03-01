@@ -122,12 +122,12 @@ def norm_loss(fn: Callable, norm_stats, scaler_cls: type | None = None) -> Calla
     Args:
         fn: base loss function to wrap
         norm_stats: normalization statistics used to build the scaler
-        scaler_cls: scaler class to use (defaults to StandardScaler1D)
+        scaler_cls: scaler class to use (defaults to StandardScaler)
     """
-    from ..models.layers import StandardScaler1D
+    from ..models.scaling import StandardScaler
 
     if scaler_cls is None:
-        scaler_cls = StandardScaler1D
+        scaler_cls = StandardScaler
     scaler = scaler_cls.from_stats(norm_stats)
 
     @functools.wraps(fn)

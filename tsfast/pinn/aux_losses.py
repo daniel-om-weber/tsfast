@@ -126,7 +126,7 @@ class CollocationLoss:
     def setup(self, trainer):
         """Resolve model references from the trainer."""
         self.model = trainer.model
-        from ..models.layers import unwrap_model
+        from ..models.scaling import unwrap_model
 
         self.inner_model = unwrap_model(trainer.model)
 
@@ -243,7 +243,7 @@ class ConsistencyLoss:
 
     def setup(self, trainer):
         """Register forward hook on rnn_diagnosis if model supports it."""
-        from ..models.layers import unwrap_model
+        from ..models.scaling import unwrap_model
 
         self.inner_model = unwrap_model(trainer.model)
         if hasattr(self.inner_model, "rnn_diagnosis") and hasattr(self.inner_model, "encode_single_state"):

@@ -40,7 +40,7 @@ class TestHookCallbackDevices:
     def test_fransys_callback(self, dls_prediction, device):
         from tsfast.prediction.fransys import FranSysLearner
         from tsfast.training import FranSysRegularizer
-        from tsfast.models.layers import unwrap_model
+        from tsfast.models.scaling import unwrap_model
 
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
         lrn.model.to(device)
