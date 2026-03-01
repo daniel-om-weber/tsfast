@@ -44,7 +44,8 @@ from tsfast.models.rnn import RNNLearner
 from tsfast.models.layers import unwrap_model
 from tsfast.training import (
     fun_rmse,
-    TimeSeriesRegularizerLoss,
+    ActivationRegularizer,
+    TemporalActivationRegularizer,
     noise, vary_seq_len, truncate_sequence,
 )
 
@@ -94,22 +95,25 @@ lrn_noisy.fit_flat_cos(n_epoch=5, lr=3e-3)
 print(f"With noise augmentation: {lrn_noisy.validate()}")
 
 # %% [markdown]
-# ## TimeSeriesRegularizerLoss
+# ## Activation Regularization
 #
-# Adds two regularization terms to the loss:
+# Two regularizers can be added to the loss:
 #
-# - **`alpha`**: L2 penalty on RNN activations -- prevents activations from
-#   growing too large.
-# - **`beta`**: L2 penalty on temporal differences of activations -- encourages
-#   smooth predictions over time.
+# - **`ActivationRegularizer`**: L2 penalty on RNN activations -- prevents
+#   activations from growing too large.
+# - **`TemporalActivationRegularizer`**: L2 penalty on temporal differences of
+#   activations -- encourages smooth predictions over time.
 #
 # `modules` specifies which model components to regularize (typically the RNN
-# layers). Pass it as `aux_losses=[...]` when creating the Learner.
+# layers). Pass them as `aux_losses=[...]` when creating the Learner.
 
 # %%
 lrn_reg = RNNLearner(dls, rnn_type='lstm', metrics=[fun_rmse])
 lrn_reg.add_aux_loss(
-    TimeSeriesRegularizerLoss(modules=[unwrap_model(lrn_reg.model).rnn], alpha=2.0, beta=1.0)
+    ActivationRegularizer(modules=[unwrap_model(lrn_reg.model).rnn], alpha=2.0)
+)
+lrn_reg.add_aux_loss(
+    TemporalActivationRegularizer(modules=[unwrap_model(lrn_reg.model).rnn], beta=1.0)
 )
 lrn_reg.fit_flat_cos(n_epoch=5, lr=3e-3)
 lrn_reg.show_results(max_n=2)
@@ -166,9 +170,10 @@ lrn_combined = RNNLearner(
     grad_clip=10,
 )
 lrn_combined.add_aux_loss(
-    TimeSeriesRegularizerLoss(
-        modules=[unwrap_model(lrn_combined.model).rnn], alpha=2.0, beta=1.0
-    )
+    ActivationRegularizer(modules=[unwrap_model(lrn_combined.model).rnn], alpha=2.0)
+)
+lrn_combined.add_aux_loss(
+    TemporalActivationRegularizer(modules=[unwrap_model(lrn_combined.model).rnn], beta=1.0)
 )
 lrn_combined.fit_flat_cos(n_epoch=10, lr=3e-3)
 lrn_combined.show_results(max_n=2)
@@ -178,9 +183,9 @@ lrn_combined.show_results(max_n=2)
 #
 # - **`noise`** and **`bias`** augment training data for better
 #   generalization. Pass them as `augmentations=[...]` on the Learner.
-# - **`TimeSeriesRegularizerLoss`** smooths predictions with activation and
-#   temporal penalties. Pass it as `aux_losses=[...]` or via
-#   `lrn.add_aux_loss(...)`.
+# - **`ActivationRegularizer`** and **`TemporalActivationRegularizer`** smooth
+#   predictions with activation and temporal penalties. Pass them as
+#   `aux_losses=[...]` or via `lrn.add_aux_loss(...)`.
 # - **`grad_clip`** prevents exploding gradients on long sequences.
 # - **`vary_seq_len`** acts as augmentation by varying sequence length each
 #   batch.

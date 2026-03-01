@@ -19,7 +19,14 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from ..training import Learner, TbpttLearner, TimeSeriesRegularizerLoss, fun_rmse, prediction_concat
+from ..training import (
+    ActivationRegularizer,
+    Learner,
+    TbpttLearner,
+    TemporalActivationRegularizer,
+    fun_rmse,
+    prediction_concat,
+)
 from ..tsdata import get_io_size
 from .layers import AR_Model, BatchNorm_1D_Stateful, NormalizedModel, SeqLinear, StandardScaler1D
 
@@ -354,7 +361,10 @@ def AR_RNNLearner(
         opt_func=opt_func,
         lr=3e-3,
         transforms=[prediction_concat(t_offset=0)],
-        aux_losses=[TimeSeriesRegularizerLoss(modules=[rnn_module], alpha=alpha, beta=beta)],
+        aux_losses=[
+            ActivationRegularizer(modules=[rnn_module], alpha=alpha),
+            TemporalActivationRegularizer(modules=[rnn_module], beta=beta),
+        ],
     )
 
 
