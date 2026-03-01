@@ -15,7 +15,6 @@ from .losses import (
     nrmse,
     nrmse_std,
     rand_seq_len_loss,
-    skip_n_loss,
     weighted_mae,
     zero_loss,
 )
@@ -47,7 +46,6 @@ __all__ = [
     "mse_nan",
     "ignore_nan",
     "float64_func",
-    "skip_n_loss",
     "cut_loss",
     "norm_loss",
     "weighted_mae",

@@ -183,12 +183,19 @@ class Learner:
 
     # ── training step ─────────────────────────────────────────────────────
 
-    def training_step(self, batch: tuple[Tensor, Tensor], optimizer, state=None) -> tuple[float | None, object]:
+    def training_step(
+        self, batch: tuple[Tensor, Tensor], optimizer, state=None, n_skip: int | None = None
+    ) -> tuple[float | None, object]:
         """Single training step: forward, loss, backward, step.
+
+        Args:
+            n_skip: timesteps to skip in loss (defaults to ``self.n_skip``)
 
         Returns:
             (loss_value or None if NaN, new_state or None)
         """
+        if n_skip is None:
+            n_skip = self.n_skip
         xb, yb = batch
 
         # Apply transforms then augmentations
@@ -209,8 +216,8 @@ class Learner:
             pred, new_state = result, None
 
         # Primary loss with n_skip
-        pred_skip = pred[:, self.n_skip :] if self.n_skip > 0 else pred
-        yb_skip = yb[:, self.n_skip :] if self.n_skip > 0 else yb
+        pred_skip = pred[:, n_skip:] if n_skip > 0 else pred
+        yb_skip = yb[:, n_skip:] if n_skip > 0 else yb
         loss = self.loss_func(pred_skip, yb_skip)
 
         # Aux losses
@@ -460,8 +467,11 @@ class TbpttLearner(Learner):
         state = None
         self.pct_train = step / max(1, total_steps)
         losses = []
-        for xb_sub, yb_sub in zip(xb_chunks, yb_chunks):
-            loss_val, state = self.training_step((xb_sub, yb_sub), optimizer, state)
+        for i, (xb_sub, yb_sub) in enumerate(zip(xb_chunks, yb_chunks)):
+            # n_skip only applies to the first sub-sequence (RNN warmup);
+            # subsequent chunks already have a warmed-up hidden state.
+            skip = self.n_skip if i == 0 else 0
+            loss_val, state = self.training_step((xb_sub, yb_sub), optimizer, state, n_skip=skip)
             if loss_val is not None:
                 losses.append(loss_val)
         return losses
