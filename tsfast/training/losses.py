@@ -4,7 +4,7 @@ __all__ = [
     "mse",
     "mse_nan",
     "ignore_nan",
-    "mask_nan",
+    "nan_reduce",
     "float64_func",
     "cut_loss",
     "norm_loss",
@@ -36,7 +36,7 @@ from torch import Tensor
 
 def mse(inp: Tensor, targ: Tensor) -> Tensor:
     """Mean squared error loss."""
-    return F.mse_loss(inp, targ)
+    return F.mse_loss(inp, targ, reduction="none").nanmean()
 
 
 def ignore_nan(func: Callable) -> Callable:
@@ -57,21 +57,27 @@ def ignore_nan(func: Callable) -> Callable:
     return wrapper
 
 
-def mask_nan(func: Callable) -> Callable:
-    """Like ignore_nan but with static tensor shapes (CUDA-graph safe).
+def nan_reduce(loss: Tensor, reduction: str = "mean") -> Tensor:
+    """Reduce a loss tensor while masking NaN values (CUDA-graph safe).
 
-    Zeroes NaN-containing samples instead of removing them,
-    then divides by the number of valid samples.
+    Replaces NaN entries with zeros, then reduces over all elements.
+    The denominator counts only valid (non-NaN) entries, so the
+    result is an unbiased estimate even when some targets are missing.
+
+    Args:
+        loss: unreduced per-element loss tensor (any shape)
+        reduction: ``"mean"`` (default) or ``"rms"``
     """
-
-    @functools.wraps(func)
-    def wrapper(inp: Tensor, targ: Tensor) -> Tensor:
-        mask = ~torch.isnan(targ).any(dim=-1, keepdim=True)  # [B, T, 1]
-        inp = torch.where(mask, inp, torch.zeros_like(inp))
-        targ = torch.where(mask, targ, torch.zeros_like(targ))
-        return func(inp, targ)
-
-    return wrapper
+    valid = ~torch.isnan(loss)
+    loss = torch.where(valid, loss, torch.zeros_like(loss))
+    n = valid.sum().clamp(min=1)
+    match reduction:
+        case "mean":
+            return loss.sum() / n
+        case "rms":
+            return (loss.pow(2).sum() / n).sqrt()
+        case _:
+            raise ValueError(f"Unknown reduction: {reduction!r}")
 
 
 mse_nan = ignore_nan(mse)
@@ -192,17 +198,17 @@ def rand_seq_len_loss(
 
 def fun_rmse(inp: Tensor, targ: Tensor) -> Tensor:
     """RMSE loss function defined as a plain function."""
-    return torch.sqrt(F.mse_loss(inp, targ))
+    return F.mse_loss(inp, targ, reduction="none").nanmean().sqrt()
 
 
 def cos_sim_loss(inp: Tensor, targ: Tensor) -> Tensor:
     """Cosine similarity loss (1 - cosine similarity), averaged over the batch."""
-    return (1 - F.cosine_similarity(inp, targ, dim=-1)).mean()
+    return (1 - F.cosine_similarity(inp, targ, dim=-1)).nanmean()
 
 
 def cos_sim_loss_pow(inp: Tensor, targ: Tensor) -> Tensor:
     """Squared cosine similarity loss, averaged over the batch."""
-    return (1 - F.cosine_similarity(inp, targ, dim=-1)).pow(2).mean()
+    return (1 - F.cosine_similarity(inp, targ, dim=-1)).pow(2).nanmean()
 
 
 def nrmse(inp: Tensor, targ: Tensor) -> Tensor:

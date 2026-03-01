@@ -78,6 +78,16 @@ class TestQuaternionLosses:
         loss = angle_loss(q, q)
         assert loss.item() < 1e-4
 
+    def test_inclination_loss_abs_nan_safe(self):
+        from tsfast.quaternions import inclination_loss_abs, norm_quaternion
+
+        q1 = norm_quaternion(torch.rand(4, 100, 4))
+        q2 = norm_quaternion(torch.rand(4, 100, 4))
+        q2[0, :, :] = float("nan")
+        loss = inclination_loss_abs(q1, q2)
+        assert not torch.isnan(loss)
+        assert loss.item() > 0
+
     def test_rms_inclination_deg_positive(self):
         from tsfast.quaternions import rms_inclination_deg, norm_quaternion
 

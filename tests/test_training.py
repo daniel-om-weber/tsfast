@@ -54,6 +54,68 @@ class TestLosses:
         loss = mse_nan(x, y)
         assert not torch.isnan(loss)
 
+    def test_nan_reduce_mean(self):
+        from tsfast.training.losses import nan_reduce
+
+        loss = torch.tensor([1.0, 2.0, float("nan"), 4.0])
+        result = nan_reduce(loss)
+        assert torch.allclose(result, torch.tensor(7.0 / 3.0))
+
+    def test_nan_reduce_rms(self):
+        from tsfast.training.losses import nan_reduce
+
+        loss = torch.tensor([1.0, 2.0, float("nan"), 4.0])
+        result = nan_reduce(loss, reduction="rms")
+        # sqrt((1 + 4 + 16) / 3) = sqrt(7)
+        assert torch.allclose(result, torch.tensor(7.0).sqrt())
+
+    def test_nan_reduce_no_nans(self):
+        from tsfast.training.losses import nan_reduce
+
+        loss = torch.tensor([1.0, 2.0, 3.0])
+        assert torch.allclose(nan_reduce(loss), torch.tensor(2.0))
+
+    def test_nan_reduce_all_nans(self):
+        from tsfast.training.losses import nan_reduce
+
+        loss = torch.full((4,), float("nan"))
+        assert nan_reduce(loss).item() == 0.0
+
+    def test_nan_reduce_multidim(self):
+        from tsfast.training.losses import nan_reduce
+
+        loss = torch.tensor([[1.0, float("nan")], [3.0, 4.0]])
+        assert torch.allclose(nan_reduce(loss), torch.tensor(8.0 / 3.0))
+
+    def test_nan_reduce_composable(self):
+        from tsfast.training.losses import nan_reduce
+
+        pred = torch.rand(4, 10, 2)
+        targ = torch.rand(4, 10, 2)
+        targ[0, :, :] = float("nan")
+        loss = nan_reduce(F.l1_loss(pred, targ, reduction="none"))
+        assert not torch.isnan(loss)
+        assert loss.item() > 0
+
+    def test_mse_nan_safe(self):
+        from tsfast.training.losses import mse
+
+        pred = torch.rand(4, 10, 2)
+        targ = torch.rand(4, 10, 2)
+        targ[0, :, :] = float("nan")
+        loss = mse(pred, targ)
+        assert not torch.isnan(loss)
+        assert loss.item() > 0
+
+    def test_cos_sim_loss_nan_safe(self):
+        from tsfast.training.losses import cos_sim_loss
+
+        pred = torch.rand(4, 10, 2)
+        targ = torch.rand(4, 10, 2)
+        targ[0, :, :] = float("nan")
+        loss = cos_sim_loss(pred, targ)
+        assert not torch.isnan(loss)
+
     def test_zero_loss(self):
         from tsfast.training.losses import zero_loss
 
