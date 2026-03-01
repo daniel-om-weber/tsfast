@@ -93,6 +93,10 @@ class HDF5Signals:
         return self._len_cache[path]
 
     @property
+    def signal_names(self) -> list[str]:
+        return self.names
+
+    @property
     def n_features(self) -> int:
         return len(self.names)
 
@@ -120,6 +124,10 @@ class HDF5Attrs:
         with h5py.File(path, "r") as f:
             ds = f if self.dataset is None else f[self.dataset]
             return np.array([self.dtype(ds.attrs[n]).item() for n in self.names])
+
+    @property
+    def signal_names(self) -> list[str]:
+        return self.names
 
     @property
     def n_features(self) -> int:
@@ -165,6 +173,10 @@ class Resampled:
         return self.block.file_len(path)
 
     @property
+    def signal_names(self) -> list[str]:
+        return self.block.signal_names
+
+    @property
     def n_features(self) -> int:
         return self.block.n_features
 
@@ -206,6 +218,10 @@ class CSVSignals:
         return self._len_cache[path]
 
     @property
+    def signal_names(self) -> list[str]:
+        return self.columns
+
+    @property
     def n_features(self) -> int:
         return len(self.columns)
 
@@ -245,6 +261,11 @@ class FilenameScalar:
     def __init__(self, pattern: str = r"(\d+\.?\d*)"):
         self._pattern = re.compile(pattern)
         self._n_features = self._pattern.groups
+        # Reverse groupindex (name→number) to (number→name)
+        idx_to_name = {v: k for k, v in self._pattern.groupindex.items()}
+        self._signal_names = [
+            idx_to_name.get(i + 1, f"scalar_{i}") for i in range(self._n_features)
+        ]
 
     def read(self, path: str) -> np.ndarray:
         """Search filename stem and return captured groups as float32 array."""
@@ -253,6 +274,10 @@ class FilenameScalar:
         if m is None:
             raise ValueError(f"Pattern {self._pattern.pattern!r} did not match filename {stem!r}")
         return np.array([float(g) for g in m.groups()], dtype=np.float32)
+
+    @property
+    def signal_names(self) -> list[str]:
+        return self._signal_names
 
     @property
     def n_features(self) -> int:
