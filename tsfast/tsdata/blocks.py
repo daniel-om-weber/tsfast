@@ -1,6 +1,5 @@
 """Signal reader blocks for time series data."""
 
-import csv
 import math
 import re
 from dataclasses import dataclass
@@ -79,22 +78,21 @@ class HDF5Signals:
         """Read columns and stack -> [seq_len, n_features]."""
         self._probe(path)
         path_info = self._mmap_info[path]
-        arrays = []
-        h5py_names = []
-        for name in self.names:
+        cols = [None] * len(self.names)
+        h5py_indices = []
+        for i, name in enumerate(self.names):
             mi = path_info[name]
             if mi is not None:
                 mm = np.memmap(path, dtype=mi.dtype, mode="r", offset=mi.offset, shape=mi.shape)
-                arrays.append((name, np.array(mm[l_slc:r_slc])))
+                cols[i] = np.array(mm[l_slc:r_slc])
             else:
-                h5py_names.append(name)
-        if h5py_names:
+                h5py_indices.append(i)
+        if h5py_indices:
             with h5py.File(path, "r") as f:
                 ds = f if self.dataset is None else f[self.dataset]
-                for name in h5py_names:
-                    arrays.append((name, ds[name][l_slc:r_slc]))
-        arrays.sort(key=lambda pair: self.names.index(pair[0]))
-        return np.stack([a for _, a in arrays], axis=-1)
+                for i in h5py_indices:
+                    cols[i] = ds[self.names[i]][l_slc:r_slc]
+        return np.stack(cols, axis=-1)
 
     def file_len(self, path: str) -> int:
         """Length of first named dataset. Cached per path."""
@@ -163,10 +161,10 @@ class Resampled:
         else:
             resampled = fft_resample(raw, int(raw.shape[0] * factor), window=("kaiser", 14.0))
 
-        if hasattr(self.block, "fs_idx") and self.block.fs_idx is not None:
-            resampled[:, self.block.fs_idx] = raw[0, self.block.fs_idx] * factor
-        if hasattr(self.block, "dt_idx") and self.block.dt_idx is not None:
-            resampled[:, self.block.dt_idx] = raw[0, self.block.dt_idx] / factor
+        if (idx := getattr(self.block, "fs_idx", None)) is not None:
+            resampled[:, idx] = raw[0, idx] * factor
+        if (idx := getattr(self.block, "dt_idx", None)) is not None:
+            resampled[:, idx] = raw[0, idx] / factor
 
         return resampled[:target_len]
 
@@ -196,10 +194,11 @@ class CSVSignals:
     def _load(self, path: str) -> np.ndarray:
         """Load CSV file and cache the result as [rows, n_columns] array."""
         if path not in self._data_cache:
-            with open(path, newline="") as f:
-                reader = csv.DictReader(f, delimiter=self.delimiter)
-                rows = [[float(row[col]) for col in self.columns] for row in reader]
-            arr = np.array(rows, dtype=np.float32)
+            with open(path) as f:
+                header = f.readline().strip().split(self.delimiter)
+                col_indices = [header.index(col) for col in self.columns]
+                arr = np.loadtxt(f, delimiter=self.delimiter,
+                                 usecols=col_indices, dtype=np.float32, ndmin=2)
             self._data_cache[path] = arr
             self._len_cache[path] = arr.shape[0]
         return self._data_cache[path]
