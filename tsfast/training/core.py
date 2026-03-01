@@ -16,6 +16,7 @@ from torch import Tensor, nn
 from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
 
+from ..tsdata.pipeline import get_signal_names
 from .viz import layout_samples, plot_sequence
 
 
@@ -311,8 +312,10 @@ class Learner:
                 self.model.train()
                 train_losses = []
                 with tqdm(
-                    total=n_batches, desc=f"Epoch {epoch + 1}/{n_epoch}",
-                    disable=not self._show_bar, mininterval=0.5,
+                    total=n_batches,
+                    desc=f"Epoch {epoch + 1}/{n_epoch}",
+                    disable=not self._show_bar,
+                    mininterval=0.5,
                 ) as pbar:
                     for batch in self.dls.train:
                         xb, yb = self._to_device(batch)
@@ -394,7 +397,7 @@ class Learner:
         n_samples = min(xb.shape[0], max_n)
         n_targ = yb.shape[-1]
         samples = [(xb[i].cpu(), yb[i].cpu()) for i in range(n_samples)]
-        layout_samples(n_samples, n_targ, samples, self.plot_fn)
+        layout_samples(n_samples, n_targ, samples, self.plot_fn, signal_names=get_signal_names(dl))
 
     def show_results(self, max_n: int = 4, ds_idx: int = 1):
         """Plot predictions vs targets."""
@@ -415,7 +418,7 @@ class Learner:
         n_targ = yb.shape[-1]
         samples = [(xb[i].cpu(), yb[i].cpu()) for i in range(n_samples)]
         outs = [(pred[i].cpu(),) for i in range(n_samples)]
-        layout_samples(n_samples, n_targ, samples, self.plot_fn, outs)
+        layout_samples(n_samples, n_targ, samples, self.plot_fn, outs, signal_names=get_signal_names(dl))
 
     def show_worst(self, max_n: int = 4, ds_idx: int = 1):
         """Plot samples with highest per-sample loss."""
@@ -448,7 +451,7 @@ class Learner:
         n_targ = targs.shape[-1]
         samples = [(inputs[i], targs[i]) for i in idxs]
         outs = [(preds[i],) for i in idxs]
-        layout_samples(len(idxs), n_targ, samples, self.plot_fn, outs)
+        layout_samples(len(idxs), n_targ, samples, self.plot_fn, outs, signal_names=get_signal_names(dl))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -494,8 +497,10 @@ class TbpttLearner(Learner):
                 self.model.train()
                 train_losses = []
                 with tqdm(
-                    total=n_batches, desc=f"Epoch {epoch + 1}/{n_epoch}",
-                    disable=not self._show_bar, mininterval=0.5,
+                    total=n_batches,
+                    desc=f"Epoch {epoch + 1}/{n_epoch}",
+                    disable=not self._show_bar,
+                    mininterval=0.5,
                 ) as pbar:
                     for batch in self.dls.train:
                         xb, yb = self._to_device(batch)

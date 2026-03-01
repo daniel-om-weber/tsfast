@@ -289,6 +289,26 @@ class TestViz:
         targ_sig = torch.randn(100, 2)
         out_sig = torch.randn(100, 2)
         plot_sequence(axs, in_sig, targ_sig, out_sig=out_sig)
+        # No signal names: no titles on target subplots, no legend on input subplot
+        assert axs[0].get_title() == ""
+        assert axs[-1].get_legend() is None
+        plt.close(fig)
+
+    def test_plot_sequence_with_signal_names(self):
+        import matplotlib.pyplot as plt
+
+        from tsfast.training.viz import plot_sequence
+
+        fig, axs = plt.subplots(3, 1)
+        in_sig = torch.randn(100, 2)
+        targ_sig = torch.randn(100, 2)
+        out_sig = torch.randn(100, 2)
+        names = (["u1", "u2"], ["y1", "y2"])
+        plot_sequence(axs, in_sig, targ_sig, out_sig=out_sig, signal_names=names)
+        assert axs[0].get_title() == "y1"
+        assert axs[1].get_title() == "y2"
+        legend_texts = [t.get_text() for t in axs[-1].get_legend().get_texts()]
+        assert legend_texts == ["u1", "u2"]
         plt.close(fig)
 
     def test_grad_norm(self):
@@ -327,10 +347,10 @@ class TestViz:
 
 
 class TestAuxLosses:
-    def test_add_loss(self):
-        from tsfast.training.aux_losses import AddLoss
+    def test_auxiliary_loss(self):
+        from tsfast.training.aux_losses import AuxiliaryLoss
 
-        aux = AddLoss(nn.MSELoss(), alpha=0.5)
+        aux = AuxiliaryLoss(nn.MSELoss(), alpha=0.5)
         pred = torch.rand(4, 100, 1)
         yb = torch.rand(4, 100, 1)
         xb = torch.rand(4, 100, 1)
@@ -338,10 +358,10 @@ class TestAuxLosses:
         expected = 0.5 * F.mse_loss(pred, yb)
         assert torch.allclose(loss, expected)
 
-    def test_transition_smoothness(self):
-        from tsfast.training.aux_losses import TransitionSmoothness
+    def test_transition_smoothness_loss(self):
+        from tsfast.training.aux_losses import TransitionSmoothnessLoss
 
-        ts = TransitionSmoothness(init_sz=20, weight=1.0, window=3, dt=0.01)
+        ts = TransitionSmoothnessLoss(init_sz=20, weight=1.0, window=3, dt=0.01)
         pred = torch.rand(4, 50, 2, requires_grad=True)
         yb = torch.rand(4, 50, 2)
         xb = torch.rand(4, 50, 1)
@@ -423,7 +443,7 @@ class TestLearner:
 
     def test_learner_aux_losses(self):
         from tsfast.models.rnn import SimpleRNN
-        from tsfast.training import AddLoss, Learner
+        from tsfast.training import AuxiliaryLoss, Learner
 
         dls = _SyntheticDls(n_u=1, n_y=1)
         model = SimpleRNN(1, 1, hidden_size=20)
@@ -432,9 +452,9 @@ class TestLearner:
         lrn_base = Learner(model, dls, loss_func=nn.MSELoss(), device=torch.device("cpu"))
         lrn_base.fit(1)
 
-        # Train with aux loss (AddLoss should make total > primary)
+        # Train with aux loss (AuxiliaryLoss should make total > primary)
         model2 = SimpleRNN(1, 1, hidden_size=20)
-        aux = AddLoss(nn.L1Loss(), alpha=1.0)
+        aux = AuxiliaryLoss(nn.L1Loss(), alpha=1.0)
         lrn_aux = Learner(model2, dls, loss_func=nn.MSELoss(), aux_losses=[aux], device=torch.device("cpu"))
         lrn_aux.fit(1)
 
@@ -510,14 +530,15 @@ class TestLearner:
             lrn.fit(1)
         assert math.isfinite(lrn.recorder.values[-1][1])
 
-    def test_time_series_regularizer_loss(self):
+    def test_activation_regularizers(self):
         from tsfast.models.rnn import SimpleRNN
-        from tsfast.training import Learner, TimeSeriesRegularizerLoss
+        from tsfast.training import ActivationRegularizer, Learner, TemporalActivationRegularizer
 
         dls = _SyntheticDls(n_u=1, n_y=1)
         model = SimpleRNN(1, 1, hidden_size=20)
-        reg = TimeSeriesRegularizerLoss(modules=[model.rnn], alpha=0.1, beta=0.1)
-        lrn = Learner(model, dls, loss_func=nn.MSELoss(), aux_losses=[reg], device=torch.device("cpu"))
+        ar = ActivationRegularizer(modules=[model.rnn], alpha=0.1)
+        tar = TemporalActivationRegularizer(modules=[model.rnn], beta=0.1)
+        lrn = Learner(model, dls, loss_func=nn.MSELoss(), aux_losses=[ar, tar], device=torch.device("cpu"))
         lrn.fit(1)
         assert math.isfinite(lrn.recorder.values[-1][1])
 

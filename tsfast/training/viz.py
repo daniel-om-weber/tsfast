@@ -20,6 +20,9 @@ from torch import Tensor
 
 def plot_sequence(axs: list, in_sig: Tensor, targ_sig: Tensor, out_sig: Tensor | None = None, **kwargs):
     """Plot input, target, and optional prediction sequences on subplot axes."""
+    signal_names = kwargs.pop("signal_names", None)
+    u_names, y_names = signal_names if signal_names is not None else (None, None)
+
     n_targ = targ_sig.shape[1]
     n_out = out_sig.shape[1] if out_sig is not None else n_targ
     n_ax = len(axs) - 1
@@ -35,9 +38,18 @@ def plot_sequence(axs: list, in_sig: Tensor, targ_sig: Tensor, out_sig: Tensor |
             ax.plot(kwargs["ref"][:, j], label="ref", alpha=0.5)
         if j >= n_targ:
             ax.set_title(f"Channel {j} (auxiliary)", fontsize=10)
+        elif y_names is not None and j < len(y_names):
+            ax.set_title(y_names[j], fontsize=10)
         ax.legend(fontsize=8)
         ax.label_outer()
-    axs[-1].plot(in_sig)
+
+    if u_names is not None:
+        for k, name in enumerate(u_names):
+            if k < in_sig.shape[1]:
+                axs[-1].plot(in_sig[:, k], label=name)
+        axs[-1].legend(fontsize=8)
+    else:
+        axs[-1].plot(in_sig)
 
 
 def plot_seqs_single_figure(
