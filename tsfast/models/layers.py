@@ -2,7 +2,6 @@
 
 __all__ = [
     "_detach_state",
-    "BatchNorm_1D_Stateful",
     "SeqLinear",
     "AR_Model",
     "SeqAggregation",
@@ -12,7 +11,7 @@ from collections.abc import Callable
 
 import torch
 from torch import nn
-from torch.nn import Mish, Parameter
+from torch.nn import Mish
 
 
 def _detach_state(state):
@@ -26,154 +25,6 @@ def _detach_state(state):
     if isinstance(state, dict):
         return {k: _detach_state(v) for k, v in state.items()}
     return state
-
-
-class BatchNorm_1D_Stateful(nn.Module):
-    """Batch normalization for stateful models.
-
-    Stores batch statistics for every timestep separately to mitigate transient effects.
-
-    Args:
-        hidden_size: number of features (channels) to normalize
-        seq_len: fixed sequence length for pre-allocating running statistics
-        stateful: whether to track sequence index across forward calls
-        batch_first: if ``True``, input shape is ``[batch, seq, features]``
-        eps: value added to denominator for numerical stability
-        momentum: exponential moving average factor for running statistics
-        affine: if ``True``, learn elementwise scale and shift parameters
-        track_running_stats: if ``True``, maintain running mean and variance
-    """
-
-    __constants__ = [
-        "track_running_stats",
-        "momentum",
-        "eps",
-        "weight",
-        "bias",
-        "running_mean",
-        "running_var",
-        "num_batches_tracked",
-    ]
-
-    def __init__(
-        self,
-        hidden_size: int,
-        seq_len: int | None = None,
-        stateful: bool = False,
-        batch_first: bool = True,
-        eps: float = 1e-7,
-        momentum: float = 0.1,
-        affine: bool = True,
-        track_running_stats: bool = True,
-    ):
-        super().__init__()
-        channel_d = hidden_size
-        self.seq_len = seq_len
-        self.stateful = stateful
-        self.batch_first = batch_first
-        self.eps = eps
-        self.momentum = momentum
-        self.affine = affine
-        self.track_running_stats = track_running_stats
-        self.axes = (1,)
-        if self.affine:
-            self.weight = Parameter(torch.Tensor(channel_d))
-            self.bias = Parameter(torch.Tensor(channel_d))
-            self.register_parameter("weight", self.weight)
-            self.register_parameter("bias", self.bias)
-        else:
-            self.register_parameter("weight", None)
-            self.register_parameter("bias", None)
-        if self.track_running_stats:
-            if seq_len is not None:
-                self.register_buffer("running_mean", torch.zeros(seq_len, channel_d))
-                self.register_buffer("running_var", torch.ones(seq_len, channel_d))
-            self.register_buffer("num_batches_tracked", torch.tensor(0, dtype=torch.long))
-        else:
-            self.register_parameter("running_mean", None)
-            self.register_parameter("running_var", None)
-            self.register_parameter("num_batches_tracked", None)
-        self.reset_parameters()
-        self.reset_seq_idx()
-
-    def reset_seq_idx(self):
-        self.seq_idx = 0
-
-    def reset_parameters(self):
-        if self.track_running_stats and self.seq_len is not None:
-            self.running_mean.zero_()
-            self.running_var.fill_(1)
-            self.num_batches_tracked.zero_()
-        if self.affine:
-            self.weight.data.fill_(1.0)
-            self.bias.data.fill_(0.0)
-
-    def forward(self, input, BN_start=None):
-        # BN_start provides explicit sequence-index override; when None the
-        # internal self.seq_idx counter is used (stateful mode) or 0 (default).
-        if input.dim() != 3:
-            raise ValueError("expected 3D input (got {}D input)".format(input.dim()))
-        if self.batch_first:
-            input = input.transpose(0, 1)
-
-        input_t, n_batch, hidden_size = input.size()
-
-        if self.track_running_stats and self.seq_len is None:
-            self.seq_len = input_t
-            self.register_buffer("running_mean", torch.zeros((input_t, hidden_size), device=input.device))
-            self.register_buffer("running_var", torch.ones((input_t, hidden_size), device=input.device))
-
-        if BN_start is None:
-            if self.stateful:
-                BN_start = self.seq_idx
-            else:
-                BN_start = 0
-
-        exponential_average_factor = 0.0
-        if self.training and self.track_running_stats:
-            if self.num_batches_tracked is not None:
-                self.num_batches_tracked += 1
-                if self.momentum is None:  # use cumulative moving average
-                    exponential_average_factor = 1.0 / float(self.num_batches_tracked)
-                else:  # use exponential moving average
-                    exponential_average_factor = self.momentum
-
-        BN_stop = BN_start + input_t
-        self.seq_idx = BN_stop  # new starting point for next forward call
-
-        if self.training:
-            mean = input.mean(1)
-            var = input.var(1, unbiased=False)  # use biased var in train
-
-            if self.seq_len - BN_start > 0:  # frame has to be in statistics window for updates
-                with torch.no_grad():
-                    self.running_mean[BN_start:BN_stop] = (
-                        exponential_average_factor * mean[: self.seq_len - BN_start]
-                        + (1 - exponential_average_factor) * self.running_mean[BN_start:BN_stop]
-                    )
-                    self.running_var[BN_start:BN_stop] = (
-                        exponential_average_factor * var[: self.seq_len - BN_start] * n_batch / (n_batch - 1)
-                        + (1 - exponential_average_factor) * self.running_var[BN_start:BN_stop]
-                    )  # update running_var with unbiased var
-        else:
-            mean = self.running_mean[BN_start:BN_stop]
-            var = self.running_var[BN_start:BN_stop]
-
-            # if elements outside of the statistics are requested, append the last element repeatedly
-            #             import pdb;pdb.set_trace()
-            if BN_stop >= self.seq_len:
-                cat_len = input_t - max(self.seq_len - BN_start, 0)  # min(BN_stop-self.seq_len,self.seq_len)
-                mean = torch.cat((mean, self.running_mean[-1:].repeat(cat_len, 1)))
-                var = torch.cat((var, self.running_var[-1:].repeat(cat_len, 1)))
-
-        output = (input - mean[:, None, :]) / (torch.sqrt(var[:, None, :] + self.eps))
-        if self.affine:
-            output = output * self.weight[None, None, :] + self.bias[None, None, :]  # [None, :, None, None]
-
-        if self.batch_first:
-            output = output.transpose(0, 1)
-
-        return output
 
 
 class SeqLinear(nn.Module):

@@ -10,13 +10,6 @@ import torch
 from ..training.transforms import prediction_concat
 
 
-def _reset_model_state(model):
-    """Reset BatchNorm_1D_Stateful sequence counters before inference."""
-    for m in model.modules():
-        if hasattr(m, "reset_seq_idx"):
-            m.reset_seq_idx()
-
-
 def _find_prediction_concat(learner):
     """Find a prediction_concat transform in the Learner."""
     if hasattr(learner, "transforms"):
@@ -119,7 +112,6 @@ class InferenceWrapper:
         else:
             final_input = u_tensor
 
-        _reset_model_state(self.model)
         model_output = self.model(final_input)
         output_tensor = model_output[0] if isinstance(model_output, tuple) else model_output
         if not isinstance(output_tensor, torch.Tensor):
