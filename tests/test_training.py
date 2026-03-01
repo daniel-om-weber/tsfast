@@ -54,46 +54,26 @@ class TestLosses:
         loss = mse_nan(x, y)
         assert not torch.isnan(loss)
 
-    def test_loss_fn_default_mean(self):
+    def test_mse_equals_manual(self):
         from tsfast.training.losses import mse
 
         pred = torch.rand(4, 100, 1)
         targ = torch.rand(4, 100, 1)
         assert torch.allclose(mse(pred, targ), (pred - targ).pow(2).mean())
 
-    def test_loss_fn_reduce_string(self):
-        from tsfast.training.losses import mse
+    def test_nan_mean(self):
+        from tsfast.training.losses import nan_mean
 
-        pred = torch.rand(4, 100, 1)
-        targ = torch.rand(4, 100, 1)
-        mse_sum = mse.reduce("sum")
-        assert torch.allclose(mse_sum(pred, targ), (pred - targ).pow(2).sum())
+        def _mse_elem(inp, targ):
+            return (inp - targ).pow(2)
 
-    def test_loss_fn_reduce_nanmean(self):
-        from tsfast.training.losses import mse
-
-        pred = torch.rand(4, 10, 2)
+        fn = nan_mean(_mse_elem, fill=0.0)
+        inp = torch.rand(4, 10, 2)
         targ = torch.rand(4, 10, 2)
         targ[0, :, :] = float("nan")
-        mse_nan = mse.reduce("nanmean")
-        loss = mse_nan(pred, targ)
+        loss = fn(inp, targ)
         assert not torch.isnan(loss)
         assert loss.item() > 0
-
-    def test_loss_fn_reduce_nanmean_values(self):
-        from tsfast.training.losses import LossFn
-
-        fn = LossFn(lambda inp, targ: inp, "nanmean")
-        inp = torch.tensor([1.0, 2.0, float("nan"), 4.0])
-        result = fn(inp, inp)
-        assert torch.allclose(result, torch.tensor(7.0 / 3.0))
-
-    def test_loss_fn_reduce_returns_new_instance(self):
-        from tsfast.training.losses import LossFn, mse
-
-        mse_sum = mse.reduce("sum")
-        assert isinstance(mse_sum, LossFn)
-        assert mse_sum is not mse
 
     def test_zero_loss(self):
         from tsfast.training.losses import zero_loss
@@ -625,6 +605,41 @@ class TestTbpttLearner:
         )
         lrn.fit(1)
         assert math.isfinite(lrn.recorder.values[-1][1])
+
+    def test_tbptt_augmentations_applied_once_per_batch(self):
+        """Augmentations must be applied exactly once per batch, not once per chunk.
+
+        Regression test: previously TbpttLearner applied augmentations in both
+        _prepare_chunks() AND training_step(), causing double-augmentation and
+        a mismatch with CudaGraphTbpttLearner (which only applied them once).
+        """
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import TbpttLearner
+
+        call_count = 0
+
+        def counting_augmentation(xb, yb):
+            nonlocal call_count
+            call_count += 1
+            return xb, yb
+
+        dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100, n_train=8, bs=4)
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True)
+        lrn = TbpttLearner(
+            model,
+            dls,
+            loss_func=nn.MSELoss(),
+            sub_seq_len=25,  # 100 / 25 = 4 chunks per batch
+            augmentations=[counting_augmentation],
+            device=torch.device("cpu"),
+        )
+        lrn.fit(1)
+
+        n_batches = len(dls.train)  # 8 samples / 4 batch_size = 2 batches
+        assert call_count == n_batches, (
+            f"Augmentation called {call_count} times for {n_batches} batches "
+            f"(expected once per batch, not once per chunk)"
+        )
 
 
 # ──────────────────────────────────────────────────────────────────────────────

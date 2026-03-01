@@ -1,8 +1,7 @@
 """Loss functions and metrics for training."""
 
 __all__ = [
-    "LossFn",
-    "loss_fn",
+    "nan_mean",
     "mse",
     "mse_nan",
     "ignore_nan",
@@ -31,64 +30,45 @@ from torch import Tensor
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Reducible loss infrastructure
+#  NaN-safe wrapper
 # ──────────────────────────────────────────────────────────────────────────────
 
-_REDUCTIONS: dict[str, Callable[[Tensor], Tensor]] = {
-    "mean": torch.mean,
-    "sum": torch.sum,
-    "rms": lambda x: x.pow(2).mean().sqrt(),
-    "nanmean": torch.nanmean,
-    "nansum": torch.nansum,
-    "nanrms": lambda x: torch.nanmean(x.pow(2)).sqrt(),
-}
 
+def nan_mean(fn: Callable, fill: list | float) -> Callable:
+    """Wrap a per-element loss into a NaN-safe, CUDA-graph-compatible mean.
 
-class LossFn(torch.nn.Module):
-    """Per-element loss function with pluggable reduction.
-
-    Wraps a function that computes **unreduced** per-element values and
-    applies a configurable reduction (default: ``torch.mean``).  Use
-    ``.reduce()`` to create a variant with a different reduction.
+    NaN targets are replaced with *fill* (static shapes preserved), and a
+    masked mean ensures only valid positions contribute to the gradient.
 
     Args:
-        func: ``(inp, targ) -> Tensor`` returning per-element values
-        reduction: callable ``Tensor -> Tensor``, or a string key
-            registered in ``_REDUCTIONS`` (``"mean"``, ``"sum"``)
+        fn: per-element function ``(inp, targ) -> Tensor``
+        fill: value to substitute for NaN targets
     """
+    _cache: dict[tuple, Tensor] = {}
 
-    def __init__(self, func: Callable, reduction: Callable[[Tensor], Tensor] | str = torch.mean):
-        super().__init__()
-        self.func = func
-        self.reduction = _REDUCTIONS[reduction] if isinstance(reduction, str) else reduction
-        functools.update_wrapper(self, func)
+    @functools.wraps(fn)
+    def wrapper(inp: Tensor, targ: Tensor) -> Tensor:
+        key = (targ.device, targ.dtype)
+        if key not in _cache:
+            _cache[key] = torch.as_tensor(fill, dtype=targ.dtype, device=targ.device)
+        mask = ~torch.isnan(targ).any(dim=-1)
+        targ = torch.where(mask.unsqueeze(-1), targ, _cache[key])
+        elem = fn(inp, targ)
+        if elem.dim() > mask.dim():
+            mask = mask.unsqueeze(-1)
+        return (elem * mask).sum() / mask.expand_as(elem).sum()
 
-    def forward(self, inp: Tensor, targ: Tensor) -> Tensor:
-        return self.reduction(self.func(inp, targ))
-
-    def reduce(self, reduction: Callable[[Tensor], Tensor] | str) -> "LossFn":
-        """Return a new ``LossFn`` with a different reduction."""
-        return LossFn(self.func, reduction)
-
-    def __repr__(self) -> str:
-        name = getattr(self.reduction, "__name__", repr(self.reduction))
-        return f"LossFn({self.__wrapped__.__name__}, {name})"
-
-
-def loss_fn(func: Callable) -> LossFn:
-    """Decorator that turns a per-element loss into a :class:`LossFn`."""
-    return LossFn(func)
+    return wrapper
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Pure loss functions and metrics
+#  Loss functions and metrics
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-@loss_fn
 def mse(inp: Tensor, targ: Tensor) -> Tensor:
-    """Per-element squared error."""
-    return (inp - targ).pow(2)
+    """Mean squared error."""
+    return (inp - targ).pow(2).mean()
 
 
 def ignore_nan(func: Callable) -> Callable:
@@ -230,16 +210,14 @@ def fun_rmse(inp: Tensor, targ: Tensor) -> Tensor:
     return torch.sqrt(F.mse_loss(inp, targ))
 
 
-@loss_fn
 def cos_sim_loss(inp: Tensor, targ: Tensor) -> Tensor:
-    """Per-element cosine similarity loss (1 - cosine similarity)."""
-    return 1 - F.cosine_similarity(inp, targ, dim=-1)
+    """Mean cosine similarity loss (1 - cosine similarity)."""
+    return (1 - F.cosine_similarity(inp, targ, dim=-1)).mean()
 
 
-@loss_fn
 def cos_sim_loss_pow(inp: Tensor, targ: Tensor) -> Tensor:
-    """Per-element squared cosine similarity loss."""
-    return (1 - F.cosine_similarity(inp, targ, dim=-1)).pow(2)
+    """Mean squared cosine similarity loss."""
+    return (1 - F.cosine_similarity(inp, targ, dim=-1)).pow(2).mean()
 
 
 def nrmse(inp: Tensor, targ: Tensor) -> Tensor:
