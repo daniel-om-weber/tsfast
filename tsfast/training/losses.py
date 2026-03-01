@@ -40,21 +40,21 @@ def mse(inp: Tensor, targ: Tensor) -> Tensor:
 
 
 def ignore_nan(func: Callable) -> Callable:
-    """Decorator that removes NaN values from tensors before function execution.
+    """Decorator that removes NaN samples from (inp, targ) before computing a loss.
 
-    Reduces tensors to a flat array. Apply to functions such as mse.
+    A sample is removed if any feature in the target is NaN.
+    Reduces tensors to a flat array.
 
     Args:
-        func: loss function to wrap
+        func: loss function with signature (inp, targ) -> Tensor
     """
 
     @functools.wraps(func)
-    def ignore_nan_decorator(*args, **kwargs):
-        mask = ~torch.isnan(args[-1][..., -1])  # nan mask of target tensor
-        args = tuple([x[mask, :] for x in args])  # remove nan values
-        return func(*args, **kwargs)
+    def wrapper(inp: Tensor, targ: Tensor) -> Tensor:
+        mask = ~torch.isnan(targ).any(dim=-1)
+        return func(inp[mask], targ[mask])
 
-    return ignore_nan_decorator
+    return wrapper
 
 
 mse_nan = ignore_nan(mse)
