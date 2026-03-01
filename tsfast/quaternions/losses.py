@@ -44,34 +44,34 @@ def inclination_loss(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
     """Root mean squared inclination loss."""
     q = diffQuat(q1, q2)
     q_abs = (q[..., 3] ** 2 + q[..., 0] ** 2).sqrt() - 1
-    return (q_abs**2).mean().sqrt()
+    return (q_abs**2).nanmean().sqrt()
 
 
 def inclination_loss_abs(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
     """Mean absolute inclination loss."""
     q = diffQuat(q1, q2)
     q_abs = (q[..., 3] ** 2 + q[..., 0] ** 2).sqrt() - 1
-    return q_abs.abs().mean()
+    return q_abs.abs().nanmean()
 
 
 def inclination_loss_squared(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
     """Mean squared inclination loss."""
     q = diffQuat(q1, q2)
     q_abs = (q[..., 3] ** 2 + q[..., 0] ** 2).sqrt() - 1
-    return (q_abs**2).mean()
+    return (q_abs**2).nanmean()
 
 
 def inclination_loss_smooth(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
     """Smooth L1 inclination loss."""
     q = diffQuat(q1, q2)
     q_abs = (q[..., 3] ** 2 + q[..., 0] ** 2).sqrt() - 1
-    return F.smooth_l1_loss(q_abs, torch.zeros_like(q_abs))
+    return F.smooth_l1_loss(q_abs, torch.zeros_like(q_abs), reduction="none").nanmean()
 
 
 def angle_loss(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
     """Mean absolute angle loss based on the w component of the difference quaternion."""
     q = diffQuat(q1, q2)
-    return (q[..., 0] - 1).abs().mean()
+    return (q[..., 0] - 1).abs().nanmean()
 
 
 def angle_loss_opt(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
@@ -81,16 +81,15 @@ def angle_loss_opt(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
 
     q2 = conjQuat(q2)
     q = q1[..., 0] * q2[..., 0] - q1[..., 1] * q2[..., 1] - q1[..., 2] * q2[..., 2] - q1[..., 3] * q2[..., 3]
-    return (q - 1).abs().mean()
+    return (q - 1).abs().nanmean()
 
 
 # --- Metrics ---
 
 
 def abs_inclination(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
-    """Mean absolute inclination angle metric."""
-    inclination = inclinationAngle(q1, q2)
-    return inclination.abs().mean()
+    """Per-sample absolute inclination angle."""
+    return inclinationAngle(q1, q2).abs().mean()
 
 
 def ms_inclination(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
@@ -102,7 +101,7 @@ def ms_inclination(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
 def rms_inclination(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
     """Root mean squared inclination angle metric."""
     inclination = inclinationAngle(q1, q2)
-    return (inclination**2).mean().sqrt()
+    return (inclination**2).mean().sqrt().mean()
 
 
 def smooth_inclination(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
@@ -112,9 +111,8 @@ def smooth_inclination(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
 
 
 def rms_inclination_deg(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
-    """Root mean squared inclination angle in degrees."""
-    inclination = inclinationAngle(q1, q2)
-    return rad2deg((inclination**2).mean().sqrt())
+    """Per-sample inclination angle in degrees (use with rms reduction)."""
+    return rad2deg(inclinationAngle(q1, q2)).mean()
 
 
 def rms_pitch_deg(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
@@ -130,9 +128,8 @@ def rms_roll_deg(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
 
 
 def mean_inclination_deg(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
-    """Mean inclination angle in degrees."""
-    inclination = inclinationAngle(q1, q2)
-    return rad2deg(inclination.mean())
+    """Per-sample inclination angle in degrees."""
+    return rad2deg(inclinationAngle(q1, q2)).mean()
 
 
 def ms_rel_angle(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:

@@ -503,7 +503,7 @@ class CudaGraphTbpttLearner(TbpttLearner):
         - Requires CUDA device
         - ``win_sz % sub_seq_len == 0`` (all chunks must have equal shape)
         - Model must use ``return_state=True``
-        - Loss function must have static tensor shapes (use ``mask_nan``, not ``ignore_nan``)
+        - Loss function must have static tensor shapes (reduce with ``nan_reduce()``, not ``ignore_nan``)
     """
 
     def __init__(self, *args, **kwargs):
