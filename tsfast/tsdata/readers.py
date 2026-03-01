@@ -59,8 +59,11 @@ class HDF5Signals:
                     mmaps[name] = None
                     continue
                 mmaps[name] = np.memmap(
-                    path, dtype=dataset.dtype, mode="r",
-                    offset=byte_offset, shape=dataset.shape,
+                    path,
+                    dtype=dataset.dtype,
+                    mode="r",
+                    offset=byte_offset,
+                    shape=dataset.shape,
                 )
             if path not in self._len_cache:
                 self._len_cache[path] = ds[self.names[0]].shape[0]
@@ -201,8 +204,7 @@ class CSVSignals:
             with open(path) as f:
                 header = f.readline().strip().split(self.delimiter)
                 col_indices = [header.index(col) for col in self.columns]
-                arr = np.loadtxt(f, delimiter=self.delimiter,
-                                 usecols=col_indices, dtype=np.float32, ndmin=2)
+                arr = np.loadtxt(f, delimiter=self.delimiter, usecols=col_indices, dtype=np.float32, ndmin=2)
             self._data_cache[path] = arr
             self._len_cache[path] = arr.shape[0]
         return self._data_cache[path]
@@ -263,9 +265,7 @@ class FilenameScalar:
         self._n_features = self._pattern.groups
         # Reverse groupindex (name→number) to (number→name)
         idx_to_name = {v: k for k, v in self._pattern.groupindex.items()}
-        self._signal_names = [
-            idx_to_name.get(i + 1, f"scalar_{i}") for i in range(self._n_features)
-        ]
+        self._signal_names = [idx_to_name.get(i + 1, f"scalar_{i}") for i in range(self._n_features)]
 
     def read(self, path: str) -> np.ndarray:
         """Search filename stem and return captured groups as float32 array."""
