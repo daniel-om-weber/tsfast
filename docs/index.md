@@ -13,7 +13,7 @@ hide:
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python Versions](https://img.shields.io/pypi/pyversions/tsfast.png)](https://pypi.org/project/tsfast/)
 
-**A deep learning library for time series analysis and system identification, built on PyTorch and fastai.**
+**A deep learning library for time series analysis and system identification, built on PyTorch.**
 
 ---
 
