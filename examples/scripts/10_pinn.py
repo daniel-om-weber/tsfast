@@ -46,12 +46,8 @@ from pathlib import Path
 
 from tsfast.tsdata import create_dls
 from tsfast.models.rnn import RNNLearner
-from tsfast.pinn.core import (
-    CollocationLoss,
-    PhysicsLoss,
-    generate_excitation_signals,
-    diff1_forward,
-)
+from tsfast.pinn import CollocationLoss, PhysicsLoss
+from tsfast.pinn.core import generate_excitation_signals, diff1_forward
 from tsfast.pinn.pirnn import PIRNNLearner
 from tsfast.training import fun_rmse, zero_loss
 

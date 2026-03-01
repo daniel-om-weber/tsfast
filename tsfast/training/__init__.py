@@ -20,12 +20,10 @@ from .losses import (
     zero_loss,
 )
 from .aux_losses import (
-    AddLoss,
-    ConsistencyLoss,
+    ActivationRegularizer,
+    AuxiliaryLoss,
     FranSysRegularizer,
-    PhysicsLoss,
-    TimeSeriesRegularizerLoss,
-    TransitionSmoothness,
+    TemporalActivationRegularizer,
 )
 from .schedulers import sched_lin_p, sched_ramp
 from .transforms import (
@@ -65,12 +63,10 @@ __all__ = [
     "sched_lin_p",
     "sched_ramp",
     # aux losses
-    "AddLoss",
-    "PhysicsLoss",
-    "TransitionSmoothness",
-    "TimeSeriesRegularizerLoss",
+    "AuxiliaryLoss",
+    "ActivationRegularizer",
+    "TemporalActivationRegularizer",
     "FranSysRegularizer",
-    "ConsistencyLoss",
     # transforms
     "prediction_concat",
     "noise",

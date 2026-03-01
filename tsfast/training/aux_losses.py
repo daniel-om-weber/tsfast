@@ -1,12 +1,10 @@
 """Auxiliary loss callables for training."""
 
 __all__ = [
-    "AddLoss",
-    "PhysicsLoss",
-    "TransitionSmoothness",
-    "TimeSeriesRegularizerLoss",
+    "AuxiliaryLoss",
+    "ActivationRegularizer",
+    "TemporalActivationRegularizer",
     "FranSysRegularizer",
-    "ConsistencyLoss",
 ]
 
 from collections.abc import Callable
@@ -24,7 +22,7 @@ from .losses import cos_sim_loss, cos_sim_loss_pow
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class AddLoss:
+class AuxiliaryLoss:
     """Auxiliary loss that applies a loss function to predictions and targets.
 
     Args:
@@ -40,115 +38,13 @@ class AddLoss:
         return self.alpha * self.loss_func(pred, yb)
 
 
-class PhysicsLoss:
-    """Auxiliary loss using a physics-informed loss function.
-
-    Args:
-        physics_loss_func: function(u, y_pred, y_ref) returning dict of losses or single tensor
-        weight: global scaling factor
-        loss_weights: per-component weights like {'physics': 1.0, 'derivative': 0.1}
-        n_inputs: number of input features (to slice xb)
-        n_skip: initial timesteps to skip
-    """
-
-    def __init__(
-        self,
-        physics_loss_func: Callable,
-        weight: float = 1.0,
-        loss_weights: dict | None = None,
-        n_inputs: int | None = None,
-        n_skip: int = 0,
-    ):
-        self.physics_loss_func = physics_loss_func
-        self.weight = weight
-        self.loss_weights = loss_weights or {}
-        self.n_inputs = n_inputs
-        self.n_skip = n_skip
-
-    def __call__(self, pred: Tensor, yb: Tensor, xb: Tensor) -> Tensor:
-        u = xb[:, :, : self.n_inputs] if self.n_inputs is not None else xb
-
-        y_pred = pred
-        if self.n_skip > 0:
-            u = u[:, self.n_skip :]
-            y_pred = y_pred[:, self.n_skip :]
-
-        loss_dict = self.physics_loss_func(u, y_pred, None)
-
-        if isinstance(loss_dict, dict):
-            total = sum(self.loss_weights.get(k, 1.0) * v for k, v in loss_dict.items())
-        else:
-            total = loss_dict
-
-        return self.weight * total
-
-
-class TransitionSmoothness:
-    """Penalizes curvature at the init-to-prognosis transition boundary.
-
-    Args:
-        init_sz: init window size (transition at this index)
-        weight: loss weight
-        window: timesteps around boundary to penalize
-        dt: time step for derivative computation
-    """
-
-    def __init__(self, init_sz: int, weight: float = 1.0, window: int = 3, dt: float = 0.01):
-        self.init_sz = init_sz
-        self.weight = weight
-        self.window = window
-        self.dt = dt
-
-    def __call__(self, pred: Tensor, yb: Tensor, xb: Tensor) -> Tensor:
-        y = pred
-        start = max(0, self.init_sz - self.window)
-        end = min(y.shape[1], self.init_sz + self.window)
-        if end - start < 3:
-            return torch.tensor(0.0, device=y.device)
-
-        y_boundary = y[:, start:end, :]
-        batch, wlen, ny = y_boundary.shape
-        y_flat = y_boundary.permute(0, 2, 1).reshape(batch * ny, wlen)
-        d2 = _diff2_forward(y_flat, self.dt)
-        smooth_loss = (d2**2).mean()
-
-        return self.weight * smooth_loss
-
-
-def _diff2_forward(signal: Tensor, dt: float) -> Tensor:
-    """Second-order forward difference: f''(x) ~ (f(x+2h) - 2f(x+h) + f(x)) / h^2."""
-    interior = (signal[:, 2:] - 2.0 * signal[:, 1:-1] + signal[:, :-2]) / (dt * dt)
-    return torch.cat([interior[:, :1], interior, interior[:, -1:]], dim=1)
-
-
 # ──────────────────────────────────────────────────────────────────────────────
 #  Stateful aux losses — classes with setup(trainer) / teardown(trainer)
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class TimeSeriesRegularizerLoss:
-    """Activation regularization (AR) and temporal activation regularization (TAR).
-
-    Args:
-        modules: modules to hook for capturing activations
-        alpha: coefficient for AR penalty (L2 on activations)
-        beta: coefficient for TAR penalty (L2 on consecutive activation differences)
-        dim: time axis index; auto-detected from the hooked layer output if None
-    """
-
-    def __init__(
-        self,
-        modules: list[nn.Module],
-        alpha: float = 0.0,
-        beta: float = 0.0,
-        dim: int | None = None,
-    ):
-        self.modules = modules
-        self.alpha = alpha
-        self.beta = beta
-        self.dim = dim
-        self._hooks: list[torch.utils.hooks.RemovableHook] = []
-        self._out: Tensor | None = None
+class _ActivationHookMixin:
+    """Shared hook logic for activation-based regularizers."""
 
     def setup(self, trainer):
         for m in self.modules:
@@ -168,22 +64,56 @@ class TimeSeriesRegularizerLoss:
         if self.dim is None:
             self.dim = int(np.argmax([0, self._out.shape[1], self._out.shape[2]]))
 
+
+class ActivationRegularizer(_ActivationHookMixin):
+    """L2 penalty on hooked module activations (activation regularization).
+
+    Args:
+        modules: modules to hook for capturing activations
+        alpha: coefficient for the L2 penalty
+        dim: time axis index; auto-detected from the hooked layer output if None
+    """
+
+    def __init__(self, modules: list[nn.Module], alpha: float = 1.0, dim: int | None = None):
+        self.modules = modules
+        self.alpha = alpha
+        self.dim = dim
+        self._hooks: list[torch.utils.hooks.RemovableHook] = []
+        self._out: Tensor | None = None
+
     def __call__(self, pred: Tensor, yb: Tensor, xb: Tensor) -> Tensor:
         if self._out is None:
             return torch.tensor(0.0, device=pred.device)
-
         h = self._out.float()
-        loss = torch.tensor(0.0, device=pred.device)
-
-        if self.alpha != 0.0:
-            loss = loss + float(self.alpha) * h.pow(2).mean()
-
-        if self.beta != 0.0 and h.shape[self.dim] > 1:
-            h_diff = (h[:, 1:] - h[:, :-1]) if self.dim == 1 else (h[:, :, 1:] - h[:, :, :-1])
-            loss = loss + float(self.beta) * h_diff.pow(2).mean()
-
         self._out = None
-        return loss
+        return float(self.alpha) * h.pow(2).mean()
+
+
+class TemporalActivationRegularizer(_ActivationHookMixin):
+    """L2 penalty on consecutive-timestep activation differences (temporal activation regularization).
+
+    Args:
+        modules: modules to hook for capturing activations
+        beta: coefficient for the L2 penalty on temporal differences
+        dim: time axis index; auto-detected from the hooked layer output if None
+    """
+
+    def __init__(self, modules: list[nn.Module], beta: float = 1.0, dim: int | None = None):
+        self.modules = modules
+        self.beta = beta
+        self.dim = dim
+        self._hooks: list[torch.utils.hooks.RemovableHook] = []
+        self._out: Tensor | None = None
+
+    def __call__(self, pred: Tensor, yb: Tensor, xb: Tensor) -> Tensor:
+        if self._out is None:
+            return torch.tensor(0.0, device=pred.device)
+        h = self._out.float()
+        self._out = None
+        if h.shape[self.dim] <= 1:
+            return torch.tensor(0.0, device=pred.device)
+        h_diff = (h[:, 1:] - h[:, :-1]) if self.dim == 1 else (h[:, :, 1:] - h[:, :, :-1])
+        return float(self.beta) * h_diff.pow(2).mean()
 
 
 class FranSysRegularizer:
@@ -332,66 +262,3 @@ class FranSysRegularizer:
             + self._osp_loss(diag, xb, yb, model, win_reg)
             + self._tar_loss(diag, prog, model)
         )
-
-
-class ConsistencyLoss:
-    """Trains SequenceEncoder and StateEncoder compatibility on real data.
-
-    Hooks ``rnn_diagnosis`` and computes MSE between sequence encoder hidden
-    state and state encoder hidden state at a given timestep.
-
-    Args:
-        weight: scaling factor for consistency loss
-        match_at_timestep: timestep to match (defaults to model.init_sz - 1)
-        model: explicit inner model reference (auto-detected via unwrap_model if None)
-    """
-
-    def __init__(
-        self,
-        weight: float = 1.0,
-        match_at_timestep: int | None = None,
-        model: nn.Module | None = None,
-    ):
-        self.weight = weight
-        self.match_at_timestep = match_at_timestep
-        self.inner_model = model
-        self._hooks: list[torch.utils.hooks.RemovableHook] = []
-        self._diag_out: Tensor | None = None
-
-    def setup(self, trainer):
-        from ..models.layers import unwrap_model
-
-        if self.inner_model is None:
-            self.inner_model = unwrap_model(trainer.model)
-        if hasattr(self.inner_model, "rnn_diagnosis") and hasattr(self.inner_model, "encode_single_state"):
-            self._hooks.append(self.inner_model.rnn_diagnosis.register_forward_hook(self._hook_fn))
-
-    def teardown(self, trainer):
-        for h in self._hooks:
-            h.remove()
-        self._hooks.clear()
-
-    def _hook_fn(self, m, i, o):
-        self._diag_out = o[0]
-
-    def __call__(self, pred: Tensor, yb: Tensor, xb: Tensor) -> Tensor:
-        if self._diag_out is None:
-            return torch.tensor(0.0, device=pred.device)
-
-        model = self.inner_model
-        timestep = self.match_at_timestep
-        if timestep is None and hasattr(model, "init_sz"):
-            timestep = getattr(model, "_effective_init_sz", model.init_sz) - 1
-        elif timestep is None:
-            timestep = -1
-
-        h_sequence = model.rnn_diagnosis.output_to_hidden(self._diag_out, timestep)
-        physical_state = yb[:, timestep, :]
-        h_state = model.encode_single_state(physical_state)
-
-        loss = torch.tensor(0.0, device=pred.device)
-        for h_seq, h_st in zip(h_sequence, h_state):
-            loss = loss + F.mse_loss(h_seq, h_st)
-
-        self._diag_out = None
-        return self.weight * loss

@@ -359,7 +359,7 @@ class TestAuxLosses:
         assert torch.allclose(loss, expected)
 
     def test_transition_smoothness_loss(self):
-        from tsfast.training.aux_losses import TransitionSmoothnessLoss
+        from tsfast.pinn import TransitionSmoothnessLoss
 
         ts = TransitionSmoothnessLoss(init_sz=20, weight=1.0, window=3, dt=0.01)
         pred = torch.rand(4, 50, 2, requires_grad=True)
