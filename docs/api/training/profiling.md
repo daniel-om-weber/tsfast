@@ -1,5 +1,5 @@
-# Callbacks
+# Profiling
 
-::: tsfast.learner.callbacks
+::: tsfast.training.profiling
     options:
       members_order: source

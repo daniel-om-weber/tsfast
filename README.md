@@ -47,8 +47,8 @@ utilities.
 - **System Identification & Prediction**:
   - Supports simulation (prediction based on inputs) and N-step ahead
     forecasting.
-  - Includes specialized models and callbacks for system identification
-    tasks like FRANSYS (`FranSys`, `FranSysCallback`) and AR models
+  - Includes specialized models for system identification
+    tasks like FRANSYS (`FranSys`, `FranSysLearner`) and AR models
     (`AR_Model`, `ARProg`).
   - Provides an `InferenceWrapper` for easier model deployment and
     prediction.

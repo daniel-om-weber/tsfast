@@ -102,32 +102,39 @@ nav:
     - ONNX Export: examples/notebooks/15_onnx_export.ipynb
     - Stateful TBPTT: examples/notebooks/16_stateful_tbptt.ipynb
   - API Reference:
-    - Data:
-      - Core: api/data/core.md
-      - Transforms: api/data/transforms.md
-      - Splitting: api/data/split.md
-      - Blocks: api/data/block.md
-      - DataLoaders: api/data/loader.md
-    - Datasets:
-      - Core: api/datasets/core.md
-      - Benchmarks: api/datasets/benchmark.md
+    - Data (tsdata):
+      - Pipeline: api/tsdata/pipeline.md
+      - Readers: api/tsdata/readers.md
+      - Dataset: api/tsdata/dataset.md
+      - Normalization: api/tsdata/norm.md
+      - Splitting: api/tsdata/split.md
+      - Signal Processing: api/tsdata/signal.md
+      - Benchmarks: api/tsdata/benchmark.md
+      - Prefetch Loader: api/tsdata/prefetch.md
+    - Training:
+      - Learner: api/training/learner.md
+      - Losses: api/training/losses.md
+      - Auxiliary Losses: api/training/aux_losses.md
+      - Transforms: api/training/transforms.md
+      - Schedulers: api/training/schedulers.md
+      - Profiling: api/training/profiling.md
+      - Visualization: api/training/viz.md
     - Models:
       - Layers: api/models/layers.md
       - RNN: api/models/rnn.md
       - CNN / TCN: api/models/cnn.md
-    - Learner:
-      - Callbacks: api/learner/callbacks.md
-      - Losses: api/learner/losses.md
+      - Scaling: api/models/scaling.md
     - Prediction:
-      - Core: api/prediction/core.md
       - Autoregressive: api/prediction/ar.md
       - FranSys: api/prediction/fransys.md
     - Inference:
-      - Core: api/inference/core.md
+      - Wrapper: api/inference/wrapper.md
       - ONNX: api/inference/onnx.md
     - PINN:
-      - Core: api/pinn/core.md
       - PIRNN: api/pinn/pirnn.md
+      - Signal Generation: api/pinn/signals.md
+      - Differentiation: api/pinn/differentiation.md
+      - Auxiliary Losses: api/pinn/aux_losses.md
     - Quaternions: api/quaternions.md
     - Spectrogram: api/spectogram.md
     - Hyperparameter Tuning: api/tune.md

@@ -1,5 +1,5 @@
-# PINN Core
+# Data Readers
 
-::: tsfast.pinn.core
+::: tsfast.tsdata.readers
     options:
       members_order: source

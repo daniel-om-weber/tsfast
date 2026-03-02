@@ -1,5 +1,5 @@
 # Benchmark Datasets
 
-::: tsfast.datasets.benchmark
+::: tsfast.tsdata.benchmark
     options:
       members_order: source

@@ -1,5 +1,5 @@
-# Data Core
+# Normalization
 
-::: tsfast.data.core
+::: tsfast.tsdata.norm
     options:
       members_order: source

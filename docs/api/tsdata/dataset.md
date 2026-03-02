@@ -1,5 +1,5 @@
-# Data Splitting
+# Dataset
 
-::: tsfast.data.split
+::: tsfast.tsdata.dataset
     options:
       members_order: source

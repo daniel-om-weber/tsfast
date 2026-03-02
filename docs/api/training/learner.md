@@ -1,5 +1,5 @@
-# Datasets Core
+# Learner
 
-::: tsfast.datasets.core
+::: tsfast.training.learner
     options:
       members_order: source
