@@ -1,5 +1,5 @@
-# DataLoaders
+# Visualization
 
-::: tsfast.data.loader
+::: tsfast.training.viz
     options:
       members_order: source

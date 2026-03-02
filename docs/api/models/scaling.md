@@ -1,5 +1,5 @@
-# Data Blocks
+# Scaling
 
-::: tsfast.data.block
+::: tsfast.models.scaling
     options:
       members_order: source

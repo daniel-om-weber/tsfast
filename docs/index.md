@@ -19,10 +19,10 @@ hide:
 
 ## Key Features
 
-- **Specialized Data Handling** — `SequenceBlock`, sequence transforms, `TbpttDl` for truncated backpropagation
+- **Specialized Data Handling** — `WindowedDataset`, sequence transforms, `TbpttLearner` for truncated backpropagation
 - **Benchmark Datasets** — One-line access to Silverbox, Wiener-Hammerstein, Cascaded Tanks, and more via `identibench`
 - **Time Series Models** — RNNs (DenseNet, Residual), TCNs, CRNNs with layer normalization
-- **Integrated Training** — `RNNLearner`, `TCNLearner`, `CRNNLearner` with custom losses (`nrmse`, `skip_n_loss`) and callbacks
+- **Integrated Training** — `RNNLearner`, `TCNLearner`, `CRNNLearner` with custom losses (`nrmse`, `cut_loss`) and transforms
 - **System Identification** — Simulation, N-step prediction, FranSys, autoregressive models
 - **Hyperparameter Optimization** — Ray Tune integration via `HPOptimizer`
 - **Deployment** — `InferenceWrapper` for NumPy-in/NumPy-out inference, ONNX export
@@ -54,7 +54,7 @@ TSFast provides a convenience barrel import for interactive use:
 from tsfast.basics import *
 ```
 
-This imports all public symbols from `data`, `datasets`, `models`, `learner`, `prediction`, and `inference`. For production code, prefer explicit imports from specific modules (e.g., `from tsfast.models.rnn import RNNLearner`).
+This imports all public symbols from `tsdata`, `training`, `models`, `prediction`, and `inference`. For production code, prefer explicit imports from specific modules (e.g., `from tsfast.models.rnn import RNNLearner`).
 
 ## Citation
 

@@ -1,5 +1,5 @@
 # Losses and Metrics
 
-::: tsfast.learner.losses
+::: tsfast.training.losses
     options:
       members_order: source
