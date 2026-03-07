@@ -168,7 +168,7 @@ def inclinationAngleAbs(q: torch.Tensor) -> torch.Tensor:
 
 def rand_quat() -> torch.Tensor:
     """Generate a random unit quaternion."""
-    q = torch.rand((4)) * 2 - 1
+    q = torch.randn(4)
     q /= q.norm()
     return q
 

@@ -5,7 +5,7 @@ __all__ = ["augmentation_groups", "QuaternionAugmentation"]
 import numpy as np
 import torch
 
-from .ops import multiplyQuat, rand_quat, rot_vec
+from .ops import multiplyQuat, rot_vec
 
 
 def augmentation_groups(u_groups: list[int]) -> list[list[int]]:
@@ -43,7 +43,11 @@ class QuaternionAugmentation:
         Returns:
             Tuple of (augmented xb, augmented yb).
         """
-        r_quat = rand_quat()
+        # Per-sample random quaternions: (batch, 1, 4) — broadcasts over seq_len
+        bs = xb.shape[0]
+        q = torch.randn(bs, 4, device=xb.device)
+        q = q / q.norm(dim=-1, keepdim=True)
+        r_quat = q.unsqueeze(1)
 
         # Augment input groups
         for g in self.inp_groups:
