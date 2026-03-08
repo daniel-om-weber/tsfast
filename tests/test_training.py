@@ -801,7 +801,7 @@ class TestGraphedStatefulModel:
     def test_smoke(self):
         """Wrap SimpleRNN, call forward, check output shapes."""
         from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.state import GraphedStatefulModel
+        from tsfast.models.cudagraph import GraphedStatefulModel
 
         model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
         graphed = GraphedStatefulModel(model)
@@ -813,7 +813,7 @@ class TestGraphedStatefulModel:
     def test_interface_without_state(self):
         """forward(x) without state returns (pred, state) tuple."""
         from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.state import GraphedStatefulModel
+        from tsfast.models.cudagraph import GraphedStatefulModel
 
         model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
         graphed = GraphedStatefulModel(model)
@@ -824,7 +824,7 @@ class TestGraphedStatefulModel:
     def test_interface_with_state(self):
         """forward(x, state=state) with explicit state works."""
         from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.state import GraphedStatefulModel
+        from tsfast.models.cudagraph import GraphedStatefulModel
 
         model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
         graphed = GraphedStatefulModel(model)
@@ -837,7 +837,7 @@ class TestGraphedStatefulModel:
     def test_with_tbptt_learner(self):
         """GraphedStatefulModel works transparently with TbpttLearner."""
         from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.state import GraphedStatefulModel
+        from tsfast.models.cudagraph import GraphedStatefulModel
         from tsfast.training import TbpttLearner
 
         dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
@@ -850,7 +850,7 @@ class TestGraphedStatefulModel:
     def test_with_basic_learner(self):
         """GraphedStatefulModel works transparently with basic Learner."""
         from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.state import GraphedStatefulModel
+        from tsfast.models.cudagraph import GraphedStatefulModel
         from tsfast.training import Learner
 
         dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
@@ -866,7 +866,7 @@ class TestGraphedStatefulModel:
         import copy
 
         from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.state import GraphedStatefulModel
+        from tsfast.models.cudagraph import GraphedStatefulModel
         from tsfast.training import TbpttLearner
 
         seq_len, n_u, n_y, n_train, bs = 100, 1, 1, 8, 4
@@ -910,7 +910,7 @@ class TestGraphedStatefulModel:
     def test_with_n_skip(self):
         """GraphedStatefulModel works with TbpttLearner's n_skip."""
         from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.state import GraphedStatefulModel
+        from tsfast.models.cudagraph import GraphedStatefulModel
         from tsfast.training import TbpttLearner
 
         dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
@@ -923,7 +923,7 @@ class TestGraphedStatefulModel:
     def test_reset_graph(self):
         """reset_graph() clears state, next forward re-captures."""
         from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.state import GraphedStatefulModel
+        from tsfast.models.cudagraph import GraphedStatefulModel
 
         model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
         graphed = GraphedStatefulModel(model)
@@ -943,5 +943,41 @@ class TestGraphedStatefulModel:
         pred2, _ = graphed(x)
         assert graphed._graphed is not None
         assert pred2.shape == pred1.shape
+
+    def test_eager_fallback_different_batch(self):
+        """Falls back to eager when batch size differs from captured shape."""
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.cudagraph import GraphedStatefulModel
+
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
+        graphed = GraphedStatefulModel(model)
+
+        # Capture with batch=4
+        x_train = torch.randn(4, 10, 1, device="cuda")
+        pred_train, _ = graphed(x_train)
+        assert pred_train.shape == (4, 10, 1)
+
+        # Different batch size — should fall back to eager, not crash
+        x_test = torch.randn(1, 10, 1, device="cuda")
+        pred_test, state_test = graphed(x_test)
+        assert pred_test.shape == (1, 10, 1)
+        assert state_test is not None
+
+    def test_eager_fallback_different_seq_len(self):
+        """Falls back to eager when sequence length differs from captured shape."""
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.cudagraph import GraphedStatefulModel
+
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
+        graphed = GraphedStatefulModel(model)
+
+        # Capture with seq_len=10
+        x_train = torch.randn(4, 10, 1, device="cuda")
+        graphed(x_train)
+
+        # Different seq_len — should fall back to eager, not crash
+        x_test = torch.randn(4, 50, 1, device="cuda")
+        pred_test, _ = graphed(x_test)
+        assert pred_test.shape == (4, 50, 1)
 
 

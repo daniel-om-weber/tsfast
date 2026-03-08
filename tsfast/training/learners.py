@@ -15,7 +15,7 @@ from .aux_losses import ActivationRegularizer, TemporalActivationRegularizer
 from .learner import Learner, TbpttLearner
 from .losses import fun_rmse
 from .transforms import prediction_concat
-from ..models.state import GraphedStatefulModel
+from ..models.cudagraph import GraphedStatefulModel
 from ..models.cnn import CRNN, TCN
 from ..models.layers import AR_Model
 from ..models.rnn import SimpleRNN
