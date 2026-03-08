@@ -17,8 +17,8 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from tsfast.models.layers import SeqLinear
 from tsfast.models.rnn import SimpleRNN
-from tsfast.training import CudaGraphTbpttLearner, TbpttLearner
-from tsfast.models.state import detach_state
+from tsfast.training import TbpttLearner
+from tsfast.models.state import GraphedStatefulModel, detach_state
 
 # ── Configuration ────────────────────────────────────────────────────────────
 
@@ -164,7 +164,7 @@ class CompiledStepTbpttLearner(TbpttLearner):
     """TbpttLearner that compiles the forward+backward step with torch.compile.
 
     The optimizer step stays outside the compiled region (same as
-    CudaGraphTbpttLearner) so LR schedulers and grad clipping work normally.
+    GraphedStatefulModel) so LR schedulers and grad clipping work normally.
     """
 
     def __init__(self, *args, compile_mode: str = "reduce-overhead", **kwargs):
@@ -292,9 +292,10 @@ def _baseline(dls):
     return TbpttLearner(make_model(), dls, loss_func=nn.L1Loss(), sub_seq_len=SUB_SEQ_LEN)
 
 
-@register("cuda_graph", "nn.GRU + CudaGraphTbpttLearner")
+@register("cuda_graph", "nn.GRU + GraphedStatefulModel")
 def _cuda_graph(dls):
-    return CudaGraphTbpttLearner(make_model(), dls, loss_func=nn.L1Loss(), sub_seq_len=SUB_SEQ_LEN)
+    model = GraphedStatefulModel(make_model())
+    return TbpttLearner(model, dls, loss_func=nn.L1Loss(), sub_seq_len=SUB_SEQ_LEN)
 
 
 @register("custom_compile_reduce", "custom GRU + compile (reduce-overhead)")
