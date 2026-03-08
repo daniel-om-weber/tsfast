@@ -33,9 +33,7 @@
 
 # %%
 from tsfast.tsdata.benchmark import create_dls_silverbox
-from tsfast.models.rnn import AR_RNNLearner, RNNLearner
-from tsfast.models.cnn import AR_TCNLearner
-from tsfast.training import fun_rmse
+from tsfast.training import AR_RNNLearner, RNNLearner, AR_TCNLearner, fun_rmse
 
 # %% [markdown]
 # ## What is Autoregressive Prediction?

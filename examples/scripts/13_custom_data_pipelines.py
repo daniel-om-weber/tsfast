@@ -41,8 +41,7 @@ from tsfast.tsdata import (
     WindowedDataset, HDF5Signals, FileEntry, DataLoaders,
     create_dls, create_dls_from_readers, get_hdf_files, split_by_parent,
 )
-from tsfast.training import fun_rmse
-from tsfast.models.rnn import RNNLearner
+from tsfast.training import RNNLearner, fun_rmse
 
 # %% [markdown]
 # ## Finding HDF5 Files

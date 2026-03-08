@@ -40,7 +40,7 @@ class TestRNN:
 
     @pytest.mark.slow
     def test_rnn_learner_fit(self, dls_simulation):
-        from tsfast.models.rnn import RNNLearner
+        from tsfast.training import RNNLearner
         lrn = RNNLearner(dls_simulation, rnn_type="gru")
         lrn.fit(1, 1e-4)
         final_valid_loss = lrn.recorder.values[-1][1]
@@ -59,7 +59,7 @@ class TestCNN:
 
     @pytest.mark.slow
     def test_tcn_learner_fit(self, dls_simulation):
-        from tsfast.models.cnn import TCNLearner
+        from tsfast.training import TCNLearner
         lrn = TCNLearner(dls_simulation)
         lrn.fit(1, 1e-4)
         final_valid_loss = lrn.recorder.values[-1][1]
@@ -68,7 +68,7 @@ class TestCNN:
 
     @pytest.mark.slow
     def test_crnn_learner_fit(self, dls_simulation):
-        from tsfast.models.cnn import CRNNLearner
+        from tsfast.training import CRNNLearner
         lrn = CRNNLearner(dls_simulation)
         lrn.fit(1, 1e-4)
         final_valid_loss = lrn.recorder.values[-1][1]
@@ -114,7 +114,7 @@ class TestSeperateModels:
 
     @pytest.mark.slow
     def test_ar_tcn_learner_fit(self, dls_simulation):
-        from tsfast.models.cnn import AR_TCNLearner
+        from tsfast.training import AR_TCNLearner
         lrn = AR_TCNLearner(dls_simulation, hl_depth=2, hl_width=10)
         lrn.fit(1, 1e-4)
         final_valid_loss = lrn.recorder.values[-1][1]
@@ -215,20 +215,20 @@ class TestScalers:
         assert out.shape == batch[1].shape
 
     def test_rnn_learner_input_norm_none(self, dls_simulation):
-        from tsfast.models.rnn import RNNLearner
+        from tsfast.training import RNNLearner
         from tsfast.models.scaling import ScaledModel
         lrn = RNNLearner(dls_simulation, rnn_type="gru", input_norm=None)
         assert not isinstance(lrn.model, ScaledModel)
 
     def test_rnn_learner_input_norm_minmax(self, dls_simulation):
-        from tsfast.models.rnn import RNNLearner
+        from tsfast.training import RNNLearner
         from tsfast.models.scaling import ScaledModel, MinMaxScaler
         lrn = RNNLearner(dls_simulation, rnn_type="gru", input_norm=MinMaxScaler)
         assert isinstance(lrn.model, ScaledModel)
         assert isinstance(lrn.model.input_norm, MinMaxScaler)
 
     def test_rnn_learner_output_norm(self, dls_simulation):
-        from tsfast.models.rnn import RNNLearner
+        from tsfast.training import RNNLearner
         from tsfast.models.scaling import ScaledModel, StandardScaler
         lrn = RNNLearner(dls_simulation, rnn_type="gru", output_norm=StandardScaler)
         assert isinstance(lrn.model, ScaledModel)

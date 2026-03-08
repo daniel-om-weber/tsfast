@@ -36,9 +36,8 @@
 import identibench as idb
 
 from tsfast.tsdata.benchmark import create_dls_from_spec
-from tsfast.models.rnn import RNNLearner
 from tsfast.inference import InferenceWrapper
-from tsfast.training import fun_rmse
+from tsfast.training import RNNLearner, fun_rmse
 
 # %% [markdown]
 # ## What is IdentiBench?

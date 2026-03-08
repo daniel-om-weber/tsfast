@@ -8,7 +8,7 @@ onnxruntime = pytest.importorskip("onnxruntime")
 
 class TestExportOnnx:
     def test_export_rnn(self, dls_simulation, tmp_path):
-        from tsfast.models.rnn import RNNLearner
+        from tsfast.training import RNNLearner
         from tsfast.inference.onnx import export_onnx
 
         lrn = RNNLearner(dls_simulation)
@@ -18,7 +18,7 @@ class TestExportOnnx:
         onnx.checker.check_model(model)
 
     def test_export_tcn(self, dls_simulation, tmp_path):
-        from tsfast.models.cnn import TCNLearner
+        from tsfast.training import TCNLearner
         from tsfast.inference.onnx import export_onnx
 
         lrn = TCNLearner(dls_simulation)
@@ -28,7 +28,7 @@ class TestExportOnnx:
         onnx.checker.check_model(model)
 
     def test_export_adds_suffix(self, dls_simulation, tmp_path):
-        from tsfast.models.rnn import RNNLearner
+        from tsfast.training import RNNLearner
         from tsfast.inference.onnx import export_onnx
 
         lrn = RNNLearner(dls_simulation)
@@ -37,7 +37,7 @@ class TestExportOnnx:
         assert path.exists()
 
     def test_export_ar_model_raises(self, dls_prediction, tmp_path):
-        from tsfast.models.rnn import AR_RNNLearner
+        from tsfast.training import AR_RNNLearner
         from tsfast.inference.onnx import export_onnx
 
         lrn = AR_RNNLearner(dls_prediction)
@@ -45,7 +45,7 @@ class TestExportOnnx:
             export_onnx(lrn, tmp_path / "model.onnx")
 
     def test_export_custom_seq_len(self, dls_simulation, tmp_path):
-        from tsfast.models.rnn import RNNLearner
+        from tsfast.training import RNNLearner
         from tsfast.inference.onnx import export_onnx
 
         lrn = RNNLearner(dls_simulation)
@@ -55,7 +55,7 @@ class TestExportOnnx:
 
 class TestOnnxInferenceWrapper:
     def test_matches_pytorch_output(self, dls_simulation, tmp_path):
-        from tsfast.models.rnn import RNNLearner
+        from tsfast.training import RNNLearner
         from tsfast.inference.wrapper import InferenceWrapper
         from tsfast.inference.onnx import export_onnx, OnnxInferenceWrapper
 
@@ -71,7 +71,7 @@ class TestOnnxInferenceWrapper:
         np.testing.assert_allclose(pt_result, onnx_result, atol=1e-5)
 
     def test_1d_input(self, dls_simulation, tmp_path):
-        from tsfast.models.rnn import RNNLearner
+        from tsfast.training import RNNLearner
         from tsfast.inference.onnx import export_onnx, OnnxInferenceWrapper
 
         lrn = RNNLearner(dls_simulation)
@@ -80,7 +80,7 @@ class TestOnnxInferenceWrapper:
         assert result.shape == (100,)
 
     def test_2d_input(self, dls_simulation, tmp_path):
-        from tsfast.models.rnn import RNNLearner
+        from tsfast.training import RNNLearner
         from tsfast.inference.onnx import export_onnx, OnnxInferenceWrapper
 
         lrn = RNNLearner(dls_simulation)
@@ -89,7 +89,7 @@ class TestOnnxInferenceWrapper:
         assert result.shape == (100, 1)
 
     def test_3d_input(self, dls_simulation, tmp_path):
-        from tsfast.models.rnn import RNNLearner
+        from tsfast.training import RNNLearner
         from tsfast.inference.onnx import export_onnx, OnnxInferenceWrapper
 
         lrn = RNNLearner(dls_simulation)
@@ -98,7 +98,7 @@ class TestOnnxInferenceWrapper:
         assert result.shape == (1, 100, 1)
 
     def test_batched_3d_input(self, dls_simulation, tmp_path):
-        from tsfast.models.rnn import RNNLearner
+        from tsfast.training import RNNLearner
         from tsfast.inference.wrapper import InferenceWrapper
         from tsfast.inference.onnx import export_onnx, OnnxInferenceWrapper
 
@@ -114,7 +114,7 @@ class TestOnnxInferenceWrapper:
         np.testing.assert_allclose(pt_result, onnx_result, atol=1e-5)
 
     def test_dynamic_seq_len(self, dls_simulation, tmp_path):
-        from tsfast.models.rnn import RNNLearner
+        from tsfast.training import RNNLearner
         from tsfast.inference.onnx import export_onnx, OnnxInferenceWrapper
 
         lrn = RNNLearner(dls_simulation)
@@ -128,7 +128,7 @@ class TestOnnxInferenceWrapper:
         assert r2.shape == (200, 1)
 
     def test_tcn_output(self, dls_simulation, tmp_path):
-        from tsfast.models.cnn import TCNLearner
+        from tsfast.training import TCNLearner
         from tsfast.inference.wrapper import InferenceWrapper
         from tsfast.inference.onnx import export_onnx, OnnxInferenceWrapper
 

@@ -32,7 +32,7 @@ def test_learner_optimize_cpu_only(dls_silverbox):
     the Learner, otherwise ``dls.one_batch()`` raises
     ``RuntimeError: No CUDA GPUs are available``.
     """
-    from tsfast.models.rnn import RNNLearner
+    from tsfast.training import RNNLearner
     from tsfast.tune import HPOptimizer
     from tsfast.training import fun_rmse
 
@@ -74,7 +74,7 @@ def test_learner_optimize_callable_lr(dls_silverbox):
     before assigning to ``lrn.lr``, otherwise ``fit_flat_cos`` raises
     ``TypeError: unsupported operand type(s) for /: 'function' and 'float'``.
     """
-    from tsfast.models.rnn import RNNLearner
+    from tsfast.training import RNNLearner
     from tsfast.tune import HPOptimizer, log_uniform
     from tsfast.training import fun_rmse
 

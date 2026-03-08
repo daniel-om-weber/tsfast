@@ -32,9 +32,8 @@
 
 # %%
 from tsfast.tsdata.benchmark import create_dls_silverbox, create_dls_wh
-from tsfast.models.rnn import RNNLearner
 from tsfast.inference import InferenceWrapper
-from tsfast.training import fun_rmse
+from tsfast.training import RNNLearner, fun_rmse
 
 # %% [markdown]
 # ## What is Simulation?
