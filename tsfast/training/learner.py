@@ -14,80 +14,14 @@ from collections.abc import Callable
 from contextlib import contextmanager
 
 import torch
-import torch.utils._pytree as pytree
 from torch import Tensor, nn
 from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
 
+from ..models.state import FlatStateBridge, detach_state, flatten_state, unflatten_state
 from ..tsdata.pipeline import DataLoaders, get_signal_names
 from . import viz
 from .schedulers import sched_flat_cos
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-#  Utilities
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def _detach_state(state):
-    """Recursively detach tensors from the computation graph."""
-    if state is None:
-        return None
-    if isinstance(state, torch.Tensor):
-        return state.detach()
-    if isinstance(state, (list, tuple)):
-        return type(state)(_detach_state(s) for s in state)
-    if isinstance(state, dict):
-        return {k: _detach_state(v) for k, v in state.items()}
-    return state
-
-
-def flatten_state(state, batch_size: int) -> tuple[Tensor, tuple]:
-    """Flatten arbitrary nested state to a single ``[B, D]`` tensor.
-
-    Uses ``pytree`` to walk any nested structure (list, tuple, dict) and
-    collect leaf tensors.  Each leaf is reshaped to ``[B, -1]`` where
-    *B* = *batch_size*, then concatenated along the last dimension.
-
-    Args:
-        state: arbitrarily nested container of tensors (list, tuple, dict).
-        batch_size: batch dimension size, used to reshape each leaf to ``[B, -1]``.
-
-    Returns:
-        ``(flat, spec)`` where *spec* allows reconstruction via
-        :func:`unflatten_state`.
-    """
-    leaves, tree_spec = pytree.tree_flatten(state)
-    shapes = tuple(leaf.shape for leaf in leaves)
-    flat_leaves = [leaf.reshape(batch_size, -1) for leaf in leaves]
-    widths = tuple(fl.shape[-1] for fl in flat_leaves)
-    return torch.cat(flat_leaves, dim=-1), (tree_spec, shapes, widths)
-
-
-def unflatten_state(flat: Tensor, spec: tuple):
-    """Reconstruct nested state from a flat ``[B, D]`` tensor + *spec*."""
-    tree_spec, shapes, widths = spec
-    splits = flat.split(widths, dim=-1)
-    leaves = [s.reshape(shape).contiguous() for s, shape in zip(splits, shapes)]
-    return pytree.tree_unflatten(leaves, tree_spec)
-
-
-class _FlatStateBridge(nn.Module):
-    """Wraps a stateful model so state is passed as a flat ``[B, D]`` tensor.
-
-    Required for ``make_graphed_callables`` which only accepts Tensor arguments.
-    """
-
-    def __init__(self, model: nn.Module, spec: tuple):
-        super().__init__()
-        self.model = model
-        self._spec = spec
-
-    def forward(self, x: Tensor, flat_state: Tensor) -> tuple[Tensor, Tensor]:
-        state = unflatten_state(flat_state, self._spec)
-        pred, new_state = self.model(x, state=state)
-        new_flat, _ = flatten_state(new_state, batch_size=x.shape[0])
-        return pred, new_flat
 
 
 def _auto_device() -> torch.device:
@@ -280,7 +214,7 @@ class Learner:
         optimizer.step()
         optimizer.zero_grad()
 
-        return loss.item(), _detach_state(new_state)
+        return loss.item(), detach_state(new_state)
 
     def training_step(
         self, batch: tuple[Tensor, Tensor], optimizer, state=None, n_skip: int | None = None
@@ -723,7 +657,7 @@ class SimpleCudaGraphLearner(TbpttLearner):
         flat, spec = flatten_state(warmup_state, batch_size=xb_chunk.shape[0])
         self._flat_state = torch.zeros_like(flat)
 
-        wrapper = _FlatStateBridge(self.model, spec)
+        wrapper = FlatStateBridge(self.model, spec)
         sample_x = torch.zeros_like(xb_chunk)
         sample_state = torch.zeros_like(self._flat_state)
         self._graphed = torch.cuda.make_graphed_callables(wrapper, (sample_x, sample_state), num_warmup_iters=3)

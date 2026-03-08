@@ -40,7 +40,7 @@ class _SyntheticDls:
 class TestFlattenState:
     def test_roundtrip_gru(self):
         """GRU state: list[Tensor[1,B,H]] roundtrips through flatten/unflatten."""
-        from tsfast.training.learner import flatten_state, unflatten_state
+        from tsfast.models.state import flatten_state, unflatten_state
 
         state = [torch.randn(1, 4, 20), torch.randn(1, 4, 30)]
         flat, spec = flatten_state(state, batch_size=4)
@@ -52,7 +52,7 @@ class TestFlattenState:
 
     def test_roundtrip_lstm(self):
         """LSTM state: list[tuple[Tensor, Tensor]] roundtrips through flatten/unflatten."""
-        from tsfast.training.learner import flatten_state, unflatten_state
+        from tsfast.models.state import flatten_state, unflatten_state
 
         state = [
             (torch.randn(1, 4, 20), torch.randn(1, 4, 20)),
@@ -70,7 +70,7 @@ class TestFlattenState:
 
     def test_roundtrip_mixed(self):
         """Mixed state: some layers plain tensor, some tuple."""
-        from tsfast.training.learner import flatten_state, unflatten_state
+        from tsfast.models.state import flatten_state, unflatten_state
 
         state = [
             torch.randn(1, 4, 10),
@@ -86,7 +86,7 @@ class TestFlattenState:
 
     def test_roundtrip_plain_2d(self):
         """Plain [B, H] state without leading singleton dims."""
-        from tsfast.training.learner import flatten_state, unflatten_state
+        from tsfast.models.state import flatten_state, unflatten_state
 
         state = [torch.randn(4, 20), torch.randn(4, 30)]
         flat, spec = flatten_state(state, batch_size=4)
@@ -98,7 +98,7 @@ class TestFlattenState:
 
     def test_spec_is_immutable(self):
         """Spec widths should be an immutable tuple."""
-        from tsfast.training.learner import flatten_state
+        from tsfast.models.state import flatten_state
 
         state = [torch.randn(1, 4, 20)]
         _, spec = flatten_state(state, batch_size=4)
@@ -107,7 +107,7 @@ class TestFlattenState:
 
     def test_roundtrip_dict(self):
         """Dict state roundtrips through flatten/unflatten."""
-        from tsfast.training.learner import flatten_state, unflatten_state
+        from tsfast.models.state import flatten_state, unflatten_state
 
         state = {"h": [torch.randn(1, 4, 20)], "y_init": torch.randn(4, 1, 3)}
         flat, spec = flatten_state(state, batch_size=4)
@@ -119,7 +119,7 @@ class TestFlattenState:
 
     def test_roundtrip_ssm_3d(self):
         """SSM state [B, D, N] roundtrips correctly (batch dim preserved)."""
-        from tsfast.training.learner import flatten_state, unflatten_state
+        from tsfast.models.state import flatten_state, unflatten_state
 
         state = [torch.randn(4, 16, 8), torch.randn(4, 32, 4)]
         flat, spec = flatten_state(state, batch_size=4)
@@ -130,7 +130,7 @@ class TestFlattenState:
 
     def test_roundtrip_4d_attention(self):
         """4D attention state [B, nH, dK, dV] roundtrips correctly."""
-        from tsfast.training.learner import flatten_state, unflatten_state
+        from tsfast.models.state import flatten_state, unflatten_state
 
         state = [torch.randn(4, 8, 64, 64)]
         flat, spec = flatten_state(state, batch_size=4)
