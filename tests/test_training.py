@@ -734,7 +734,7 @@ class TestTbpttLearner:
         )
         lrn.fit(1)
         assert math.isfinite(lrn.recorder.values[-1][1])
-        # n_skip must be restored after _train_one_batch
+        # n_skip must be preserved across training
         assert lrn.n_skip == 10
 
     def test_tbptt_with_augmentations(self):
@@ -758,9 +758,9 @@ class TestTbpttLearner:
     def test_tbptt_augmentations_applied_once_per_batch(self):
         """Augmentations must be applied exactly once per batch, not once per chunk.
 
-        Regression test: previously TbpttLearner applied augmentations in both
-        _prepare_chunks() AND training_step(), causing double-augmentation and
-        a mismatch with CUDA-graphed training (which only applied them once).
+        Regression test: previously TbpttLearner applied augmentations per chunk
+        instead of once per batch, causing double-augmentation and a mismatch
+        with CUDA-graphed training (which only applied them once).
         """
         from tsfast.models.rnn import SimpleRNN
         from tsfast.training import TbpttLearner

@@ -129,27 +129,27 @@ class DataProfiler:
         """
         self = cls(stall_threshold=stall_threshold)
         original_dl = learner.dls.train
-        had_instance_method = "_train_one_batch" in learner.__dict__
-        original_method = learner._train_one_batch
+        had_instance_method = "training_step" in learner.__dict__
+        original_method = learner.training_step
 
         learner.dls.train = _TimedIterator(original_dl, self)
 
-        def _timed_train_one_batch(batch, optimizer, step, total_steps):
+        def _timed_training_step(xb, yb):
             t0 = time.perf_counter()
-            result = original_method(batch, optimizer, step, total_steps)
+            result = original_method(xb, yb)
             self._record_step_time(time.perf_counter() - t0)
             return result
 
-        learner._train_one_batch = _timed_train_one_batch
+        learner.training_step = _timed_training_step
 
         try:
             yield self
         finally:
             learner.dls.train = original_dl
             if had_instance_method:
-                learner._train_one_batch = learner.__dict__.get("_train_one_batch")
+                learner.training_step = learner.__dict__.get("training_step")
             else:
-                learner.__dict__.pop("_train_one_batch", None)
+                learner.__dict__.pop("training_step", None)
             print(self.summary())
 
 

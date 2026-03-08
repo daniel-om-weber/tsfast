@@ -128,7 +128,7 @@ class TestDataProfiler:
 
         assert lrn.dls.train is original_dl
         # Instance attribute removed — falls back to class method
-        assert "_train_one_batch" not in lrn.__dict__
+        assert "training_step" not in lrn.__dict__
 
     def test_restores_on_exception(self, capsys):
         lrn = _make_learner()

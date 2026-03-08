@@ -188,21 +188,20 @@ def sample_config(config: dict) -> dict:
 
 
 def _attach_ray_reporter(lrn):
-    """Patch ``_log_epoch`` on a Learner to report metrics and checkpoints to Ray Tune.
+    """Patch ``log_epoch`` on a Learner to report metrics and checkpoints to Ray Tune.
 
-    The new Learner calls ``self._log_epoch(epoch, train_loss, val_loss, metrics, pbar)``
-    after each epoch.  Assigning a plain function to the instance attribute overrides
-    the method without ``self`` being passed, so the signature matches directly.
+    Assigning a plain function to the instance attribute overrides the method
+    without ``self`` being passed, so the signature matches directly.
     """
 
-    def _ray_log_epoch(epoch, train_loss, val_loss, metrics, pbar):
+    def _ray_log_epoch(epoch, n_epoch, train_loss, val_loss, metrics, pbar):
         result = {"train_loss": train_loss, "valid_loss": val_loss}
         result.update(metrics)
         with tempfile.TemporaryDirectory() as d:
             torch.save(lrn.model.state_dict(), os.path.join(d, "model.pth"))
             ray.tune.report(result, checkpoint=Checkpoint.from_directory(d))
 
-    lrn._log_epoch = _ray_log_epoch
+    lrn.log_epoch = _ray_log_epoch
 
 
 class HPOptimizer:
