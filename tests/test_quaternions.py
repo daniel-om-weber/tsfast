@@ -106,6 +106,17 @@ class TestQuaternionAugmentation:
         # Values should change (rotation applied)
         assert not torch.allclose(xb_aug, xb_orig, atol=1e-3)
 
+    def test_quaternion_augmentation_per_sample(self):
+        """Each sample in a batch should get a different rotation."""
+        from tsfast.quaternions import QuaternionAugmentation, norm_quaternion
+
+        tfm = QuaternionAugmentation(inp_groups=[[0, 2]])
+        xb = torch.ones(4, 10, 3)  # identical samples
+        yb = norm_quaternion(torch.ones(4, 10, 4))
+        xb_aug, yb_aug = tfm(xb, yb)
+        # Different samples should have different rotations
+        assert not torch.allclose(xb_aug[0], xb_aug[1], atol=1e-3)
+
 
 class TestNumpyQuaternionMath:
     def test_multiply_quat_np_identity(self):
