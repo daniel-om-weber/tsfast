@@ -33,6 +33,113 @@ class _SyntheticDls:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+#  Unit tests — flatten_state / unflatten_state
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestFlattenState:
+    def test_roundtrip_gru(self):
+        """GRU state: list[Tensor[1,B,H]] roundtrips through flatten/unflatten."""
+        from tsfast.training.learner import flatten_state, unflatten_state
+
+        state = [torch.randn(1, 4, 20), torch.randn(1, 4, 30)]
+        flat, spec = flatten_state(state, batch_size=4)
+        assert flat.shape == (4, 50)
+        recovered = unflatten_state(flat, spec)
+        assert len(recovered) == 2
+        for orig, rec in zip(state, recovered):
+            assert torch.allclose(orig, rec)
+
+    def test_roundtrip_lstm(self):
+        """LSTM state: list[tuple[Tensor, Tensor]] roundtrips through flatten/unflatten."""
+        from tsfast.training.learner import flatten_state, unflatten_state
+
+        state = [
+            (torch.randn(1, 4, 20), torch.randn(1, 4, 20)),
+            (torch.randn(1, 4, 30), torch.randn(1, 4, 30)),
+        ]
+        flat, spec = flatten_state(state, batch_size=4)
+        assert flat.shape == (4, 100)
+        recovered = unflatten_state(flat, spec)
+        assert len(recovered) == 2
+        for orig_tuple, rec_tuple in zip(state, recovered):
+            assert isinstance(rec_tuple, tuple)
+            assert len(rec_tuple) == 2
+            for orig_t, rec_t in zip(orig_tuple, rec_tuple):
+                assert torch.allclose(orig_t, rec_t)
+
+    def test_roundtrip_mixed(self):
+        """Mixed state: some layers plain tensor, some tuple."""
+        from tsfast.training.learner import flatten_state, unflatten_state
+
+        state = [
+            torch.randn(1, 4, 10),
+            (torch.randn(1, 4, 20), torch.randn(1, 4, 20)),
+        ]
+        flat, spec = flatten_state(state, batch_size=4)
+        assert flat.shape == (4, 50)
+        recovered = unflatten_state(flat, spec)
+        assert torch.allclose(state[0], recovered[0])
+        assert isinstance(recovered[1], tuple)
+        assert torch.allclose(state[1][0], recovered[1][0])
+        assert torch.allclose(state[1][1], recovered[1][1])
+
+    def test_roundtrip_plain_2d(self):
+        """Plain [B, H] state without leading singleton dims."""
+        from tsfast.training.learner import flatten_state, unflatten_state
+
+        state = [torch.randn(4, 20), torch.randn(4, 30)]
+        flat, spec = flatten_state(state, batch_size=4)
+        assert flat.shape == (4, 50)
+        recovered = unflatten_state(flat, spec)
+        assert len(recovered) == 2
+        for orig, rec in zip(state, recovered):
+            assert torch.allclose(orig, rec)
+
+    def test_spec_is_immutable(self):
+        """Spec widths should be an immutable tuple."""
+        from tsfast.training.learner import flatten_state
+
+        state = [torch.randn(1, 4, 20)]
+        _, spec = flatten_state(state, batch_size=4)
+        _, shapes, widths = spec
+        assert isinstance(widths, tuple)
+
+    def test_roundtrip_dict(self):
+        """Dict state roundtrips through flatten/unflatten."""
+        from tsfast.training.learner import flatten_state, unflatten_state
+
+        state = {"h": [torch.randn(1, 4, 20)], "y_init": torch.randn(4, 1, 3)}
+        flat, spec = flatten_state(state, batch_size=4)
+        assert flat.shape == (4, 23)
+        recovered = unflatten_state(flat, spec)
+        assert isinstance(recovered, dict)
+        assert torch.allclose(state["h"][0], recovered["h"][0])
+        assert torch.allclose(state["y_init"], recovered["y_init"])
+
+    def test_roundtrip_ssm_3d(self):
+        """SSM state [B, D, N] roundtrips correctly (batch dim preserved)."""
+        from tsfast.training.learner import flatten_state, unflatten_state
+
+        state = [torch.randn(4, 16, 8), torch.randn(4, 32, 4)]
+        flat, spec = flatten_state(state, batch_size=4)
+        assert flat.shape == (4, 256)  # 16*8 + 32*4
+        recovered = unflatten_state(flat, spec)
+        for orig, rec in zip(state, recovered):
+            assert torch.allclose(orig, rec)
+
+    def test_roundtrip_4d_attention(self):
+        """4D attention state [B, nH, dK, dV] roundtrips correctly."""
+        from tsfast.training.learner import flatten_state, unflatten_state
+
+        state = [torch.randn(4, 8, 64, 64)]
+        flat, spec = flatten_state(state, batch_size=4)
+        assert flat.shape == (4, 32768)
+        recovered = unflatten_state(flat, spec)
+        assert torch.allclose(state[0], recovered[0])
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 #  Unit tests — losses & metrics
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -768,6 +875,88 @@ class TestCudaGraphTbpttLearner:
             )
 
         # Model parameters should be nearly identical.
+        for p1, p2 in zip(model.parameters(), model_copy.parameters()):
+            assert torch.allclose(p1, p2, atol=1e-4), "Model parameters diverged"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  SimpleCudaGraphLearner
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@requires_cuda
+class TestSimpleCudaGraphLearner:
+    def test_simple_cuda_graph_smoke(self):
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import SimpleCudaGraphLearner
+
+        dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True)
+        lrn = SimpleCudaGraphLearner(model, dls, loss_func=nn.MSELoss(), sub_seq_len=25)
+        lrn.fit(1)
+        assert math.isfinite(lrn.recorder.values[-1][1])
+
+    def test_simple_cuda_graph_rejects_n_skip(self):
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import SimpleCudaGraphLearner
+
+        dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True)
+        with pytest.raises(AssertionError, match="does not support n_skip"):
+            SimpleCudaGraphLearner(model, dls, loss_func=nn.MSELoss(), sub_seq_len=25, n_skip=10)
+
+    def test_simple_cuda_graph_lstm(self):
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import SimpleCudaGraphLearner
+
+        dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True, rnn_type="lstm")
+        lrn = SimpleCudaGraphLearner(model, dls, loss_func=nn.MSELoss(), sub_seq_len=25)
+        lrn.fit(1)
+        assert math.isfinite(lrn.recorder.values[-1][1])
+
+    @pytest.mark.parametrize("rnn_type", ["gru", "lstm"])
+    def test_simple_cuda_graph_matches_tbptt(self, rnn_type):
+        """SimpleCudaGraphLearner should produce the same results as TbpttLearner."""
+        import copy
+
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import SimpleCudaGraphLearner, TbpttLearner
+
+        seq_len, n_u, n_y, n_train, bs = 100, 1, 1, 8, 4
+        sub_seq_len = 25
+
+        torch.manual_seed(42)
+        x_train = torch.randn(n_train, seq_len, n_u)
+        y_train = torch.randn(n_train, seq_len, n_y)
+        x_valid = torch.randn(n_train // 2, seq_len, n_u)
+        y_valid = torch.randn(n_train // 2, seq_len, n_y)
+
+        class _FixedDls:
+            def __init__(self):
+                self.train = DataLoader(TensorDataset(x_train, y_train), batch_size=bs, shuffle=False)
+                self.valid = DataLoader(TensorDataset(x_valid, y_valid), batch_size=bs)
+                self.test = None
+
+        torch.manual_seed(0)
+        model = SimpleRNN(n_u, n_y, hidden_size=20, return_state=True, rnn_type=rnn_type)
+        model_copy = copy.deepcopy(model)
+
+        n_epoch = 3
+
+        torch.manual_seed(0)
+        lrn_tbptt = TbpttLearner(model, _FixedDls(), loss_func=nn.MSELoss(), sub_seq_len=sub_seq_len)
+        lrn_tbptt.fit(n_epoch)
+
+        torch.manual_seed(0)
+        lrn_simple = SimpleCudaGraphLearner(model_copy, _FixedDls(), loss_func=nn.MSELoss(), sub_seq_len=sub_seq_len)
+        lrn_simple.fit(n_epoch)
+
+        for (e_tbptt, e_simple) in zip(lrn_tbptt.recorder.values, lrn_simple.recorder.values):
+            assert abs(e_tbptt[1] - e_simple[1]) < 1e-4, (
+                f"Val losses diverged: tbptt={e_tbptt[1]:.6f} vs simple={e_simple[1]:.6f}"
+            )
+
         for p1, p2 in zip(model.parameters(), model_copy.parameters()):
             assert torch.allclose(p1, p2, atol=1e-4), "Model parameters diverged"
 

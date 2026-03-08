@@ -4,6 +4,7 @@ __all__ = [
     "Learner",
     "TbpttLearner",
     "CudaGraphTbpttLearner",
+    "SimpleCudaGraphLearner",
     "Recorder",
 ]
 
@@ -13,6 +14,7 @@ from collections.abc import Callable
 from contextlib import contextmanager
 
 import torch
+import torch.utils._pytree as pytree
 from torch import Tensor, nn
 from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
@@ -38,6 +40,54 @@ def _detach_state(state):
     if isinstance(state, dict):
         return {k: _detach_state(v) for k, v in state.items()}
     return state
+
+
+def flatten_state(state, batch_size: int) -> tuple[Tensor, tuple]:
+    """Flatten arbitrary nested state to a single ``[B, D]`` tensor.
+
+    Uses ``pytree`` to walk any nested structure (list, tuple, dict) and
+    collect leaf tensors.  Each leaf is reshaped to ``[B, -1]`` where
+    *B* = *batch_size*, then concatenated along the last dimension.
+
+    Args:
+        state: arbitrarily nested container of tensors (list, tuple, dict).
+        batch_size: batch dimension size, used to reshape each leaf to ``[B, -1]``.
+
+    Returns:
+        ``(flat, spec)`` where *spec* allows reconstruction via
+        :func:`unflatten_state`.
+    """
+    leaves, tree_spec = pytree.tree_flatten(state)
+    shapes = tuple(leaf.shape for leaf in leaves)
+    flat_leaves = [leaf.reshape(batch_size, -1) for leaf in leaves]
+    widths = tuple(fl.shape[-1] for fl in flat_leaves)
+    return torch.cat(flat_leaves, dim=-1), (tree_spec, shapes, widths)
+
+
+def unflatten_state(flat: Tensor, spec: tuple):
+    """Reconstruct nested state from a flat ``[B, D]`` tensor + *spec*."""
+    tree_spec, shapes, widths = spec
+    splits = flat.split(widths, dim=-1)
+    leaves = [s.reshape(shape).contiguous() for s, shape in zip(splits, shapes)]
+    return pytree.tree_unflatten(leaves, tree_spec)
+
+
+class _FlatStateBridge(nn.Module):
+    """Wraps a stateful model so state is passed as a flat ``[B, D]`` tensor.
+
+    Required for ``make_graphed_callables`` which only accepts Tensor arguments.
+    """
+
+    def __init__(self, model: nn.Module, spec: tuple):
+        super().__init__()
+        self.model = model
+        self._spec = spec
+
+    def forward(self, x: Tensor, flat_state: Tensor) -> tuple[Tensor, Tensor]:
+        state = unflatten_state(flat_state, self._spec)
+        pred, new_state = self.model(x, state=state)
+        new_flat, _ = flatten_state(new_state, batch_size=x.shape[0])
+        return pred, new_flat
 
 
 def _auto_device() -> torch.device:
@@ -524,11 +574,12 @@ class CudaGraphTbpttLearner(TbpttLearner):
         self._graph_skip: torch.cuda.CUDAGraph | None = None
         self._s_xb: Tensor | None = None
         self._s_yb: Tensor | None = None
-        self._s_state: list | None = None
-        self._s_new_state: list | None = None
-        self._s_new_state_skip: list | None = None
+        self._s_flat_state: Tensor | None = None
+        self._s_new_flat: Tensor | None = None
+        self._s_new_flat_skip: Tensor | None = None
         self._s_loss: Tensor | None = None
         self._s_loss_skip: Tensor | None = None
+        self._state_spec: tuple | None = None
 
     def fit(self, n_epoch, lr=None, make_scheduler=None):
         # Reset captured graphs so shapes are re-discovered each fit() call.
@@ -536,10 +587,10 @@ class CudaGraphTbpttLearner(TbpttLearner):
         self._graph_skip = None
         super().fit(n_epoch, lr=lr, make_scheduler=make_scheduler)
 
-    def _captured_fwd_bwd(self, n_skip: int = 0) -> tuple[list[Tensor], Tensor]:
+    def _captured_fwd_bwd(self, n_skip: int = 0) -> tuple[Tensor, Tensor]:
         """Forward + loss + backward on static buffers (no optimizer step).
 
-        Returns graph-owned (new_state, loss) tensors — only meaningful
+        Returns graph-owned ``(new_flat_state, loss)`` tensors — only meaningful
         during CUDA graph capture (the returned references become the
         static output tensors replayed on each ``graph.replay()``).
         """
@@ -547,14 +598,16 @@ class CudaGraphTbpttLearner(TbpttLearner):
         for p in self.model.parameters():
             if p.grad is not None:
                 p.grad.zero_()
-        pred, new_state = self.model(self._s_xb, state=self._s_state)
+        state = unflatten_state(self._s_flat_state, self._state_spec)
+        pred, new_state = self.model(self._s_xb, state=state)
+        new_flat, _ = flatten_state(new_state, batch_size=self._s_xb.shape[0])
         pred_l = pred[:, n_skip:] if n_skip > 0 else pred
         yb_l = self._s_yb[:, n_skip:] if n_skip > 0 else self._s_yb
         loss = self.loss_func(pred_l, yb_l)
         for aux in self.aux_losses:
             loss = loss + aux(pred, self._s_yb, self._s_xb)
         loss.backward()
-        return new_state, loss
+        return new_flat, loss
 
     def _init_graph(self, xb_chunk, yb_chunk):
         """Allocate static buffers and capture TBPTT-chunk graph(s)."""
@@ -564,13 +617,12 @@ class CudaGraphTbpttLearner(TbpttLearner):
         self._s_xb = torch.empty_like(xb_chunk)
         self._s_yb = torch.empty_like(yb_chunk)
 
-        # Allocate static state buffers — discover shape from a warmup forward.
-        # LSTM state is list[tuple[h, c]]; GRU/RNN state is list[Tensor].
+        # Discover state structure via warmup forward, allocate flat buffer.
         with torch.no_grad():
             _, warmup_state = self.model(xb_chunk, state=None)
-        self._s_state = [
-            tuple(torch.zeros_like(t) for t in s) if isinstance(s, tuple) else torch.zeros_like(s) for s in warmup_state
-        ]
+        flat, spec = flatten_state(warmup_state, batch_size=xb_chunk.shape[0])
+        self._state_spec = spec
+        self._s_flat_state = torch.zeros_like(flat)
 
         # Suppress the harmless AccumulateGrad stream-mismatch warning that
         # fires during side-stream warmup backward.
@@ -579,24 +631,6 @@ class CudaGraphTbpttLearner(TbpttLearner):
             self._warmup_and_capture(xb_chunk, yb_chunk, n_skip=0)
             if self.n_skip > 0:
                 self._warmup_and_capture(xb_chunk, yb_chunk, n_skip=self.n_skip)
-
-    @staticmethod
-    def _zero_state(state):
-        for s in state:
-            if isinstance(s, tuple):
-                for t in s:
-                    t.zero_()
-            else:
-                s.zero_()
-
-    @staticmethod
-    def _copy_state(dst, src):
-        for d, s in zip(dst, src):
-            if isinstance(d, tuple):
-                for dt, st in zip(d, s):
-                    dt.copy_(st)
-            else:
-                d.copy_(s)
 
     def _warmup_and_capture(self, xb_chunk, yb_chunk, n_skip: int):
         """Run warmup iterations then capture a graph for the given n_skip."""
@@ -607,23 +641,23 @@ class CudaGraphTbpttLearner(TbpttLearner):
             for _ in range(3):
                 self._s_xb.copy_(xb_chunk)
                 self._s_yb.copy_(yb_chunk)
-                self._zero_state(self._s_state)
+                self._s_flat_state.zero_()
                 self._captured_fwd_bwd(n_skip)
         torch.cuda.current_stream().wait_stream(s)
 
         # Capture the graph
         graph = torch.cuda.CUDAGraph()
-        self._zero_state(self._s_state)
+        self._s_flat_state.zero_()
         with torch.cuda.graph(graph):
-            new_state, loss = self._captured_fwd_bwd(n_skip)
+            new_flat, loss = self._captured_fwd_bwd(n_skip)
 
         if n_skip > 0:
             self._graph_skip = graph
-            self._s_new_state_skip = new_state
+            self._s_new_flat_skip = new_flat
             self._s_loss_skip = loss
         else:
             self._graph = graph
-            self._s_new_state = new_state
+            self._s_new_flat = new_flat
             self._s_loss = loss
 
     def _train_one_batch(self, batch, optimizer, step: int, total_steps: int) -> list[float]:
@@ -632,8 +666,7 @@ class CudaGraphTbpttLearner(TbpttLearner):
         if self._graph is None:
             self._init_graph(xb_chunks[0], yb_chunks[0])
 
-        # Zero state for first chunk
-        self._zero_state(self._s_state)
+        self._s_flat_state.zero_()
 
         self.pct_train = step / max(1, total_steps)
 
@@ -645,11 +678,11 @@ class CudaGraphTbpttLearner(TbpttLearner):
             if i == 0 and self._graph_skip is not None:
                 self._graph_skip.replay()
                 losses.append(self._s_loss_skip.item())
-                self._copy_state(self._s_state, self._s_new_state_skip)
+                self._s_flat_state.copy_(self._s_new_flat_skip)
             else:
                 self._graph.replay()
                 losses.append(self._s_loss.item())
-                self._copy_state(self._s_state, self._s_new_state)
+                self._s_flat_state.copy_(self._s_new_flat)
 
             # Optimizer step outside graph — reads current LR from scheduler
             if self.grad_clip is not None:
@@ -657,4 +690,62 @@ class CudaGraphTbpttLearner(TbpttLearner):
             optimizer.step()
             optimizer.zero_grad(set_to_none=False)
 
+        return losses
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  SimpleCudaGraphLearner
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class SimpleCudaGraphLearner(TbpttLearner):
+    """TBPTT with CUDA graph acceleration via ``make_graphed_callables``.
+
+    No ``n_skip`` support. Requires the model to return ``(output, state)``
+    from ``forward()`` with ``state`` as a nested list of tensors.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        assert self.n_skip == 0, "SimpleCudaGraphLearner does not support n_skip"
+        self._graphed = None
+
+    def fit(self, n_epoch, lr=None, make_scheduler=None):
+        self._graphed = None  # re-capture on each fit()
+        super().fit(n_epoch, lr=lr, make_scheduler=make_scheduler)
+
+    def _init_graph(self, xb_chunk):
+        assert self.device.type == "cuda", "SimpleCudaGraphLearner requires a CUDA device"
+
+        # Discover state structure via warmup forward
+        with torch.no_grad():
+            _, warmup_state = self.model(xb_chunk, state=None)
+        flat, spec = flatten_state(warmup_state, batch_size=xb_chunk.shape[0])
+        self._flat_state = torch.zeros_like(flat)
+
+        wrapper = _FlatStateBridge(self.model, spec)
+        sample_x = torch.zeros_like(xb_chunk)
+        sample_state = torch.zeros_like(self._flat_state)
+        self._graphed = torch.cuda.make_graphed_callables(wrapper, (sample_x, sample_state), num_warmup_iters=3)
+
+    def _train_one_batch(self, batch, optimizer, step, total_steps):
+        xb_chunks, yb_chunks = self._prepare_chunks(batch)
+        if self._graphed is None:
+            self._init_graph(xb_chunks[0])
+        self._flat_state.zero_()
+        self.pct_train = step / max(1, total_steps)
+
+        losses = []
+        for xc, yc in zip(xb_chunks, yb_chunks):
+            pred, new_flat_state = self._graphed(xc, self._flat_state)
+            loss = self.loss_func(pred, yc)
+            for aux in self.aux_losses:
+                loss = loss + aux(pred, yc, xc)
+            loss.backward()
+            self._flat_state.copy_(new_flat_state.detach())
+            if self.grad_clip is not None:
+                nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
+            optimizer.step()
+            optimizer.zero_grad()
+            losses.append(loss.item())
         return losses
