@@ -40,10 +40,11 @@ class _SyntheticDls:
 class TestFlattenState:
     def test_roundtrip_gru(self):
         """GRU state: list[Tensor[1,B,H]] roundtrips through flatten/unflatten."""
-        from tsfast.models.state import flatten_state, unflatten_state
+        from tsfast.models.state import build_spec_from_state, flatten_state, unflatten_state
 
         state = [torch.randn(1, 4, 20), torch.randn(1, 4, 30)]
-        flat, spec = flatten_state(state, batch_size=4)
+        spec = build_spec_from_state(state, batch_size=4)
+        flat = flatten_state(state, batch_size=4)
         assert flat.shape == (4, 50)
         recovered = unflatten_state(flat, spec)
         assert len(recovered) == 2
@@ -52,13 +53,14 @@ class TestFlattenState:
 
     def test_roundtrip_lstm(self):
         """LSTM state: list[tuple[Tensor, Tensor]] roundtrips through flatten/unflatten."""
-        from tsfast.models.state import flatten_state, unflatten_state
+        from tsfast.models.state import build_spec_from_state, flatten_state, unflatten_state
 
         state = [
             (torch.randn(1, 4, 20), torch.randn(1, 4, 20)),
             (torch.randn(1, 4, 30), torch.randn(1, 4, 30)),
         ]
-        flat, spec = flatten_state(state, batch_size=4)
+        spec = build_spec_from_state(state, batch_size=4)
+        flat = flatten_state(state, batch_size=4)
         assert flat.shape == (4, 100)
         recovered = unflatten_state(flat, spec)
         assert len(recovered) == 2
@@ -70,13 +72,14 @@ class TestFlattenState:
 
     def test_roundtrip_mixed(self):
         """Mixed state: some layers plain tensor, some tuple."""
-        from tsfast.models.state import flatten_state, unflatten_state
+        from tsfast.models.state import build_spec_from_state, flatten_state, unflatten_state
 
         state = [
             torch.randn(1, 4, 10),
             (torch.randn(1, 4, 20), torch.randn(1, 4, 20)),
         ]
-        flat, spec = flatten_state(state, batch_size=4)
+        spec = build_spec_from_state(state, batch_size=4)
+        flat = flatten_state(state, batch_size=4)
         assert flat.shape == (4, 50)
         recovered = unflatten_state(flat, spec)
         assert torch.allclose(state[0], recovered[0])
@@ -86,10 +89,11 @@ class TestFlattenState:
 
     def test_roundtrip_plain_2d(self):
         """Plain [B, H] state without leading singleton dims."""
-        from tsfast.models.state import flatten_state, unflatten_state
+        from tsfast.models.state import build_spec_from_state, flatten_state, unflatten_state
 
         state = [torch.randn(4, 20), torch.randn(4, 30)]
-        flat, spec = flatten_state(state, batch_size=4)
+        spec = build_spec_from_state(state, batch_size=4)
+        flat = flatten_state(state, batch_size=4)
         assert flat.shape == (4, 50)
         recovered = unflatten_state(flat, spec)
         assert len(recovered) == 2
@@ -97,20 +101,20 @@ class TestFlattenState:
             assert torch.allclose(orig, rec)
 
     def test_spec_is_immutable(self):
-        """Spec widths should be an immutable tuple."""
-        from tsfast.models.state import flatten_state
+        """StateSpec widths should be an immutable tuple."""
+        from tsfast.models.state import build_spec_from_state
 
         state = [torch.randn(1, 4, 20)]
-        _, spec = flatten_state(state, batch_size=4)
-        _, shapes, widths = spec
-        assert isinstance(widths, tuple)
+        spec = build_spec_from_state(state, batch_size=4)
+        assert isinstance(spec.widths, tuple)
 
     def test_roundtrip_dict(self):
         """Dict state roundtrips through flatten/unflatten."""
-        from tsfast.models.state import flatten_state, unflatten_state
+        from tsfast.models.state import build_spec_from_state, flatten_state, unflatten_state
 
         state = {"h": [torch.randn(1, 4, 20)], "y_init": torch.randn(4, 1, 3)}
-        flat, spec = flatten_state(state, batch_size=4)
+        spec = build_spec_from_state(state, batch_size=4)
+        flat = flatten_state(state, batch_size=4)
         assert flat.shape == (4, 23)
         recovered = unflatten_state(flat, spec)
         assert isinstance(recovered, dict)
@@ -119,10 +123,11 @@ class TestFlattenState:
 
     def test_roundtrip_ssm_3d(self):
         """SSM state [B, D, N] roundtrips correctly (batch dim preserved)."""
-        from tsfast.models.state import flatten_state, unflatten_state
+        from tsfast.models.state import build_spec_from_state, flatten_state, unflatten_state
 
         state = [torch.randn(4, 16, 8), torch.randn(4, 32, 4)]
-        flat, spec = flatten_state(state, batch_size=4)
+        spec = build_spec_from_state(state, batch_size=4)
+        flat = flatten_state(state, batch_size=4)
         assert flat.shape == (4, 256)  # 16*8 + 32*4
         recovered = unflatten_state(flat, spec)
         for orig, rec in zip(state, recovered):
@@ -130,13 +135,50 @@ class TestFlattenState:
 
     def test_roundtrip_4d_attention(self):
         """4D attention state [B, nH, dK, dV] roundtrips correctly."""
-        from tsfast.models.state import flatten_state, unflatten_state
+        from tsfast.models.state import build_spec_from_state, flatten_state, unflatten_state
 
         state = [torch.randn(4, 8, 64, 64)]
-        flat, spec = flatten_state(state, batch_size=4)
+        spec = build_spec_from_state(state, batch_size=4)
+        flat = flatten_state(state, batch_size=4)
         assert flat.shape == (4, 32768)
         recovered = unflatten_state(flat, spec)
         assert torch.allclose(state[0], recovered[0])
+
+    def test_discover_state_spec(self):
+        """discover_state_spec correctly identifies batch dim in RNN state."""
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.state import discover_state_spec
+
+        model = SimpleRNN(2, 1, hidden_size=20, return_state=True)
+        spec = discover_state_spec(model, n_in=2)
+        assert spec.state_size == 20  # 1 layer GRU -> hidden_size
+
+    def test_cross_batch_unflatten(self):
+        """Spec discovered at one batch size works at another."""
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.state import discover_state_spec, flatten_state, unflatten_state
+
+        model = SimpleRNN(2, 1, hidden_size=20, return_state=True)
+        spec = discover_state_spec(model, n_in=2)
+
+        # Create state with batch_size=8
+        with torch.no_grad():
+            _, state = model(torch.randn(8, 5, 2))
+        flat = flatten_state(state, batch_size=8)
+        assert flat.shape == (8, 20)
+        recovered = unflatten_state(flat, spec)
+        # Should roundtrip correctly at any batch size
+        flat2 = flatten_state(recovered, batch_size=8)
+        assert torch.allclose(flat, flat2)
+
+    def test_state_spec_state_size(self):
+        """StateSpec.state_size equals sum of widths."""
+        from tsfast.models.state import build_spec_from_state
+
+        state = [torch.randn(1, 4, 20), torch.randn(1, 4, 30)]
+        spec = build_spec_from_state(state, batch_size=4)
+        assert spec.state_size == sum(spec.widths)
+        assert spec.state_size == 50
 
 
 # ──────────────────────────────────────────────────────────────────────────────

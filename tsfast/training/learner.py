@@ -18,7 +18,7 @@ from torch import Tensor, nn
 from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
 
-from ..models.state import FlatStateBridge, detach_state, flatten_state, unflatten_state
+from ..models.state import FlatStateBridge, StateSpec, detach_state, discover_state_spec, flatten_state, unflatten_state
 from ..tsdata.pipeline import DataLoaders, get_signal_names
 from . import viz
 from .schedulers import sched_flat_cos
@@ -513,7 +513,7 @@ class CudaGraphTbpttLearner(TbpttLearner):
         self._s_new_flat_skip: Tensor | None = None
         self._s_loss: Tensor | None = None
         self._s_loss_skip: Tensor | None = None
-        self._state_spec: tuple | None = None
+        self._state_spec: StateSpec | None = None
 
     def fit(self, n_epoch, lr=None, make_scheduler=None):
         # Reset captured graphs so shapes are re-discovered each fit() call.
@@ -534,7 +534,7 @@ class CudaGraphTbpttLearner(TbpttLearner):
                 p.grad.zero_()
         state = unflatten_state(self._s_flat_state, self._state_spec)
         pred, new_state = self.model(self._s_xb, state=state)
-        new_flat, _ = flatten_state(new_state, batch_size=self._s_xb.shape[0])
+        new_flat = flatten_state(new_state, batch_size=self._s_xb.shape[0])
         pred_l = pred[:, n_skip:] if n_skip > 0 else pred
         yb_l = self._s_yb[:, n_skip:] if n_skip > 0 else self._s_yb
         loss = self.loss_func(pred_l, yb_l)
@@ -551,12 +551,11 @@ class CudaGraphTbpttLearner(TbpttLearner):
         self._s_xb = torch.empty_like(xb_chunk)
         self._s_yb = torch.empty_like(yb_chunk)
 
-        # Discover state structure via warmup forward, allocate flat buffer.
-        with torch.no_grad():
-            _, warmup_state = self.model(xb_chunk, state=None)
-        flat, spec = flatten_state(warmup_state, batch_size=xb_chunk.shape[0])
+        # Discover state structure, allocate flat buffer.
+        spec = discover_state_spec(self.model, xb_chunk.shape[-1], self.device)
         self._state_spec = spec
-        self._s_flat_state = torch.zeros_like(flat)
+        dtype = next(self.model.parameters()).dtype
+        self._s_flat_state = torch.zeros(xb_chunk.shape[0], spec.state_size, device=self.device, dtype=dtype)
 
         # Suppress the harmless AccumulateGrad stream-mismatch warning that
         # fires during side-stream warmup backward.
@@ -651,11 +650,10 @@ class SimpleCudaGraphLearner(TbpttLearner):
     def _init_graph(self, xb_chunk):
         assert self.device.type == "cuda", "SimpleCudaGraphLearner requires a CUDA device"
 
-        # Discover state structure via warmup forward
-        with torch.no_grad():
-            _, warmup_state = self.model(xb_chunk, state=None)
-        flat, spec = flatten_state(warmup_state, batch_size=xb_chunk.shape[0])
-        self._flat_state = torch.zeros_like(flat)
+        # Discover state structure, allocate flat buffer.
+        spec = discover_state_spec(self.model, xb_chunk.shape[-1], self.device)
+        dtype = next(self.model.parameters()).dtype
+        self._flat_state = torch.zeros(xb_chunk.shape[0], spec.state_size, device=self.device, dtype=dtype)
 
         wrapper = FlatStateBridge(self.model, spec)
         sample_x = torch.zeros_like(xb_chunk)

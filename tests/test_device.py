@@ -46,7 +46,7 @@ class TestHookCallbackDevices:
         lrn.model.to(device)
         model = unwrap_model(lrn.model)
         lrn.add_aux_loss(FranSysRegularizer(
-            modules=[model.rnn_diagnosis, model.rnn_prognosis],
+            modules=[model.diagnosis, model.prognosis],
             p_state_sync=1.0, sync_type="mse", model=model,
         ))
         lrn.fit(1, 3e-3)

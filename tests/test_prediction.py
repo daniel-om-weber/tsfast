@@ -7,11 +7,13 @@ import torch
 class TestFranSys:
     def test_fransys_forward_shape(self, dls_prediction):
         from tsfast.prediction.fransys import FranSys
+        from tsfast.models.rnn import RNN
         batch = dls_prediction.one_batch()
         device = batch[0].device
         # FranSys expects [u, y] concatenated input
         inp = torch.cat([batch[0], batch[1]], dim=-1)
-        model = FranSys(1, 1, init_sz=50, rnn_layer=2, hidden_size=50).to(device)
+        prognosis = RNN(1, hidden_size=50, num_layers=2, ret_full_hidden=True)
+        model = FranSys(1, 1, init_sz=50, prognosis=prognosis).to(device)
         out = model(inp)
         assert out.shape[0] == batch[0].shape[0]
         assert out.shape[-1] == 1
@@ -57,7 +59,7 @@ class TestFranSysRegularization:
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
         model = self._get_model(lrn)
         lrn.add_aux_loss(FranSysRegularizer(
-            modules=[model.rnn_diagnosis, model.rnn_prognosis],
+            modules=[model.diagnosis, model.prognosis],
             p_state_sync=1.0, sync_type=sync_type, model=model,
         ))
         lrn.fit(1, 3e-3)
@@ -70,7 +72,7 @@ class TestFranSysRegularization:
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
         model = self._get_model(lrn)
         lrn.add_aux_loss(FranSysRegularizer(
-            modules=[model.rnn_diagnosis, model.rnn_prognosis],
+            modules=[model.diagnosis, model.prognosis],
             p_state_sync=0, p_diag_loss=0.1, model=model,
         ))
         lrn.fit(1, 3e-3)
@@ -83,7 +85,7 @@ class TestFranSysRegularization:
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
         model = self._get_model(lrn)
         lrn.add_aux_loss(FranSysRegularizer(
-            modules=[model.rnn_diagnosis, model.rnn_prognosis],
+            modules=[model.diagnosis, model.prognosis],
             p_state_sync=0, p_osp_loss=0.1, p_osp_sync=0.1, model=model,
         ))
         lrn.fit(1, 3e-3)
@@ -96,7 +98,7 @@ class TestFranSysRegularization:
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
         model = self._get_model(lrn)
         lrn.add_aux_loss(FranSysRegularizer(
-            modules=[model.rnn_diagnosis, model.rnn_prognosis],
+            modules=[model.diagnosis, model.prognosis],
             p_state_sync=0, p_tar_loss=0.1, model=model,
         ))
         lrn.fit(1, 3e-3)
@@ -122,7 +124,7 @@ class TestFranSysRegularization:
         )
         model = self._get_model(lrn)
         lrn.add_aux_loss(FranSysRegularizer(
-            modules=[model.rnn_diagnosis, model.rnn_prognosis],
+            modules=[model.diagnosis, model.prognosis],
             p_state_sync=0, p_diag_loss=0.1, model=model,
         ))
         lrn.fit(1, 3e-3)
@@ -140,7 +142,7 @@ class TestFranSysRegularization:
         )
         model = self._get_model(lrn)
         lrn.add_aux_loss(FranSysRegularizer(
-            modules=[model.rnn_diagnosis, model.rnn_prognosis],
+            modules=[model.diagnosis, model.prognosis],
             p_state_sync=0, p_osp_loss=0.1, p_osp_sync=0.1, model=model,
         ))
         lrn.fit(1, 3e-3)
@@ -161,7 +163,7 @@ class TestFranSysRegularization:
 
         model = self._get_model(lrn)
         reg = FranSysRegularizer(
-            modules=[model.rnn_diagnosis, model.rnn_prognosis],
+            modules=[model.diagnosis, model.prognosis],
             p_state_sync=0, p_diag_loss=0.1, model=model,
         )
         lrn.add_aux_loss(reg)
@@ -182,7 +184,7 @@ class TestFranSysRegularization:
 
         model = self._get_model(lrn)
         reg = FranSysRegularizer(
-            modules=[model.rnn_diagnosis, model.rnn_prognosis],
+            modules=[model.diagnosis, model.prognosis],
             p_state_sync=0, p_diag_loss=0.1, model=model,
         )
         lrn.add_aux_loss(reg)
@@ -226,9 +228,11 @@ class TestDDPUnwrap:
         """unwrap_model returns the inner FranSys model through a DDP-like wrapper."""
         from tsfast.prediction.fransys import FranSys
         from tsfast.models.scaling import ScaledModel, StandardScaler, unwrap_model
+        from tsfast.models.rnn import RNN
         import numpy as np
 
-        inner = FranSys(1, 1, init_sz=10, hidden_size=10, rnn_layer=1)
+        prognosis = RNN(1, hidden_size=10, num_layers=1, ret_full_hidden=True)
+        inner = FranSys(1, 1, init_sz=10, prognosis=prognosis)
         norm = ScaledModel(inner, StandardScaler(np.zeros(2), np.ones(2)))
 
         # Simulate DDP wrapper: an nn.Module with a .module attribute
@@ -244,9 +248,11 @@ class TestDDPUnwrap:
         """_unwrap_ddp + isinstance check finds ScaledModel through DDP wrapper."""
         from tsfast.models.scaling import ScaledModel, StandardScaler, _unwrap_ddp
         from tsfast.prediction.fransys import FranSys
+        from tsfast.models.rnn import RNN
         import numpy as np
 
-        inner = FranSys(1, 1, init_sz=10, hidden_size=10, rnn_layer=1)
+        prognosis = RNN(1, hidden_size=10, num_layers=1, ret_full_hidden=True)
+        inner = FranSys(1, 1, init_sz=10, prognosis=prognosis)
         out_scaler = StandardScaler(np.zeros(1), np.ones(1))
         norm = ScaledModel(inner, StandardScaler(np.zeros(2), np.ones(2)), out_scaler)
 
@@ -264,9 +270,11 @@ class TestDDPUnwrap:
         """unwrap_model still works when there is no DDP wrapper."""
         from tsfast.prediction.fransys import FranSys
         from tsfast.models.scaling import ScaledModel, StandardScaler, unwrap_model
+        from tsfast.models.rnn import RNN
         import numpy as np
 
-        inner = FranSys(1, 1, init_sz=10, hidden_size=10, rnn_layer=1)
+        prognosis = RNN(1, hidden_size=10, num_layers=1, ret_full_hidden=True)
+        inner = FranSys(1, 1, init_sz=10, prognosis=prognosis)
         norm = ScaledModel(inner, StandardScaler(np.zeros(2), np.ones(2)))
         assert unwrap_model(norm) is inner
         assert unwrap_model(inner) is inner

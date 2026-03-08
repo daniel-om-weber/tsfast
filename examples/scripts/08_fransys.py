@@ -118,10 +118,10 @@ lrn_reg = FranSysLearner(
 )
 model_reg = unwrap_model(lrn_reg.model)
 lrn_reg.add_aux_loss(
-    ActivationRegularizer(modules=[model_reg.rnn_prognosis], alpha=6.0)
+    ActivationRegularizer(modules=[model_reg.prognosis], alpha=6.0)
 )
 lrn_reg.add_aux_loss(
-    TemporalActivationRegularizer(modules=[model_reg.rnn_prognosis], beta=6.0)
+    TemporalActivationRegularizer(modules=[model_reg.prognosis], beta=6.0)
 )
 lrn_reg.fit_flat_cos(n_epoch=10, lr=3e-3)
 lrn_reg.show_results(ds_idx=-1, max_n=2)
@@ -144,14 +144,14 @@ lrn_sync = FranSysLearner(
 )
 model_sync = unwrap_model(lrn_sync.model)
 lrn_sync.add_aux_loss(
-    ActivationRegularizer(modules=[model_sync.rnn_prognosis], alpha=6.0)
+    ActivationRegularizer(modules=[model_sync.prognosis], alpha=6.0)
 )
 lrn_sync.add_aux_loss(
-    TemporalActivationRegularizer(modules=[model_sync.rnn_prognosis], beta=6.0)
+    TemporalActivationRegularizer(modules=[model_sync.prognosis], beta=6.0)
 )
 lrn_sync.add_aux_loss(
     FranSysRegularizer(
-        modules=[model_sync.rnn_diagnosis, model_sync.rnn_prognosis],
+        modules=[model_sync.diagnosis, model_sync.prognosis],
         model=model_sync,
     )
 )

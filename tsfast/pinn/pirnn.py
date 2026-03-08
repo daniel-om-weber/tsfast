@@ -12,6 +12,7 @@ from collections.abc import Callable
 from ..training import Learner, fun_rmse, prediction_concat, truncate_sequence
 from ..models.layers import SeqLinear
 from ..models.scaling import ScaledModel, StandardScaler
+from ..models.state import discover_state_spec, unflatten_state
 from ..models.rnn import RNN
 from ..prediction.fransys import Diag_RNN
 
@@ -19,8 +20,8 @@ from ..prediction.fransys import Diag_RNN
 class PIRNN(nn.Module):
     """Physics-Informed RNN with dual encoders: Sequence and State.
 
-    Uses a diagnosis RNN (sequence encoder) to estimate initial hidden state
-    from an initialization window, then a prognosis RNN to predict forward.
+    Uses a diagnosis model (sequence encoder) to estimate initial hidden state
+    from an initialization window, then a prognosis model to predict forward.
     Alternatively, an MLP state encoder maps a single physical state to hidden
     state for faster initialization.
 
@@ -28,21 +29,19 @@ class PIRNN(nn.Module):
         n_u: Number of inputs.
         n_y: Number of outputs (total: supervised + auxiliary).
         init_sz: Initialization sequence length.
+        prognosis: stateful model returning ``(output, state)``
         n_y_supervised: Number of supervised outputs (in dataset). Defaults to n_y.
         n_x: Number of extra states.
-        hidden_size: Hidden state size.
-        rnn_layer: Number of RNN layers.
+        hidden_size: Hidden state size (for default prognosis and diagnosis).
+        rnn_layer: Number of RNN layers (for default prognosis and diagnosis).
         state_encoder_hidden: Hidden size for state encoder MLP.
         linear_layer: Linear layers in diagnosis RNN.
         final_layer: Final layer complexity.
         init_diag_only: Limit diagnosis to init_sz.
         default_encoder_mode: Default encoder mode during inference.
         p_state_encoder: Probability of using the state encoder per training batch.
-            When > 0, randomly alternates between sequence and state encoder during
-            training (like ``nn.Dropout``). Has no effect during inference.
-        init_sz_range: If set, randomize ``init_sz`` uniformly within ``(min, max)``
-            during training. Has no effect during inference.
-        **kwargs: Additional arguments passed to RNN constructors.
+        init_sz_range: If set, randomize ``init_sz`` uniformly within ``(min, max)``.
+        **kwargs: Additional arguments passed to default diagnosis RNN.
     """
 
     def __init__(
@@ -50,6 +49,7 @@ class PIRNN(nn.Module):
         n_u: int,
         n_y: int,
         init_sz: int,
+        prognosis: nn.Module | None = None,
         n_y_supervised: int | None = None,
         n_x: int = 0,
         hidden_size: int = 100,
@@ -77,28 +77,36 @@ class PIRNN(nn.Module):
         self.p_state_encoder = p_state_encoder
         self.init_sz_range = init_sz_range
 
-        rnn_kwargs = dict(hidden_size=hidden_size, num_layers=rnn_layer, ret_full_hidden=True)
-        rnn_kwargs = dict(rnn_kwargs, **kwargs)
-        self.rnn_prognosis = RNN(n_u, **rnn_kwargs)
+        if prognosis is None:
+            rnn_kwargs = dict(hidden_size=hidden_size, num_layers=rnn_layer, ret_full_hidden=True)
+            rnn_kwargs = dict(rnn_kwargs, **kwargs)
+            self.prognosis = RNN(n_u, **rnn_kwargs)
+        else:
+            self.prognosis = prognosis
+
+        self._state_spec = discover_state_spec(self.prognosis, n_u, device="cpu")
 
         # Diagnosis RNN uses supervised outputs only
-        self.rnn_diagnosis = Diag_RNN(
+        self.diagnosis = Diag_RNN(
             n_u + n_x + n_y_supervised,
-            self.rnn_prognosis.state_size,
+            self._state_spec.state_size,
             hidden_size=hidden_size,
             rnn_layer=rnn_layer,
             linear_layer=linear_layer,
             **kwargs,
         )
 
-        # Final layer outputs all channels (supervised + auxiliary)
-        self.final = SeqLinear(hidden_size, n_y, hidden_layer=final_layer)
+        # Auto-discover prognosis output feature dim
+        with torch.no_grad():
+            output, _ = self.prognosis(torch.zeros(2, 1, n_u))
+        out_features = output.shape[-1]
+        self.final = SeqLinear(out_features, n_y, hidden_layer=final_layer)
 
         # State encoder: physical state -> flat hidden state
         self.state_encoder = nn.Sequential(
             nn.Linear(n_y_supervised, state_encoder_hidden),
             nn.ReLU(),
-            nn.Linear(state_encoder_hidden, self.rnn_prognosis.state_size),
+            nn.Linear(state_encoder_hidden, self._state_spec.state_size),
         )
 
     def forward(
@@ -157,15 +165,14 @@ class PIRNN(nn.Module):
         Returns:
             Predictions [batch, seq, n_y] covering both init and prognosis windows.
         """
-        out_init = self._diag_output(self.rnn_diagnosis(x_init))
+        out_init = self._diag_output(self.diagnosis(x_init))
         if init_state is None:
-            init_state = self.rnn_prognosis.unflatten_state(out_init[:, -1])
-        out_prog, self.new_hidden = self.rnn_prognosis(u, init_state)
-        out_init_seq = self.rnn_prognosis.unflatten_sequence(out_init)
-        out_prog = torch.cat([out_init_seq, out_prog], 2)
-
-        result = self.final(out_prog[-1])
-        return result
+            init_state = unflatten_state(out_init[:, -1], self._state_spec)
+        out_prog, self.new_hidden = self.prognosis(u, init_state)
+        if out_prog.dim() > 3:
+            out_prog = out_prog[-1]
+        result = self.final(out_prog)
+        return F.pad(result, (0, 0, self._effective_init_sz, 0))
 
     def _forward_state_encoder(
         self,
@@ -185,7 +192,7 @@ class PIRNN(nn.Module):
         """
         if init_state is None:  # If init_state is not provided, use last initialization step
             init_state = x_init[:, -1, -self.n_y_supervised :]
-        init_state = self.rnn_prognosis.unflatten_state(self.encode_single_state(init_state))
+        init_state = unflatten_state(self.encode_single_state(init_state), self._state_spec)
         pred = self._forward_predictor(u, init_state)
         return F.pad(pred, (0, 0, self._effective_init_sz, 0))  # Zero-pad init window
 
@@ -194,17 +201,19 @@ class PIRNN(nn.Module):
         u: torch.Tensor,
         init_state: list,
     ) -> torch.Tensor:
-        """Forward using predictor RNN.
+        """Forward using predictor model.
 
         Args:
             u: Input tensor [batch, seq, n_u].
-            init_state: Initial hidden state [rnn_layer, batch, hidden_size].
+            init_state: Initial hidden state.
 
         Returns:
             Predictions [batch, seq, n_y].
         """
-        out_prog, _ = self.rnn_prognosis(u, init_state)
-        return self.final(out_prog[-1])
+        out_prog, _ = self.prognosis(u, init_state)
+        if out_prog.dim() > 3:
+            out_prog = out_prog[-1]
+        return self.final(out_prog)
 
     def encode_single_state(self, physical_state: torch.Tensor) -> torch.Tensor:
         """Convert single physical state to flat hidden state vector.
@@ -257,6 +266,9 @@ def PIRNNLearner(
     aux_losses: list | None = None,
     input_norm: type | None = StandardScaler,
     output_norm: type | None = None,
+    prognosis: nn.Module | None = None,
+    hidden_size: int = 100,
+    rnn_layer: int = 1,
     **kwargs,
 ) -> Learner:
     """Create PIRNN learner with appropriate configuration.
@@ -275,6 +287,9 @@ def PIRNNLearner(
         aux_losses: Additional auxiliary losses.
         input_norm: Input normalization Scaler class.
         output_norm: Output denormalization Scaler class.
+        prognosis: Custom prognosis model (default: RNN with ret_full_hidden=True).
+        hidden_size: Hidden units for default prognosis and diagnosis.
+        rnn_layer: Number of RNN layers for default prognosis and diagnosis.
         **kwargs: Additional arguments for PIRNN.
     """
     if metrics is None:
@@ -291,19 +306,44 @@ def PIRNNLearner(
     norm_u, norm_y = dls.norm_stats
 
     if attach_output:
-        model = PIRNN(inp, n_y_total, init_sz, n_y_supervised=out, **kwargs)
-
-        # Add prediction_concat transform if not present
+        n_u = inp
         if not any(isinstance(t, prediction_concat) for t in transforms):
             transforms.insert(0, prediction_concat(t_offset=0))
-
-        # Input will be [u, y] after prediction_concat
         combined_input_stats = norm_u + norm_y
     else:
-        model = PIRNN(inp - out, n_y_total, init_sz, n_y_supervised=out, **kwargs)
-
-        # Input is [u, y] from prediction-mode dls
+        n_u = inp - out
         combined_input_stats = norm_u + norm_y
+
+    if prognosis is None:
+        rnn_kwargs_inner = {
+            k: v
+            for k, v in kwargs.items()
+            if k
+            not in {
+                "n_y_supervised",
+                "n_x",
+                "state_encoder_hidden",
+                "linear_layer",
+                "final_layer",
+                "init_diag_only",
+                "default_encoder_mode",
+                "p_state_encoder",
+                "init_sz_range",
+                "diag_model",
+            }
+        }
+        prognosis = RNN(n_u, hidden_size=hidden_size, num_layers=rnn_layer, ret_full_hidden=True, **rnn_kwargs_inner)
+
+    model = PIRNN(
+        n_u,
+        n_y_total,
+        init_sz,
+        prognosis=prognosis,
+        n_y_supervised=out,
+        hidden_size=hidden_size,
+        rnn_layer=rnn_layer,
+        **kwargs,
+    )
 
     # Wrap model with input normalization and optional output denormalization
     if input_norm is not None:

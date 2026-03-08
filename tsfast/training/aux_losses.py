@@ -218,7 +218,7 @@ class FranSysRegularizer:
         inp = torch.flatten(inp[:, :, : model.n_u], start_dim=0, end_dim=1)[:, None, :]
         h_init = torch.flatten(diag[:, :, win_reg - 1 : -1], start_dim=1, end_dim=2)[:, None]
 
-        out, _ = model.rnn_prognosis(inp, h_init)
+        out, _ = model.prognosis(inp, h_init)
         h_out = out[:, :, 0]
         out = out[-1].unflatten(0, (bs, n))[:, :, 0]
 
@@ -254,7 +254,7 @@ class FranSysRegularizer:
 
         # Unflatten flat diagnosis output [batch, seq, state_dim] to stacked format
         if diag.dim() == 3:
-            diag = model.rnn_prognosis.unflatten_sequence(diag)
+            diag = model.prognosis.unflatten_sequence(diag)
         win_reg = (
             self.osp_n_skip if self.osp_n_skip is not None else getattr(model, "_effective_init_sz", model.init_sz)
         )
