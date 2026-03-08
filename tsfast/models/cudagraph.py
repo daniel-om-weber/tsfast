@@ -1,5 +1,7 @@
 """CUDA-graphed wrapper for stateful models."""
 
+import warnings
+
 import torch
 from torch import Tensor, nn
 
@@ -63,9 +65,11 @@ class GraphedStatefulModel(nn.Module):
         wrapper = _FlatStateBridge(self.model, spec)
         sample_x = torch.zeros_like(x)
         sample_state = torch.zeros_like(self._zero_flat)
-        self._graphed = torch.cuda.make_graphed_callables(
-            wrapper, (sample_x, sample_state), num_warmup_iters=self.num_warmup_iters
-        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "The AccumulateGrad node's stream")
+            self._graphed = torch.cuda.make_graphed_callables(
+                wrapper, (sample_x, sample_state), num_warmup_iters=self.num_warmup_iters
+            )
         self._graphed_shape = tuple(x.shape)
 
     def forward(self, x: Tensor, state=None) -> tuple[Tensor, ...]:
