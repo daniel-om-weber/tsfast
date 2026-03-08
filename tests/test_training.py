@@ -1002,3 +1002,157 @@ class TestSimpleCudaGraphLearner:
         for p1, p2 in zip(model.parameters(), model_copy.parameters()):
             assert torch.allclose(p1, p2, atol=1e-4), "Model parameters diverged"
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  GraphedStatefulModel
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@requires_cuda
+class TestGraphedStatefulModel:
+    def test_smoke(self):
+        """Wrap SimpleRNN, call forward, check output shapes."""
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.state import GraphedStatefulModel
+
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
+        graphed = GraphedStatefulModel(model)
+        x = torch.randn(4, 10, 1, device="cuda")
+        pred, state = graphed(x)
+        assert pred.shape == (4, 10, 1)
+        assert state is not None
+
+    def test_interface_without_state(self):
+        """forward(x) without state returns (pred, state) tuple."""
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.state import GraphedStatefulModel
+
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
+        graphed = GraphedStatefulModel(model)
+        x = torch.randn(4, 10, 1, device="cuda")
+        result = graphed(x)
+        assert isinstance(result, tuple) and len(result) == 2
+
+    def test_interface_with_state(self):
+        """forward(x, state=state) with explicit state works."""
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.state import GraphedStatefulModel
+
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
+        graphed = GraphedStatefulModel(model)
+        x = torch.randn(4, 10, 1, device="cuda")
+        pred, state = graphed(x)
+        # Feed state back in
+        pred2, state2 = graphed(x, state=state)
+        assert pred2.shape == pred.shape
+
+    def test_with_tbptt_learner(self):
+        """GraphedStatefulModel works transparently with TbpttLearner."""
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.state import GraphedStatefulModel
+        from tsfast.training import TbpttLearner
+
+        dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
+        graphed = GraphedStatefulModel(model)
+        lrn = TbpttLearner(graphed, dls, loss_func=nn.MSELoss(), sub_seq_len=25)
+        lrn.fit(1)
+        assert math.isfinite(lrn.recorder.values[-1][1])
+
+    def test_with_basic_learner(self):
+        """GraphedStatefulModel works transparently with basic Learner."""
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.state import GraphedStatefulModel
+        from tsfast.training import Learner
+
+        dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
+        graphed = GraphedStatefulModel(model)
+        lrn = Learner(graphed, dls, loss_func=nn.MSELoss())
+        lrn.fit(1)
+        assert math.isfinite(lrn.recorder.values[-1][1])
+
+    @pytest.mark.parametrize("rnn_type", ["gru", "lstm"])
+    def test_numerical_equivalence(self, rnn_type):
+        """Graphed wrapper + TbpttLearner matches plain TbpttLearner."""
+        import copy
+
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.state import GraphedStatefulModel
+        from tsfast.training import TbpttLearner
+
+        seq_len, n_u, n_y, n_train, bs = 100, 1, 1, 8, 4
+        sub_seq_len = 25
+
+        torch.manual_seed(42)
+        x_train = torch.randn(n_train, seq_len, n_u)
+        y_train = torch.randn(n_train, seq_len, n_y)
+        x_valid = torch.randn(n_train // 2, seq_len, n_u)
+        y_valid = torch.randn(n_train // 2, seq_len, n_y)
+
+        class _FixedDls:
+            def __init__(self):
+                self.train = DataLoader(TensorDataset(x_train, y_train), batch_size=bs, shuffle=False)
+                self.valid = DataLoader(TensorDataset(x_valid, y_valid), batch_size=bs)
+                self.test = None
+
+        torch.manual_seed(0)
+        model = SimpleRNN(n_u, n_y, hidden_size=20, return_state=True, rnn_type=rnn_type).cuda()
+        model_copy = copy.deepcopy(model)
+
+        n_epoch = 3
+
+        torch.manual_seed(0)
+        lrn_plain = TbpttLearner(model, _FixedDls(), loss_func=nn.MSELoss(), sub_seq_len=sub_seq_len)
+        lrn_plain.fit(n_epoch)
+
+        torch.manual_seed(0)
+        graphed = GraphedStatefulModel(model_copy)
+        lrn_graphed = TbpttLearner(graphed, _FixedDls(), loss_func=nn.MSELoss(), sub_seq_len=sub_seq_len)
+        lrn_graphed.fit(n_epoch)
+
+        for (e_plain, e_graphed) in zip(lrn_plain.recorder.values, lrn_graphed.recorder.values):
+            assert abs(e_plain[1] - e_graphed[1]) < 1e-4, (
+                f"Val losses diverged: plain={e_plain[1]:.6f} vs graphed={e_graphed[1]:.6f}"
+            )
+
+        for p1, p2 in zip(model.parameters(), model_copy.parameters()):
+            assert torch.allclose(p1, p2, atol=1e-4), "Model parameters diverged"
+
+    def test_with_n_skip(self):
+        """GraphedStatefulModel works with TbpttLearner's n_skip (unlike SimpleCudaGraphLearner)."""
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.state import GraphedStatefulModel
+        from tsfast.training import TbpttLearner
+
+        dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
+        graphed = GraphedStatefulModel(model)
+        lrn = TbpttLearner(graphed, dls, loss_func=nn.MSELoss(), sub_seq_len=25, n_skip=10)
+        lrn.fit(1)
+        assert math.isfinite(lrn.recorder.values[-1][1])
+
+    def test_reset_graph(self):
+        """reset_graph() clears state, next forward re-captures."""
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.state import GraphedStatefulModel
+
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
+        graphed = GraphedStatefulModel(model)
+        x = torch.randn(4, 10, 1, device="cuda")
+
+        # First capture
+        pred1, _ = graphed(x)
+        assert graphed._graphed is not None
+
+        # Reset
+        graphed.reset_graph()
+        assert graphed._graphed is None
+        assert graphed._spec is None
+        assert graphed._zero_flat is None
+
+        # Re-capture
+        pred2, _ = graphed(x)
+        assert graphed._graphed is not None
+        assert pred2.shape == pred1.shape
+
