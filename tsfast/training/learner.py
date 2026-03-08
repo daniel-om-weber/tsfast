@@ -71,6 +71,7 @@ class Learner:
         grad_clip: maximum gradient norm (None disables clipping)
         plot_fn: plotting function for show_batch/show_results
         device: target device (auto-detected if None)
+        show_bar: whether to show tqdm progress bars
     """
 
     def __init__(
@@ -88,6 +89,7 @@ class Learner:
         grad_clip: float | None = None,
         plot_fn: Callable | None = None,
         device: torch.device | None = None,
+        show_bar: bool = True,
     ):
         self.model = model
         self.dls = dls
@@ -103,8 +105,12 @@ class Learner:
         self.plot_fn = plot_fn or viz.plot_sequence
         self.device = device or _auto_device()
         self.recorder = Recorder()
+        self.opt = None
         self.pct_train: float = 0.0
-        self._show_bar: bool = True
+        self._show_bar: bool = show_bar
+        self._composables_ready: bool = False
+        self._total_steps: int = 0
+        self._current_step: int = 0
 
     # ── post-construction helpers ─────────────────────────────────────────
 
@@ -135,14 +141,18 @@ class Learner:
     # ── composable setup/teardown ─────────────────────────────────────────
 
     def _setup_composables(self):
+        if self._composables_ready:
+            return
         for obj in self.transforms + self.augmentations + self.aux_losses:
             if hasattr(obj, "setup"):
                 obj.setup(self)
+        self._composables_ready = True
 
     def _teardown_composables(self):
         for obj in self.transforms + self.augmentations + self.aux_losses:
             if hasattr(obj, "teardown"):
                 obj.teardown(self)
+        self._composables_ready = False
 
     # ── device helpers ────────────────────────────────────────────────────
 
@@ -163,66 +173,108 @@ class Learner:
             return self.dls.test
         return self.dls.valid
 
-    # ── training step ─────────────────────────────────────────────────────
+    # ── setup ─────────────────────────────────────────────────────────────
 
-    def _forward_backward_step(
-        self, xb: Tensor, yb: Tensor, optimizer, state=None, n_skip: int | None = None
-    ) -> tuple[float | None, object]:
-        """Core forward + loss + backward + optimizer step (no transforms/augmentations).
+    def setup(self, lr: float | None = None):
+        """Create optimizer, move model to device, setup composables.
 
-        Args:
-            n_skip: timesteps to skip in loss (defaults to ``self.n_skip``)
-
-        Returns:
-            (loss_value or None if NaN, new_state or None)
+        Enables manual training loops without calling ``fit()``.
         """
+        self._setup_composables()
+        self.model.to(self.device)
+        self.opt = self.opt_func(self.model.parameters(), lr=lr or self.lr)
+
+    # ── batch preparation ─────────────────────────────────────────────────
+
+    def prepare_batch(self, batch, training: bool = True) -> tuple[Tensor, Tensor]:
+        """Device transfer + transforms + augmentations (if training)."""
+        xb, yb = self._to_device(batch)
+        for t in self.transforms:
+            xb, yb = t(xb, yb)
+        if training:
+            for a in self.augmentations:
+                xb, yb = a(xb, yb)
+        return xb, yb
+
+    # ── loss computation ──────────────────────────────────────────────────
+
+    def compute_loss(self, pred: Tensor, yb: Tensor, xb: Tensor, n_skip: int | None = None) -> Tensor:
+        """Primary loss with n_skip + auxiliary losses."""
         if n_skip is None:
             n_skip = self.n_skip
 
-        # Forward
-        if state is not None:
-            result = self.model(xb, state=state)
-        else:
-            result = self.model(xb)
-
-        if isinstance(result, tuple):
-            pred, new_state = result
-        else:
-            pred, new_state = result, None
-
-        # Primary loss with n_skip
         pred_skip = pred[:, n_skip:] if n_skip > 0 else pred
         yb_skip = yb[:, n_skip:] if n_skip > 0 else yb
         loss = self.loss_func(pred_skip, yb_skip)
 
-        # Aux losses
         for aux in self.aux_losses:
             loss = loss + aux(pred, yb, xb)
 
-        # NaN check
-        if torch.isnan(loss):
-            optimizer.zero_grad()
-            return None, None
+        return loss
 
-        # Backward + step
+    # ── backward + optimizer step ─────────────────────────────────────────
+
+    def backward_step(self, loss: Tensor):
+        """Backward + grad_clip + optimizer step + zero_grad."""
         loss.backward()
         if self.grad_clip is not None:
             nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
-        optimizer.step()
-        optimizer.zero_grad()
+        self.opt.step()
+        self.opt.zero_grad()
 
-        return loss.item(), detach_state(new_state)
+    # ── training step ─────────────────────────────────────────────────────
 
-    def training_step(
-        self, batch: tuple[Tensor, Tensor], optimizer, state=None, n_skip: int | None = None
-    ) -> tuple[float | None, object]:
-        """Single training step: apply transforms/augmentations, forward, loss, backward, step."""
-        xb, yb = batch
-        for t in self.transforms:
-            xb, yb = t(xb, yb)
-        for a in self.augmentations:
-            xb, yb = a(xb, yb)
-        return self._forward_backward_step(xb, yb, optimizer, state, n_skip)
+    def training_step(self, xb: Tensor, yb: Tensor) -> float:
+        """Forward + compute_loss + NaN check + backward_step.
+
+        Returns:
+            loss value, or NaN if loss was NaN (step is skipped)
+        """
+        result = self.model(xb)
+        if isinstance(result, tuple):
+            pred = result[0]
+        else:
+            pred = result
+
+        loss = self.compute_loss(pred, yb, xb)
+
+        if torch.isnan(loss):
+            self.opt.zero_grad()
+            return float("nan")
+
+        self.backward_step(loss)
+        return loss.item()
+
+    # ── epoch loop ────────────────────────────────────────────────────────
+
+    def train_one_epoch(self, sched=None, pbar=None) -> float:
+        """Run one training epoch.
+
+        Args:
+            sched: optional LR scheduler (stepped per batch)
+            pbar: optional tqdm progress bar
+
+        Returns:
+            mean training loss for the epoch
+        """
+        self.model.train()
+        train_losses = []
+
+        for batch in self.dls.train:
+            xb, yb = self.prepare_batch(batch, training=True)
+            self.pct_train = self._current_step / max(1, self._total_steps)
+
+            loss_val = self.training_step(xb, yb)
+            if not (loss_val != loss_val):  # not NaN
+                train_losses.append(loss_val)
+
+            if sched is not None:
+                sched.step()
+            self._current_step += 1
+            if pbar is not None:
+                pbar.update(1)
+
+        return sum(train_losses) / max(1, len(train_losses))
 
     # ── validation ────────────────────────────────────────────────────────
 
@@ -249,54 +301,35 @@ class Learner:
 
     # ── fit methods ───────────────────────────────────────────────────────
 
-    def _train_one_batch(self, batch, optimizer, step: int, total_steps: int) -> list[float]:
-        """Process one training batch. Override for custom batch processing (e.g. TBPTT)."""
-        xb, yb = self._to_device(batch)
-        self.pct_train = step / max(1, total_steps)
-        loss_val, _ = self.training_step((xb, yb), optimizer)
-        return [loss_val] if loss_val is not None else []
-
     def fit(
         self,
         n_epoch: int,
         lr: float | None = None,
-        make_scheduler: Callable | None = None,
+        scheduler_fn: Callable | None = None,
     ):
         """Train for n_epoch epochs.
 
         Args:
             n_epoch: number of epochs
             lr: learning rate (uses self.lr if None)
-            make_scheduler: factory ``(optimizer, total_steps) -> scheduler`` (None = no scheduler)
+            scheduler_fn: factory ``(optimizer, total_steps) -> scheduler`` (None = no scheduler)
         """
-        lr = lr or self.lr
-        self.model.to(self.device)
-        optimizer = self.opt_func(self.model.parameters(), lr=lr)
+        self.setup(lr=lr)
 
         n_batches = len(self.dls.train)
-        total_steps = n_epoch * n_batches
-        scheduler = make_scheduler(optimizer, total_steps) if make_scheduler is not None else None
+        self._total_steps = n_epoch * n_batches
+        self._current_step = 0
+        sched = scheduler_fn(self.opt, self._total_steps) if scheduler_fn is not None else None
 
-        self._setup_composables()
         try:
-            step = 0
             for epoch in range(n_epoch):
-                self.model.train()
-                train_losses = []
                 with tqdm(
                     total=n_batches,
                     desc=f"Epoch {epoch + 1}/{n_epoch}",
                     disable=not self._show_bar,
                     mininterval=0.5,
                 ) as pbar:
-                    for batch in self.dls.train:
-                        train_losses.extend(self._train_one_batch(batch, optimizer, step, total_steps))
-                        if scheduler is not None:
-                            scheduler.step()
-                        step += 1
-                        pbar.update(1)
-
-                    train_loss = sum(train_losses) / max(1, len(train_losses))
+                    train_loss = self.train_one_epoch(sched=sched, pbar=pbar)
 
                     # Validate
                     val_loss, metrics_dict = self.validate()
@@ -304,7 +337,7 @@ class Learner:
                     # Record
                     row = [train_loss, val_loss] + [metrics_dict[k] for k in sorted(metrics_dict)]
                     self.recorder.append(row)
-                    self._log_epoch(epoch, train_loss, val_loss, metrics_dict, pbar)
+                    self.log_epoch(epoch, n_epoch, train_loss, val_loss, metrics_dict, pbar)
         finally:
             self._teardown_composables()
 
@@ -313,13 +346,13 @@ class Learner:
         self.fit(
             n_epoch,
             lr=lr,
-            make_scheduler=lambda opt, steps: LambdaLR(opt, lambda s: sched_flat_cos(s / steps, pct_start)),
+            scheduler_fn=lambda opt, steps: LambdaLR(opt, lambda s: sched_flat_cos(s / steps, pct_start)),
         )
 
     # ── logging ───────────────────────────────────────────────────────────
 
-    def _log_epoch(self, epoch: int, train_loss: float, val_loss: float, metrics: dict, pbar):
-        """Log epoch results. Override for Ray Tune or custom logging."""
+    def log_epoch(self, epoch: int, n_epoch: int, train_loss: float, val_loss: float, metrics: dict, pbar):
+        """Log epoch results. Override for custom logging."""
         parts = [f"train={train_loss:.4f}", f"valid={val_loss:.4f}"]
         for k, v in sorted(metrics.items()):
             parts.append(f"{k}={v:.4f}")
@@ -347,9 +380,7 @@ class Learner:
 
         with torch.no_grad():
             for batch in dl:
-                xb, yb = self._to_device(batch)
-                for t in self.transforms:
-                    xb, yb = t(xb, yb)
+                xb, yb = self.prepare_batch(batch, training=False)
 
                 result = self.model(xb)
                 pred = result[0] if isinstance(result, tuple) else result
@@ -393,9 +424,7 @@ class Learner:
         """Plot a batch of input/target pairs."""
         dl = dl or self.dls.valid
         batch = next(iter(dl))
-        xb, yb = self._to_device(batch)
-        for t in self.transforms:
-            xb, yb = t(xb, yb)
+        xb, yb = self.prepare_batch(batch, training=False)
 
         n = min(xb.shape[0], max_n)
         samples = [(xb[i].cpu(), yb[i].cpu()) for i in range(n)]
@@ -408,9 +437,7 @@ class Learner:
         self.model.eval()
 
         batch = next(iter(dl))
-        xb, yb = self._to_device(batch)
-        for t in self.transforms:
-            xb, yb = t(xb, yb)
+        xb, yb = self.prepare_batch(batch, training=False)
 
         with torch.no_grad():
             result = self.model(xb)
@@ -450,28 +477,40 @@ class TbpttLearner(Learner):
         super().__init__(*args, **kwargs)
         self.sub_seq_len = sub_seq_len
 
-    def _prepare_chunks(self, batch) -> tuple[tuple[Tensor, ...], tuple[Tensor, ...]]:
-        """Move batch to device, apply transforms + augmentations, split into sub-sequences."""
-        xb, yb = self._to_device(batch)
-        for t in self.transforms:
-            xb, yb = t(xb, yb)
-        for a in self.augmentations:
-            xb, yb = a(xb, yb)
-        return xb.split(self.sub_seq_len, dim=1), yb.split(self.sub_seq_len, dim=1)
-
-    def _train_one_batch(self, batch, optimizer, step: int, total_steps: int) -> list[float]:
-        xb_chunks, yb_chunks = self._prepare_chunks(batch)
+    def training_step(self, xb: Tensor, yb: Tensor) -> float:
+        """TBPTT training step: chunk input, forward/backward per chunk with carried state."""
+        xb_chunks = xb.split(self.sub_seq_len, dim=1)
+        yb_chunks = yb.split(self.sub_seq_len, dim=1)
 
         state = None
-        self.pct_train = step / max(1, total_steps)
         losses = []
         for i, (xb_sub, yb_sub) in enumerate(zip(xb_chunks, yb_chunks)):
             # n_skip only applies to the first sub-sequence (RNN warmup);
             # subsequent chunks already have a warmed-up hidden state.
             skip = self.n_skip if i == 0 else 0
-            # Use _forward_backward_step directly — transforms/augmentations
-            # are already applied once in _prepare_chunks().
-            loss_val, state = self._forward_backward_step(xb_sub, yb_sub, optimizer, state, n_skip=skip)
-            if loss_val is not None:
-                losses.append(loss_val)
-        return losses
+
+            # Forward
+            if state is not None:
+                result = self.model(xb_sub, state=state)
+            else:
+                result = self.model(xb_sub)
+
+            if isinstance(result, tuple):
+                pred, new_state = result
+            else:
+                pred, new_state = result, None
+
+            loss = self.compute_loss(pred, yb_sub, xb_sub, n_skip=skip)
+
+            if torch.isnan(loss):
+                self.opt.zero_grad()
+                state = None
+                continue
+
+            self.backward_step(loss)
+            losses.append(loss.item())
+            state = detach_state(new_state)
+
+        if not losses:
+            return float("nan")
+        return sum(losses) / len(losses)
