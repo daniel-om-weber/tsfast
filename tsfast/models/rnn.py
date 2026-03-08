@@ -19,15 +19,6 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from ..training import (
-    ActivationRegularizer,
-    CudaGraphTbpttLearner,
-    Learner,
-    TbpttLearner,
-    TemporalActivationRegularizer,
-    fun_rmse,
-    prediction_concat,
-)
 from ..tsdata import get_io_size
 from .layers import AR_Model, SeqLinear
 from .scaling import ScaledModel, StandardScaler
@@ -329,6 +320,8 @@ def RNNLearner(
         cuda_graph: if True and sub_seq_len is set, use CudaGraphTbpttLearner for faster training.
         **kwargs: additional keyword arguments forwarded to ``SimpleRNN``.
     """
+    from ..training import CudaGraphTbpttLearner, Learner, TbpttLearner, fun_rmse
+
     if metrics is None:
         metrics = [fun_rmse]
 
@@ -381,6 +374,8 @@ def AR_RNNLearner(
         input_norm: scaler class for input normalization, or None to disable.
         **kwargs: additional keyword arguments forwarded to ``SimpleRNN``.
     """
+    from ..training import ActivationRegularizer, Learner, TemporalActivationRegularizer, fun_rmse, prediction_concat
+
     if metrics is None:
         metrics = [fun_rmse]
 
