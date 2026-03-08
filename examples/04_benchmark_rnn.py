@@ -18,7 +18,8 @@ from torch.utils.data import DataLoader, TensorDataset
 from tsfast.models.layers import SeqLinear
 from tsfast.models.rnn import SimpleRNN
 from tsfast.training import TbpttLearner
-from tsfast.models.state import GraphedStatefulModel, detach_state
+from tsfast.models.cudagraph import GraphedStatefulModel
+from tsfast.models.state import detach_state
 
 # ── Configuration ────────────────────────────────────────────────────────────
 
