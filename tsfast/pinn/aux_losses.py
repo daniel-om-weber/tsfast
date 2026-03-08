@@ -12,6 +12,7 @@ from collections.abc import Callable
 import torch
 import torch.nn.functional as F
 
+from ..models.state import unflatten_state
 from .differentiation import diff2_forward
 from .signals import generate_random_states
 
@@ -184,10 +185,10 @@ class CollocationLoss:
                 raise ValueError("Model must have encode_single_state method for init_mode='state_encoder'")
 
         elif self.init_mode == "random_hidden":
-            if hasattr(self.inner_model, "rnn_prognosis"):
-                state_size = self.inner_model.rnn_prognosis.state_size
+            if hasattr(self.inner_model, "_state_spec"):
+                state_size = self.inner_model._state_spec.state_size
                 init_flat = torch.randn(batch_size, state_size, device=device) * self.hidden_std
-                init_hidden = self.inner_model.rnn_prognosis.unflatten_state(init_flat)
+                init_hidden = unflatten_state(init_flat, self.inner_model._state_spec)
                 with torch.enable_grad():
                     y_pred = self.model(u_coloc, init_state=init_hidden, encoder_mode="none")
                 y_ref = None
@@ -241,12 +242,12 @@ class ConsistencyLoss:
         self._diag_output = output[0] if isinstance(output, tuple) else output
 
     def setup(self, trainer):
-        """Register forward hook on rnn_diagnosis if model supports it."""
+        """Register forward hook on diagnosis if model supports it."""
         from ..models.scaling import unwrap_model
 
         self.inner_model = unwrap_model(trainer.model)
-        if hasattr(self.inner_model, "rnn_diagnosis") and hasattr(self.inner_model, "encode_single_state"):
-            self._hook = self.inner_model.rnn_diagnosis.register_forward_hook(self._capture_diag)
+        if hasattr(self.inner_model, "diagnosis") and hasattr(self.inner_model, "encode_single_state"):
+            self._hook = self.inner_model.diagnosis.register_forward_hook(self._capture_diag)
             self._has_modules = True
 
     def teardown(self, trainer):
