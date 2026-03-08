@@ -7,11 +7,8 @@ __all__ = [
     "CConv1D",
     "TCN_Block",
     "TCN",
-    "TCNLearner",
     "SeperateTCN",
     "CRNN",
-    "CRNNLearner",
-    "AR_TCNLearner",
     "SeperateCRNN",
 ]
 
@@ -21,9 +18,7 @@ from torch import Tensor, nn
 from torch.nn import Mish
 from torch.nn.utils.parametrizations import weight_norm
 
-from ..tsdata import get_io_size
-from .layers import AR_Model, SeqLinear
-from .scaling import ScaledModel, Scaler, StandardScaler
+from .layers import SeqLinear
 from .rnn import SimpleRNN
 
 
@@ -247,45 +242,6 @@ class TCN(nn.Module):
         return out
 
 
-def TCNLearner(
-    dls,
-    num_layers: int = 3,
-    hidden_size: int = 100,
-    loss_func: nn.Module = nn.L1Loss(),
-    metrics: list | None = None,
-    n_skip: int | None = None,
-    opt_func: type = torch.optim.Adam,
-    input_norm: type[Scaler] | None = StandardScaler,
-    output_norm: type[Scaler] | None = None,
-    **kwargs,
-):
-    """Create a Learner with a TCN model.
-
-    Args:
-        dls: DataLoaders providing training and validation data.
-        num_layers: Number of TCN hidden layers (sets receptive field to 2**num_layers).
-        hidden_size: Number of channels in hidden TCN layers.
-        loss_func: Loss function instance.
-        metrics: List of metric functions.
-        n_skip: Number of initial time steps to skip in the loss (defaults to 2**num_layers).
-        opt_func: Optimizer constructor.
-        input_norm: Input normalization scaler class, or None to disable.
-        output_norm: Output denormalization scaler class, or None to disable.
-        **kwargs: Additional arguments passed to ``TCN``.
-    """
-    from ..training import Learner, fun_rmse
-
-    if metrics is None:
-        metrics = [fun_rmse]
-
-    inp, out = get_io_size(dls)
-    n_skip = 2**num_layers if n_skip is None else n_skip
-    model = TCN(inp, out, num_layers, hidden_size, **kwargs)
-    model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
-
-    return Learner(model, dls, loss_func=loss_func, opt_func=opt_func, metrics=metrics, n_skip=n_skip, lr=3e-3)
-
-
 class SeperateTCN(nn.Module):
     """TCN with separate convolutional branches per input group, merged by a linear head.
 
@@ -379,92 +335,6 @@ class CRNN(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return self.rnn(self.cnn(x))
-
-
-def CRNNLearner(
-    dls,
-    loss_func: nn.Module = nn.L1Loss(),
-    metrics: list | None = None,
-    n_skip: int = 0,
-    opt_func: type = torch.optim.Adam,
-    input_norm: type[Scaler] | None = StandardScaler,
-    output_norm: type[Scaler] | None = None,
-    **kwargs,
-):
-    """Create a Learner with a CRNN model.
-
-    Args:
-        dls: DataLoaders providing training and validation data.
-        loss_func: Loss function instance.
-        metrics: List of metric functions.
-        n_skip: Number of initial time steps to skip in the loss.
-        opt_func: Optimizer constructor.
-        input_norm: Input normalization scaler class, or None to disable.
-        output_norm: Output denormalization scaler class, or None to disable.
-        **kwargs: Additional arguments passed to ``CRNN``.
-    """
-    from ..training import Learner, fun_rmse
-
-    if metrics is None:
-        metrics = [fun_rmse]
-
-    inp, out = get_io_size(dls)
-    model = CRNN(inp, out, **kwargs)
-    model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
-
-    return Learner(model, dls, loss_func=loss_func, opt_func=opt_func, metrics=metrics, n_skip=n_skip, lr=3e-3)
-
-
-def AR_TCNLearner(
-    dls,
-    hl_depth: int = 3,
-    alpha: float = 1,
-    beta: float = 1,
-    metrics: list | None = None,
-    n_skip: int | None = None,
-    opt_func: type = torch.optim.Adam,
-    input_norm: type[Scaler] | None = StandardScaler,
-    **kwargs,
-):
-    """Create a Learner with an autoregressive TCN model.
-
-    Args:
-        dls: DataLoaders providing training and validation data.
-        hl_depth: Number of TCN hidden layers.
-        alpha: Regularization weight for smoothness penalty.
-        beta: Regularization weight for sparsity penalty.
-        metrics: Metric functions (defaults to RMSE).
-        n_skip: Number of initial time steps to skip in the loss (defaults to 2**hl_depth).
-        opt_func: Optimizer constructor.
-        input_norm: Input normalization scaler class, or None to disable.
-        **kwargs: Additional arguments passed to ``TCN``.
-    """
-    from ..training import ActivationRegularizer, Learner, TemporalActivationRegularizer, fun_rmse, prediction_concat
-
-    if metrics is None:
-        metrics = [fun_rmse]
-    n_skip = 2**hl_depth if n_skip is None else n_skip
-
-    inp, out = get_io_size(dls)
-    ar_model = AR_Model(TCN(inp + out, out, hl_depth, **kwargs), ar=False)
-    conv_module = ar_model.model.conv_layers[-1]
-
-    model = ScaledModel.from_dls(ar_model, dls, input_norm, autoregressive=True)
-
-    return Learner(
-        model,
-        dls,
-        loss_func=nn.L1Loss(),
-        opt_func=opt_func,
-        metrics=metrics,
-        n_skip=n_skip,
-        lr=3e-3,
-        transforms=[prediction_concat(t_offset=0)],
-        aux_losses=[
-            ActivationRegularizer(modules=[conv_module], alpha=alpha),
-            TemporalActivationRegularizer(modules=[conv_module], beta=beta),
-        ],
-    )
 
 
 class SeperateCRNN(nn.Module):

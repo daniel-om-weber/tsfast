@@ -39,8 +39,8 @@
 from torch import nn
 
 from tsfast.tsdata.benchmark import create_dls_silverbox
-from tsfast.models.rnn import RNNLearner
 from tsfast.training import (
+    RNNLearner,
     fun_rmse, nrmse, nrmse_std, mean_vaf,
     weighted_mae, norm_loss, cut_loss,
 )

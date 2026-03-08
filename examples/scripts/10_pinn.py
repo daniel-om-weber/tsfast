@@ -45,12 +45,11 @@
 from pathlib import Path
 
 from tsfast.tsdata import create_dls
-from tsfast.models.rnn import RNNLearner
 from tsfast.pinn import CollocationLoss, PhysicsLoss
 from tsfast.pinn.differentiation import diff1_forward
 from tsfast.pinn.signals import generate_excitation_signals
 from tsfast.pinn.pirnn import PIRNNLearner
-from tsfast.training import fun_rmse, zero_loss
+from tsfast.training import RNNLearner, fun_rmse, zero_loss
 
 # %% [markdown]
 # ## The Spring-Damper System

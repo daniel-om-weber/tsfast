@@ -37,6 +37,7 @@ from .transforms import (
 )
 from .profiling import DataProfiler, benchmark_dataloaders
 from .viz import grad_norm, layout_samples, plot_grad_flow, plot_sequence
+from .learners import AR_RNNLearner, AR_TCNLearner, CRNNLearner, RNNLearner, TCNLearner
 
 __all__ = [
     # core
@@ -86,4 +87,10 @@ __all__ = [
     "plot_grad_flow",
     "grad_norm",
     "layout_samples",
+    # learner factories
+    "RNNLearner",
+    "AR_RNNLearner",
+    "TCNLearner",
+    "CRNNLearner",
+    "AR_TCNLearner",
 ]

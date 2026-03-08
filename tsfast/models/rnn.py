@@ -3,8 +3,6 @@
 __all__ = [
     "RNN",
     "SimpleRNN",
-    "RNNLearner",
-    "AR_RNNLearner",
     "ResidualBlock_RNN",
     "SimpleResidualRNN",
     "DenseLayer_RNN",
@@ -19,9 +17,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from ..tsdata import get_io_size
-from .layers import AR_Model, SeqLinear
-from .scaling import ScaledModel, StandardScaler
+from .layers import SeqLinear
 
 
 def _dropout_mask(x: Tensor, sz: list, p: float) -> Tensor:
@@ -280,125 +276,6 @@ class SimpleRNN(nn.Module):
         out, h = self.rnn(x, state)
         out = self.final(out)
         return out if not self.return_state else (out, h)
-
-
-def RNNLearner(
-    dls,
-    loss_func=nn.L1Loss(),
-    metrics: list | None = None,
-    n_skip: int = 0,
-    num_layers: int = 1,
-    hidden_size: int = 100,
-    sub_seq_len: int | None = None,
-    opt_func=torch.optim.Adam,
-    input_norm: type | None = StandardScaler,
-    output_norm: type | None = None,
-    augmentations: list | None = None,
-    transforms: list | None = None,
-    aux_losses: list | None = None,
-    grad_clip: float | None = None,
-    cuda_graph: bool = False,
-    **kwargs,
-):
-    """Create a Learner with a SimpleRNN model and standard training setup.
-
-    Args:
-        dls: DataLoaders providing training and validation data.
-        loss_func: loss function for training.
-        metrics: list of metric functions evaluated during validation.
-        n_skip: number of initial timesteps to skip in loss and metric computation.
-        num_layers: number of stacked RNN layers.
-        hidden_size: number of hidden units per RNN layer.
-        sub_seq_len: sub-sequence length for TBPTT; enables stateful training when set.
-        opt_func: optimizer constructor.
-        input_norm: scaler class for input normalization, or None to disable.
-        output_norm: scaler class for output denormalization, or None to disable.
-        augmentations: list of augmentation transforms (train only).
-        transforms: list of transforms (train + valid).
-        aux_losses: list of auxiliary loss functions.
-        grad_clip: max gradient norm for clipping, or None to disable.
-        cuda_graph: if True and sub_seq_len is set, use CudaGraphTbpttLearner for faster training.
-        **kwargs: additional keyword arguments forwarded to ``SimpleRNN``.
-    """
-    from ..training import CudaGraphTbpttLearner, Learner, TbpttLearner, fun_rmse
-
-    if metrics is None:
-        metrics = [fun_rmse]
-
-    inp, out = get_io_size(dls)
-    if sub_seq_len:
-        kwargs.setdefault("return_state", True)
-    model = SimpleRNN(inp, out, num_layers, hidden_size, **kwargs)
-    model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
-
-    if sub_seq_len:
-        cls = CudaGraphTbpttLearner if cuda_graph else TbpttLearner
-    else:
-        cls = Learner
-    extra = {"sub_seq_len": sub_seq_len} if sub_seq_len else {}
-    return cls(
-        model,
-        dls,
-        loss_func=loss_func,
-        metrics=metrics,
-        n_skip=n_skip,
-        opt_func=opt_func,
-        lr=3e-3,
-        augmentations=augmentations,
-        transforms=transforms,
-        aux_losses=aux_losses,
-        grad_clip=grad_clip,
-        **extra,
-    )
-
-
-def AR_RNNLearner(
-    dls,
-    alpha: float = 0,
-    beta: float = 0,
-    metrics: list | None = None,
-    n_skip: int = 0,
-    opt_func=torch.optim.Adam,
-    input_norm: type | None = StandardScaler,
-    **kwargs,
-):
-    """Create a Learner with an autoregressive RNN model.
-
-    Args:
-        dls: DataLoaders providing training and validation data.
-        alpha: activation regularization penalty weight.
-        beta: temporal activation regularization penalty weight.
-        metrics: metric functions for validation, or None for default RMSE.
-        n_skip: number of initial timesteps to skip in metric computation.
-        opt_func: optimizer constructor.
-        input_norm: scaler class for input normalization, or None to disable.
-        **kwargs: additional keyword arguments forwarded to ``SimpleRNN``.
-    """
-    from ..training import ActivationRegularizer, Learner, TemporalActivationRegularizer, fun_rmse, prediction_concat
-
-    if metrics is None:
-        metrics = [fun_rmse]
-
-    inp, out = get_io_size(dls)
-    ar_model = AR_Model(SimpleRNN(inp + out, out, **kwargs), ar=False)
-    rnn_module = ar_model.model.rnn
-
-    model = ScaledModel.from_dls(ar_model, dls, input_norm, autoregressive=True)
-
-    return Learner(
-        model,
-        dls,
-        loss_func=nn.L1Loss(),
-        metrics=metrics,
-        n_skip=n_skip,
-        opt_func=opt_func,
-        lr=3e-3,
-        transforms=[prediction_concat(t_offset=0)],
-        aux_losses=[
-            ActivationRegularizer(modules=[rnn_module], alpha=alpha),
-            TemporalActivationRegularizer(modules=[rnn_module], beta=beta),
-        ],
-    )
 
 
 class ResidualBlock_RNN(nn.Module):

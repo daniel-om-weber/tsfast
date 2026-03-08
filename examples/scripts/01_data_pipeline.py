@@ -36,7 +36,7 @@ import identibench as idb
 
 from tsfast.tsdata import create_dls
 from tsfast.tsdata.benchmark import create_dls_silverbox
-from tsfast.models.rnn import RNNLearner
+from tsfast.training import RNNLearner
 
 # %% [markdown]
 # ## The Convenience Wrapper

@@ -5,7 +5,7 @@ import numpy as np
 
 class TestInferenceWrapper:
     def test_simulation_2d_input(self, dls_simulation):
-        from tsfast.models.rnn import RNNLearner
+        from tsfast.training import RNNLearner
         from tsfast.inference.wrapper import InferenceWrapper
         lrn = RNNLearner(dls_simulation)
         model = InferenceWrapper(lrn)
@@ -13,7 +13,7 @@ class TestInferenceWrapper:
         assert result.shape == (100, 1)
 
     def test_simulation_1d_input(self, dls_simulation):
-        from tsfast.models.rnn import RNNLearner
+        from tsfast.training import RNNLearner
         from tsfast.inference.wrapper import InferenceWrapper
         lrn = RNNLearner(dls_simulation)
         model = InferenceWrapper(lrn)
@@ -21,7 +21,7 @@ class TestInferenceWrapper:
         assert result.shape == (100,)
 
     def test_simulation_3d_input(self, dls_simulation):
-        from tsfast.models.rnn import RNNLearner
+        from tsfast.training import RNNLearner
         from tsfast.inference.wrapper import InferenceWrapper
         lrn = RNNLearner(dls_simulation)
         model = InferenceWrapper(lrn)
@@ -29,7 +29,7 @@ class TestInferenceWrapper:
         assert result.shape == (1, 100, 1)
 
     def test_simulation_3d_batched_input(self, dls_simulation):
-        from tsfast.models.rnn import RNNLearner
+        from tsfast.training import RNNLearner
         from tsfast.inference.wrapper import InferenceWrapper
         lrn = RNNLearner(dls_simulation)
         model = InferenceWrapper(lrn)

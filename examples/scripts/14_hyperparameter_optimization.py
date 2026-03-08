@@ -41,9 +41,8 @@
 
 # %%
 from tsfast.tsdata.benchmark import create_dls_silverbox
-from tsfast.models.rnn import RNNLearner
 from tsfast.tune import HPOptimizer, log_uniform
-from tsfast.training import fun_rmse
+from tsfast.training import RNNLearner, fun_rmse
 from ray import tune
 
 # %% [markdown]

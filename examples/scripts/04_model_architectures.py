@@ -36,9 +36,7 @@
 
 # %%
 from tsfast.tsdata.benchmark import create_dls_silverbox
-from tsfast.models.rnn import RNNLearner
-from tsfast.models.cnn import TCNLearner, CRNNLearner
-from tsfast.training import fun_rmse
+from tsfast.training import RNNLearner, TCNLearner, CRNNLearner, fun_rmse
 
 # %% [markdown]
 # ## Load the Dataset

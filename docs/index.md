@@ -54,7 +54,7 @@ TSFast provides a convenience barrel import for interactive use:
 from tsfast.basics import *
 ```
 
-This imports all public symbols from `tsdata`, `training`, `models`, `prediction`, and `inference`. For production code, prefer explicit imports from specific modules (e.g., `from tsfast.models.rnn import RNNLearner`).
+This imports all public symbols from `tsdata`, `training`, `models`, `prediction`, and `inference`. For production code, prefer explicit imports from specific modules (e.g., `from tsfast.training import RNNLearner`).
 
 ## Citation
 

@@ -113,7 +113,7 @@ class TestExcitationSignalTypes:
 class TestPhysicsCallbacks:
     @pytest.mark.slow
     def test_physics_loss_callback(self, dls_simulation):
-        from tsfast.models.rnn import RNNLearner
+        from tsfast.training import RNNLearner
         from tsfast.pinn.differentiation import diff1_forward
         from tsfast.pinn import PhysicsLoss
 

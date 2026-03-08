@@ -39,10 +39,9 @@
 # %%
 import numpy as np
 from tsfast.tsdata.benchmark import create_dls_silverbox
-from tsfast.models.rnn import RNNLearner
 from tsfast.inference import InferenceWrapper
 from tsfast.inference.onnx import export_onnx, OnnxInferenceWrapper
-from tsfast.training import fun_rmse
+from tsfast.training import RNNLearner, fun_rmse
 
 # %% [markdown]
 # ## Train a Model
