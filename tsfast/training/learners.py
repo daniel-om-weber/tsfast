@@ -12,9 +12,10 @@ import torch
 from torch import nn
 
 from .aux_losses import ActivationRegularizer, TemporalActivationRegularizer
-from .learner import CudaGraphTbpttLearner, Learner, TbpttLearner
+from .learner import Learner, TbpttLearner
 from .losses import fun_rmse
 from .transforms import prediction_concat
+from ..models.state import GraphedStatefulModel
 from ..models.cnn import CRNN, TCN
 from ..models.layers import AR_Model
 from ..models.rnn import SimpleRNN
@@ -57,7 +58,7 @@ def RNNLearner(
         transforms: list of transforms (train + valid).
         aux_losses: list of auxiliary loss functions.
         grad_clip: max gradient norm for clipping, or None to disable.
-        cuda_graph: if True and sub_seq_len is set, use CudaGraphTbpttLearner for faster training.
+        cuda_graph: if True and sub_seq_len is set, wrap the model in GraphedStatefulModel for faster training.
         **kwargs: additional keyword arguments forwarded to ``SimpleRNN``.
     """
     if metrics is None:
@@ -69,10 +70,9 @@ def RNNLearner(
     model = SimpleRNN(inp, out, num_layers, hidden_size, **kwargs)
     model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
 
-    if sub_seq_len:
-        cls = CudaGraphTbpttLearner if cuda_graph else TbpttLearner
-    else:
-        cls = Learner
+    if sub_seq_len and cuda_graph:
+        model = GraphedStatefulModel(model)
+    cls = TbpttLearner if sub_seq_len else Learner
     extra = {"sub_seq_len": sub_seq_len} if sub_seq_len else {}
     return cls(
         model,
