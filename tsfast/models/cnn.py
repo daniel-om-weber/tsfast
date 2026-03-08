@@ -21,7 +21,6 @@ from torch import Tensor, nn
 from torch.nn import Mish
 from torch.nn.utils.parametrizations import weight_norm
 
-from ..training import ActivationRegularizer, Learner, TemporalActivationRegularizer, fun_rmse, prediction_concat
 from ..tsdata import get_io_size
 from .layers import AR_Model, SeqLinear
 from .scaling import ScaledModel, Scaler, StandardScaler
@@ -259,7 +258,7 @@ def TCNLearner(
     input_norm: type[Scaler] | None = StandardScaler,
     output_norm: type[Scaler] | None = None,
     **kwargs,
-) -> Learner:
+):
     """Create a Learner with a TCN model.
 
     Args:
@@ -274,6 +273,8 @@ def TCNLearner(
         output_norm: Output denormalization scaler class, or None to disable.
         **kwargs: Additional arguments passed to ``TCN``.
     """
+    from ..training import Learner, fun_rmse
+
     if metrics is None:
         metrics = [fun_rmse]
 
@@ -389,7 +390,7 @@ def CRNNLearner(
     input_norm: type[Scaler] | None = StandardScaler,
     output_norm: type[Scaler] | None = None,
     **kwargs,
-) -> Learner:
+):
     """Create a Learner with a CRNN model.
 
     Args:
@@ -402,6 +403,8 @@ def CRNNLearner(
         output_norm: Output denormalization scaler class, or None to disable.
         **kwargs: Additional arguments passed to ``CRNN``.
     """
+    from ..training import Learner, fun_rmse
+
     if metrics is None:
         metrics = [fun_rmse]
 
@@ -422,7 +425,7 @@ def AR_TCNLearner(
     opt_func: type = torch.optim.Adam,
     input_norm: type[Scaler] | None = StandardScaler,
     **kwargs,
-) -> Learner:
+):
     """Create a Learner with an autoregressive TCN model.
 
     Args:
@@ -436,6 +439,8 @@ def AR_TCNLearner(
         input_norm: Input normalization scaler class, or None to disable.
         **kwargs: Additional arguments passed to ``TCN``.
     """
+    from ..training import ActivationRegularizer, Learner, TemporalActivationRegularizer, fun_rmse, prediction_concat
+
     if metrics is None:
         metrics = [fun_rmse]
     n_skip = 2**hl_depth if n_skip is None else n_skip
