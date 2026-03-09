@@ -191,7 +191,7 @@ learn = RNNLearner(
     loss_func=zero_loss, metrics=[fun_rmse],
 )
 
-learn.add_aux_loss(CollocationLoss(
+learn.aux_losses.append(CollocationLoss(
     generate_pinn_input=lambda bs, sl, dev: generate_excitation_signals(
         bs, sl, n_inputs=1, dt=DT, device=dev,
         amplitude_range=(0.5, 2.0), frequency_range=(0.1, 3.0),
@@ -210,7 +210,7 @@ learn.fit_flat_cos(10, 3e-3)
 # actual measured trajectories during training.
 
 # %%
-learn.show_results(max_n=3, ds_idx=1)
+learn.show_results(max_n=3)
 
 # %% [markdown]
 # ## Approach 2: PIRNN with Data + Physics
@@ -256,7 +256,7 @@ learn = PIRNNLearner(
 )
 
 # Physics on training data
-learn.add_aux_loss(PhysicsLoss(
+learn.aux_losses.append(PhysicsLoss(
     physics_loss_func=spring_damper_physics,
     weight=1.0,
     loss_weights={'physics': 1.0, 'derivative': 1.0, 'initial': 10.0},
@@ -264,7 +264,7 @@ learn.add_aux_loss(PhysicsLoss(
 ))
 
 # Physics on collocation points with StateEncoder initialization
-learn.add_aux_loss(CollocationLoss(
+learn.aux_losses.append(CollocationLoss(
     generate_pinn_input=lambda bs, sl, dev: generate_excitation_signals(
         bs, sl, n_inputs=1, dt=DT, device=dev,
         amplitude_range=(0.5, 2.0), frequency_range=(0.1, 3.0),
@@ -284,7 +284,7 @@ learn.fit_flat_cos(10, 3e-3)
 # The StateEncoder allows it to handle variable initial conditions.
 
 # %%
-learn.show_results(max_n=3, ds_idx=1)
+learn.show_results(max_n=3)
 
 # %% [markdown]
 # ## Key Takeaways

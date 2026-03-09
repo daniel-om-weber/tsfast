@@ -36,7 +36,7 @@ class prediction_concat:
 
     def __call__(self, xb: Tensor, yb: Tensor) -> tuple[Tensor, Tensor]:
         x = xb
-        y = yb.as_subclass(type(x))
+        y = yb
 
         if self.t_offset != 0:
             x = x[:, self.t_offset :, :]

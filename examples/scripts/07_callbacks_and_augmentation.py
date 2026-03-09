@@ -109,10 +109,10 @@ print(f"With noise augmentation: {lrn_noisy.validate()}")
 
 # %%
 lrn_reg = RNNLearner(dls, rnn_type='lstm', metrics=[fun_rmse])
-lrn_reg.add_aux_loss(
+lrn_reg.aux_losses.append(
     ActivationRegularizer(modules=[unwrap_model(lrn_reg.model).rnn], alpha=2.0)
 )
-lrn_reg.add_aux_loss(
+lrn_reg.aux_losses.append(
     TemporalActivationRegularizer(modules=[unwrap_model(lrn_reg.model).rnn], beta=1.0)
 )
 lrn_reg.fit_flat_cos(n_epoch=5, lr=3e-3)
@@ -169,10 +169,10 @@ lrn_combined = RNNLearner(
     dls, rnn_type='lstm', metrics=[fun_rmse],
     grad_clip=10,
 )
-lrn_combined.add_aux_loss(
+lrn_combined.aux_losses.append(
     ActivationRegularizer(modules=[unwrap_model(lrn_combined.model).rnn], alpha=2.0)
 )
-lrn_combined.add_aux_loss(
+lrn_combined.aux_losses.append(
     TemporalActivationRegularizer(modules=[unwrap_model(lrn_combined.model).rnn], beta=1.0)
 )
 lrn_combined.fit_flat_cos(n_epoch=10, lr=3e-3)
@@ -185,7 +185,7 @@ lrn_combined.show_results(max_n=2)
 #   generalization. Pass them as `augmentations=[...]` on the Learner.
 # - **`ActivationRegularizer`** and **`TemporalActivationRegularizer`** smooth
 #   predictions with activation and temporal penalties. Pass them as
-#   `aux_losses=[...]` or via `lrn.add_aux_loss(...)`.
+#   `aux_losses=[...]` or via `lrn.aux_losses.append(...)`.
 # - **`grad_clip`** prevents exploding gradients on long sequences.
 # - **`vary_seq_len`** acts as augmentation by varying sequence length each
 #   batch.

@@ -68,7 +68,7 @@ class LearnerTrainable(tune.Trainable):
     def step(self) -> dict:
         with self.lrn.no_bar():
             self.lrn.fit(1)
-        row = self.lrn.recorder.values[-1]
+        row = self.lrn.recorder[-1]
         result = {"train_loss": row[0], "valid_loss": row[1]}
         metric_names = [getattr(m, "__name__", type(m).__name__) for m in self.lrn.metrics]
         for name, val in zip(metric_names, row[2:]):

@@ -43,7 +43,7 @@ class TestRNN:
         from tsfast.training import RNNLearner
         lrn = RNNLearner(dls_simulation, rnn_type="gru")
         lrn.fit(1, 1e-4)
-        final_valid_loss = lrn.recorder.values[-1][1]
+        final_valid_loss = lrn.recorder[-1][1]
         assert not math.isnan(final_valid_loss)
         assert final_valid_loss < float('inf')
 
@@ -62,7 +62,7 @@ class TestCNN:
         from tsfast.training import TCNLearner
         lrn = TCNLearner(dls_simulation)
         lrn.fit(1, 1e-4)
-        final_valid_loss = lrn.recorder.values[-1][1]
+        final_valid_loss = lrn.recorder[-1][1]
         assert not math.isnan(final_valid_loss)
         assert final_valid_loss < float('inf')
 
@@ -71,7 +71,7 @@ class TestCNN:
         from tsfast.training import CRNNLearner
         lrn = CRNNLearner(dls_simulation)
         lrn.fit(1, 1e-4)
-        final_valid_loss = lrn.recorder.values[-1][1]
+        final_valid_loss = lrn.recorder[-1][1]
         assert not math.isnan(final_valid_loss)
         assert final_valid_loss < float('inf')
 
@@ -117,7 +117,7 @@ class TestSeperateModels:
         from tsfast.training import AR_TCNLearner
         lrn = AR_TCNLearner(dls_simulation, hl_depth=2, hl_width=10)
         lrn.fit(1, 1e-4)
-        final_valid_loss = lrn.recorder.values[-1][1]
+        final_valid_loss = lrn.recorder[-1][1]
         assert not math.isnan(final_valid_loss)
         assert final_valid_loss < float('inf')
 

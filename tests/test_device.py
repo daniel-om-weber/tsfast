@@ -45,12 +45,12 @@ class TestHookCallbackDevices:
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
         lrn.model.to(device)
         model = unwrap_model(lrn.model)
-        lrn.add_aux_loss(FranSysRegularizer(
+        lrn.aux_losses.append(FranSysRegularizer(
             modules=[model.diagnosis, model.prognosis],
             p_state_sync=1.0, sync_type="mse", model=model,
         ))
         lrn.fit(1, 3e-3)
-        assert not math.isnan(lrn.recorder.values[-1][1])
+        assert not math.isnan(lrn.recorder[-1][1])
 
 
 @requires_accelerator

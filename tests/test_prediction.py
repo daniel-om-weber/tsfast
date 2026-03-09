@@ -33,14 +33,14 @@ class TestFranSys:
         from tsfast.prediction.fransys import FranSysLearner
         lrn = FranSysLearner(dls_prediction, init_sz=50, attach_output=True)
         lrn.fit(1, lr=3e-3)
-        assert not math.isnan(lrn.recorder.values[-1][1])
+        assert not math.isnan(lrn.recorder[-1][1])
 
     @pytest.mark.slow
     def test_fransys_learner_attach_output(self, dls_simulation):
         from tsfast.prediction.fransys import FranSysLearner
         lrn = FranSysLearner(dls_simulation, init_sz=50, attach_output=True)
         lrn.fit(1, lr=3e-3)
-        assert not math.isnan(lrn.recorder.values[-1][1])
+        assert not math.isnan(lrn.recorder[-1][1])
 
 
 class TestFranSysRegularization:
@@ -58,12 +58,12 @@ class TestFranSysRegularization:
         from tsfast.training import FranSysRegularizer
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
         model = self._get_model(lrn)
-        lrn.add_aux_loss(FranSysRegularizer(
+        lrn.aux_losses.append(FranSysRegularizer(
             modules=[model.diagnosis, model.prognosis],
             p_state_sync=1.0, sync_type=sync_type, model=model,
         ))
         lrn.fit(1, 3e-3)
-        assert not math.isnan(lrn.recorder.values[-1][1])
+        assert not math.isnan(lrn.recorder[-1][1])
 
     @pytest.mark.slow
     def test_fransys_diag_loss(self, dls_prediction):
@@ -71,12 +71,12 @@ class TestFranSysRegularization:
         from tsfast.training import FranSysRegularizer
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
         model = self._get_model(lrn)
-        lrn.add_aux_loss(FranSysRegularizer(
+        lrn.aux_losses.append(FranSysRegularizer(
             modules=[model.diagnosis, model.prognosis],
             p_state_sync=0, p_diag_loss=0.1, model=model,
         ))
         lrn.fit(1, 3e-3)
-        assert not math.isnan(lrn.recorder.values[-1][1])
+        assert not math.isnan(lrn.recorder[-1][1])
 
     @pytest.mark.slow
     def test_fransys_osp_loss(self, dls_prediction):
@@ -84,12 +84,12 @@ class TestFranSysRegularization:
         from tsfast.training import FranSysRegularizer
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
         model = self._get_model(lrn)
-        lrn.add_aux_loss(FranSysRegularizer(
+        lrn.aux_losses.append(FranSysRegularizer(
             modules=[model.diagnosis, model.prognosis],
             p_state_sync=0, p_osp_loss=0.1, p_osp_sync=0.1, model=model,
         ))
         lrn.fit(1, 3e-3)
-        assert not math.isnan(lrn.recorder.values[-1][1])
+        assert not math.isnan(lrn.recorder[-1][1])
 
     @pytest.mark.slow
     def test_fransys_tar_loss(self, dls_prediction):
@@ -97,12 +97,12 @@ class TestFranSysRegularization:
         from tsfast.training import FranSysRegularizer
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
         model = self._get_model(lrn)
-        lrn.add_aux_loss(FranSysRegularizer(
+        lrn.aux_losses.append(FranSysRegularizer(
             modules=[model.diagnosis, model.prognosis],
             p_state_sync=0, p_tar_loss=0.1, model=model,
         ))
         lrn.fit(1, 3e-3)
-        assert not math.isnan(lrn.recorder.values[-1][1])
+        assert not math.isnan(lrn.recorder[-1][1])
 
     @pytest.mark.slow
     def test_fransys_variable_init(self, dls_prediction):
@@ -110,7 +110,7 @@ class TestFranSysRegularization:
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1,
                               attach_output=True, init_sz_range=(30, 70))
         lrn.fit(1, 3e-3)
-        assert not math.isnan(lrn.recorder.values[-1][1])
+        assert not math.isnan(lrn.recorder[-1][1])
 
     @pytest.mark.slow
     def test_fransys_diag_loss_with_output_norm(self, dls_prediction):
@@ -123,12 +123,12 @@ class TestFranSysRegularization:
             attach_output=True, output_norm=StandardScaler,
         )
         model = self._get_model(lrn)
-        lrn.add_aux_loss(FranSysRegularizer(
+        lrn.aux_losses.append(FranSysRegularizer(
             modules=[model.diagnosis, model.prognosis],
             p_state_sync=0, p_diag_loss=0.1, model=model,
         ))
         lrn.fit(1, 3e-3)
-        assert not math.isnan(lrn.recorder.values[-1][1])
+        assert not math.isnan(lrn.recorder[-1][1])
 
     @pytest.mark.slow
     def test_fransys_osp_loss_with_output_norm(self, dls_prediction):
@@ -141,12 +141,12 @@ class TestFranSysRegularization:
             attach_output=True, output_norm=StandardScaler,
         )
         model = self._get_model(lrn)
-        lrn.add_aux_loss(FranSysRegularizer(
+        lrn.aux_losses.append(FranSysRegularizer(
             modules=[model.diagnosis, model.prognosis],
             p_state_sync=0, p_osp_loss=0.1, p_osp_sync=0.1, model=model,
         ))
         lrn.fit(1, 3e-3)
-        assert not math.isnan(lrn.recorder.values[-1][1])
+        assert not math.isnan(lrn.recorder[-1][1])
 
     def test_fransys_callback_captures_output_norm(self, dls_prediction):
         """Verify FranSysRegularizer detects output_norm from ScaledModel."""
@@ -166,7 +166,7 @@ class TestFranSysRegularization:
             modules=[model.diagnosis, model.prognosis],
             p_state_sync=0, p_diag_loss=0.1, model=model,
         )
-        lrn.add_aux_loss(reg)
+        lrn.aux_losses.append(reg)
         # setup triggers output_norm detection
         reg.setup(lrn)
         assert reg._output_norm is lrn.model.output_norm
@@ -187,7 +187,7 @@ class TestFranSysRegularization:
             modules=[model.diagnosis, model.prognosis],
             p_state_sync=0, p_diag_loss=0.1, model=model,
         )
-        lrn.add_aux_loss(reg)
+        lrn.aux_losses.append(reg)
         reg.setup(lrn)
         assert reg._output_norm is None
         reg.teardown(lrn)
@@ -286,4 +286,4 @@ class TestARRNN:
         from tsfast.training import AR_RNNLearner
         lrn = AR_RNNLearner(dls_simulation)
         lrn.fit(1)
-        assert not math.isnan(lrn.recorder.values[-1][1])
+        assert not math.isnan(lrn.recorder[-1][1])

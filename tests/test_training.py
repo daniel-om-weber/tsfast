@@ -550,7 +550,7 @@ class TestLearner:
         model = SimpleRNN(1, 1, hidden_size=20)
         lrn = Learner(model, dls, loss_func=nn.MSELoss(), device=torch.device("cpu"))
         lrn.fit(1)
-        final_valid_loss = lrn.recorder.values[-1][1]
+        final_valid_loss = lrn.recorder[-1][1]
         assert math.isfinite(final_valid_loss)
 
     def test_learner_with_metrics(self):
@@ -562,7 +562,7 @@ class TestLearner:
         model = SimpleRNN(1, 1, hidden_size=20)
         lrn = Learner(model, dls, loss_func=nn.MSELoss(), metrics=[fun_rmse], device=torch.device("cpu"))
         lrn.fit(1)
-        assert len(lrn.recorder.values[-1]) == 3  # train_loss, val_loss, metric
+        assert len(lrn.recorder[-1]) == 3  # train_loss, val_loss, metric
 
     def test_learner_with_transforms(self):
         from tsfast.models.rnn import SimpleRNN
@@ -579,7 +579,7 @@ class TestLearner:
             device=torch.device("cpu"),
         )
         lrn.fit(1)
-        assert math.isfinite(lrn.recorder.values[-1][1])
+        assert math.isfinite(lrn.recorder[-1][1])
 
     def test_learner_augmentations_train_only(self):
         from tsfast.models.rnn import SimpleRNN
@@ -623,8 +623,8 @@ class TestLearner:
         lrn_aux.fit(1)
 
         # Both should have finite losses
-        assert math.isfinite(lrn_base.recorder.values[-1][1])
-        assert math.isfinite(lrn_aux.recorder.values[-1][1])
+        assert math.isfinite(lrn_base.recorder[-1][1])
+        assert math.isfinite(lrn_aux.recorder[-1][1])
 
     def test_learner_n_skip(self):
         from tsfast.models.rnn import SimpleRNN
@@ -634,7 +634,7 @@ class TestLearner:
         model = SimpleRNN(1, 1, hidden_size=20)
         lrn = Learner(model, dls, loss_func=nn.MSELoss(), n_skip=10, device=torch.device("cpu"))
         lrn.fit(1)
-        assert math.isfinite(lrn.recorder.values[-1][1])
+        assert math.isfinite(lrn.recorder[-1][1])
 
     def test_learner_grad_clip(self):
         from tsfast.models.rnn import SimpleRNN
@@ -644,7 +644,7 @@ class TestLearner:
         model = SimpleRNN(1, 1, hidden_size=20)
         lrn = Learner(model, dls, loss_func=nn.MSELoss(), grad_clip=1.0, device=torch.device("cpu"))
         lrn.fit(1)
-        assert math.isfinite(lrn.recorder.values[-1][1])
+        assert math.isfinite(lrn.recorder[-1][1])
 
     def test_learner_fit_flat_cos(self):
         from tsfast.models.rnn import SimpleRNN
@@ -654,7 +654,7 @@ class TestLearner:
         model = SimpleRNN(1, 1, hidden_size=20)
         lrn = Learner(model, dls, loss_func=nn.MSELoss(), device=torch.device("cpu"))
         lrn.fit_flat_cos(2, pct_start=0.5)
-        assert len(lrn.recorder.values) == 2
+        assert len(lrn.recorder) == 2
 
     def test_get_preds(self):
         from tsfast.models.rnn import SimpleRNN
@@ -663,7 +663,7 @@ class TestLearner:
         dls = _SyntheticDls(n_u=1, n_y=1, n_valid=8, bs=4)
         model = SimpleRNN(1, 1, hidden_size=20)
         lrn = Learner(model, dls, loss_func=nn.MSELoss(), device=torch.device("cpu"))
-        preds, targs = lrn.get_preds(ds_idx=1)
+        preds, targs = lrn.get_preds()
         assert preds.shape[0] == 8
         assert targs.shape[0] == 8
         assert preds.shape[1] == 100
@@ -692,7 +692,7 @@ class TestLearner:
         lrn = Learner(model, dls, loss_func=nn.MSELoss(), device=torch.device("cpu"))
         with lrn.no_bar():
             lrn.fit(1)
-        assert math.isfinite(lrn.recorder.values[-1][1])
+        assert math.isfinite(lrn.recorder[-1][1])
 
     def test_activation_regularizers(self):
         from tsfast.models.rnn import SimpleRNN
@@ -704,7 +704,7 @@ class TestLearner:
         tar = TemporalActivationRegularizer(modules=[model.rnn], beta=0.1)
         lrn = Learner(model, dls, loss_func=nn.MSELoss(), aux_losses=[ar, tar], device=torch.device("cpu"))
         lrn.fit(1)
-        assert math.isfinite(lrn.recorder.values[-1][1])
+        assert math.isfinite(lrn.recorder[-1][1])
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -721,7 +721,7 @@ class TestTbpttLearner:
         model = SimpleRNN(1, 1, hidden_size=20, return_state=True)
         lrn = TbpttLearner(model, dls, loss_func=nn.MSELoss(), sub_seq_len=25, device=torch.device("cpu"))
         lrn.fit(1)
-        assert math.isfinite(lrn.recorder.values[-1][1])
+        assert math.isfinite(lrn.recorder[-1][1])
 
     def test_tbptt_n_skip_first_chunk_only(self):
         from tsfast.models.rnn import SimpleRNN
@@ -733,7 +733,7 @@ class TestTbpttLearner:
             model, dls, loss_func=nn.MSELoss(), sub_seq_len=25, n_skip=10, device=torch.device("cpu")
         )
         lrn.fit(1)
-        assert math.isfinite(lrn.recorder.values[-1][1])
+        assert math.isfinite(lrn.recorder[-1][1])
         # n_skip must be preserved across training
         assert lrn.n_skip == 10
 
@@ -753,7 +753,7 @@ class TestTbpttLearner:
             device=torch.device("cpu"),
         )
         lrn.fit(1)
-        assert math.isfinite(lrn.recorder.values[-1][1])
+        assert math.isfinite(lrn.recorder[-1][1])
 
     def test_tbptt_augmentations_applied_once_per_batch(self):
         """Augmentations must be applied exactly once per batch, not once per chunk.
@@ -845,7 +845,7 @@ class TestGraphedStatefulModel:
         graphed = GraphedStatefulModel(model)
         lrn = TbpttLearner(graphed, dls, loss_func=nn.MSELoss(), sub_seq_len=25)
         lrn.fit(1)
-        assert math.isfinite(lrn.recorder.values[-1][1])
+        assert math.isfinite(lrn.recorder[-1][1])
 
     def test_with_basic_learner(self):
         """GraphedStatefulModel works transparently with basic Learner."""
@@ -858,7 +858,7 @@ class TestGraphedStatefulModel:
         graphed = GraphedStatefulModel(model)
         lrn = Learner(graphed, dls, loss_func=nn.MSELoss())
         lrn.fit(1)
-        assert math.isfinite(lrn.recorder.values[-1][1])
+        assert math.isfinite(lrn.recorder[-1][1])
 
     @pytest.mark.parametrize("rnn_type", ["gru", "lstm"])
     def test_numerical_equivalence(self, rnn_type):
@@ -899,7 +899,7 @@ class TestGraphedStatefulModel:
         lrn_graphed = TbpttLearner(graphed, _FixedDls(), loss_func=nn.MSELoss(), sub_seq_len=sub_seq_len)
         lrn_graphed.fit(n_epoch)
 
-        for (e_plain, e_graphed) in zip(lrn_plain.recorder.values, lrn_graphed.recorder.values):
+        for (e_plain, e_graphed) in zip(lrn_plain.recorder, lrn_graphed.recorder):
             assert abs(e_plain[1] - e_graphed[1]) < 1e-4, (
                 f"Val losses diverged: plain={e_plain[1]:.6f} vs graphed={e_graphed[1]:.6f}"
             )
@@ -918,7 +918,7 @@ class TestGraphedStatefulModel:
         graphed = GraphedStatefulModel(model)
         lrn = TbpttLearner(graphed, dls, loss_func=nn.MSELoss(), sub_seq_len=25, n_skip=10)
         lrn.fit(1)
-        assert math.isfinite(lrn.recorder.values[-1][1])
+        assert math.isfinite(lrn.recorder[-1][1])
 
     def test_reset_graph(self):
         """reset_graph() clears state, next forward re-captures."""

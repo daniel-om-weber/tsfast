@@ -201,7 +201,7 @@ lrn.fit_flat_cos(n_epoch=10, lr=1e-3)
 # compare them side by side.
 
 # %%
-preds, targs = lrn.get_preds(ds_idx=1)
+preds, targs = lrn.get_preds()
 print(f"Predictions shape: {preds.shape}")  # (n_samples, 2)
 print(f"Targets shape:     {targs.shape}")  # (n_samples, 2)
 
