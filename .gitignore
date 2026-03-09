@@ -53,6 +53,9 @@ _docs/
 # MkDocs build output
 site/
 
+# Design choices
+designchoices/
+
 # Misc
 *.bak
 *.log

@@ -42,15 +42,14 @@ class TestQuaternionMath:
     def test_inclination_angle_same_is_zero(self):
         from tsfast.quaternions import inclinationAngle, norm_quaternion
 
-        # Use plain tensors to avoid torch.compile issues with TensorBase subclasses
-        q = norm_quaternion(torch.rand(4, 100, 4)).as_subclass(torch.Tensor)
+        q = norm_quaternion(torch.rand(4, 100, 4))
         angle = inclinationAngle(q, q)
         assert angle.abs().max().item() < 1e-6
 
     def test_relative_angle_same_is_zero(self):
         from tsfast.quaternions import relativeAngle, norm_quaternion
 
-        q = norm_quaternion(torch.rand(4, 100, 4)).as_subclass(torch.Tensor)
+        q = norm_quaternion(torch.rand(4, 100, 4))
         angle = relativeAngle(q, q)
         assert angle.abs().max().item() < 1e-6
 

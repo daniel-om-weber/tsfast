@@ -110,7 +110,7 @@ print(f"Validation metrics: {val_metrics}")
 # into tsfast.
 
 # %%
-preds, targs = lrn.get_preds(ds_idx=1)
+preds, targs = lrn.get_preds()
 print(f"Predictions shape: {preds.shape}")
 print(f"Targets shape: {targs.shape}")
 
@@ -160,7 +160,7 @@ print(f"Output shape: {y_pred.shape}")
 #   The model must learn the full system dynamics from the excitation signal u(t).
 # - **`n_skip` handles the RNN warmup transient** by excluding early timesteps from
 #   the loss, so the model isn't penalized while its hidden state initializes.
-# - **`ds_idx` selects which data split to evaluate**: 0 = train, 1 = valid,
-#   2+ = test sets from the benchmark.
+# - **Pass `dl=` to evaluate on a specific split**: e.g. `dl=lrn.dls.test`
+#   for the test set (defaults to validation).
 # - **`InferenceWrapper` provides numpy-in / numpy-out inference** with automatic
 #   normalization, making it easy to use trained models outside of the training loop.

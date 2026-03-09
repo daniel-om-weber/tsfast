@@ -1,6 +1,6 @@
 """Lightweight pure-PyTorch training framework."""
 
-from .learner import Learner, Recorder, TbpttLearner
+from .learner import Learner, TbpttLearner
 from .losses import (
     cos_sim_loss,
     cos_sim_loss_pow,
@@ -43,7 +43,6 @@ __all__ = [
     # core
     "Learner",
     "TbpttLearner",
-    "Recorder",
     # losses & metrics
     "nan_mean",
     "mse",

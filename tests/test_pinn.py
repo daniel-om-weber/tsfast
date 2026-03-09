@@ -122,14 +122,14 @@ class TestPhysicsCallbacks:
             return {"physics": (dy**2).mean()}
 
         lrn = RNNLearner(dls_simulation, rnn_type="gru", num_layers=1, hidden_size=10)
-        lrn.add_aux_loss(
+        lrn.aux_losses.append(
             PhysicsLoss(
                 physics_loss_func=simple_physics,
                 weight=0.1,
             )
         )
         lrn.fit(1, 3e-3)
-        assert not math.isnan(lrn.recorder.values[-1][1])
+        assert not math.isnan(lrn.recorder[-1][1])
 
 
 @pytest.mark.pinn
@@ -201,7 +201,7 @@ class TestPIRNN:
 
         lrn = PIRNNLearner(dls_pinn, init_sz=20, hidden_size=20, rnn_layer=1, attach_output=True)
         lrn.fit(1, 3e-3)
-        assert not math.isnan(lrn.recorder.values[-1][1])
+        assert not math.isnan(lrn.recorder[-1][1])
 
     @pytest.mark.slow
     def test_pirnn_learner_attach_output(self, dls_pinn):
@@ -209,7 +209,7 @@ class TestPIRNN:
 
         lrn = PIRNNLearner(dls_pinn, init_sz=20, attach_output=True, hidden_size=20, rnn_layer=1)
         lrn.fit(1, 3e-3)
-        assert not math.isnan(lrn.recorder.values[-1][1])
+        assert not math.isnan(lrn.recorder[-1][1])
 
 
 @pytest.mark.pinn
@@ -220,9 +220,9 @@ class TestPINNCallbacks:
         from tsfast.pinn import TransitionSmoothnessLoss
 
         lrn = FranSysLearner(dls_pinn, init_sz=20, hidden_size=10, rnn_layer=1, attach_output=True)
-        lrn.add_aux_loss(TransitionSmoothnessLoss(init_sz=20, weight=0.1))
+        lrn.aux_losses.append(TransitionSmoothnessLoss(init_sz=20, weight=0.1))
         lrn.fit(1, 3e-3)
-        assert not math.isnan(lrn.recorder.values[-1][1])
+        assert not math.isnan(lrn.recorder[-1][1])
 
     @pytest.mark.slow
     def test_alternating_encoder(self, dls_pinn):
@@ -240,6 +240,6 @@ class TestPINNCallbacks:
         from tsfast.pinn import ConsistencyLoss
 
         lrn = PIRNNLearner(dls_pinn, init_sz=20, hidden_size=20, rnn_layer=1, attach_output=True)
-        lrn.add_aux_loss(ConsistencyLoss(weight=0.1))
+        lrn.aux_losses.append(ConsistencyLoss(weight=0.1))
         lrn.fit(1, 3e-3)
-        assert not math.isnan(lrn.recorder.values[-1][1])
+        assert not math.isnan(lrn.recorder[-1][1])

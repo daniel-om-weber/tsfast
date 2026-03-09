@@ -93,12 +93,12 @@ lrn.fit_flat_cos(n_epoch=10, lr=3e-3)
 # %% [markdown]
 # ## Visualize Results
 #
-# `ds_idx=-1` shows the last validation/test set. The first 50 timesteps
-# (diagnosis window) are zero-padded because the model uses that region for
-# state estimation rather than prediction.
+# Evaluating on the test set. The first 50 timesteps (diagnosis window)
+# are zero-padded because the model uses that region for state estimation
+# rather than prediction.
 
 # %%
-lrn.show_results(ds_idx=-1, max_n=2)
+lrn.show_results(dl=lrn.dls.test, max_n=2)
 
 # %% [markdown]
 # ## Adding Activation Regularization
@@ -109,7 +109,7 @@ lrn.show_results(ds_idx=-1, max_n=2)
 # timesteps. We need to extract the prognosis RNN module from the model so the
 # regularizers know which layer to hook into.
 #
-# Pass them as auxiliary losses via `lrn.add_aux_loss(...)`.
+# Pass them as auxiliary losses via `lrn.aux_losses.append(...)`.
 
 # %%
 lrn_reg = FranSysLearner(
@@ -117,14 +117,14 @@ lrn_reg = FranSysLearner(
     hidden_size=40, metrics=[fun_rmse]
 )
 model_reg = unwrap_model(lrn_reg.model)
-lrn_reg.add_aux_loss(
+lrn_reg.aux_losses.append(
     ActivationRegularizer(modules=[model_reg.prognosis], alpha=6.0)
 )
-lrn_reg.add_aux_loss(
+lrn_reg.aux_losses.append(
     TemporalActivationRegularizer(modules=[model_reg.prognosis], beta=6.0)
 )
 lrn_reg.fit_flat_cos(n_epoch=10, lr=3e-3)
-lrn_reg.show_results(ds_idx=-1, max_n=2)
+lrn_reg.show_results(dl=lrn_reg.dls.test, max_n=2)
 
 # %% [markdown]
 # ## FranSysRegularizer for State Synchronization
@@ -143,20 +143,20 @@ lrn_sync = FranSysLearner(
     hidden_size=40, metrics=[fun_rmse]
 )
 model_sync = unwrap_model(lrn_sync.model)
-lrn_sync.add_aux_loss(
+lrn_sync.aux_losses.append(
     ActivationRegularizer(modules=[model_sync.prognosis], alpha=6.0)
 )
-lrn_sync.add_aux_loss(
+lrn_sync.aux_losses.append(
     TemporalActivationRegularizer(modules=[model_sync.prognosis], beta=6.0)
 )
-lrn_sync.add_aux_loss(
+lrn_sync.aux_losses.append(
     FranSysRegularizer(
         modules=[model_sync.diagnosis, model_sync.prognosis],
         model=model_sync,
     )
 )
 lrn_sync.fit_flat_cos(n_epoch=10, lr=3e-3)
-lrn_sync.show_results(ds_idx=-1, max_n=2)
+lrn_sync.show_results(dl=lrn_sync.dls.test, max_n=2)
 
 # %% [markdown]
 # ## Key Takeaways
@@ -168,7 +168,7 @@ lrn_sync.show_results(ds_idx=-1, max_n=2)
 # - `attach_output=True` enables prediction mode (output feedback).
 # - `ActivationRegularizer` and `TemporalActivationRegularizer` are especially
 #   important for FranSys -- they encourage smooth, stable predictions. Pass
-#   them via `lrn.add_aux_loss(...)`.
+#   them via `lrn.aux_losses.append(...)`.
 # - `FranSysRegularizer` adds state synchronization regularization for improved
 #   long-horizon stability. It requires the diagnosis and prognosis modules
 #   to be passed so it can compare their hidden states.

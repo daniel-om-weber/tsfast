@@ -1,11 +1,11 @@
-"""Learner, TbpttLearner, and Recorder — pure-PyTorch training loop."""
+"""Learner and TbpttLearner — pure-PyTorch training loop."""
 
 __all__ = [
     "Learner",
     "TbpttLearner",
-    "Recorder",
 ]
 
+import math
 import os
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -28,25 +28,10 @@ def _auto_device() -> torch.device:
     since MPS support is still buggy for many operations.
     """
     if torch.cuda.is_available():
-        return torch.device("cuda")
+        return torch.device("cuda", torch.cuda.current_device())
     if os.environ.get("TSFAST_ENABLE_MPS") and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         return torch.device("mps")
     return torch.device("cpu")
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-#  Recorder
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-class Recorder:
-    """Stores training history: ``values[epoch] = [train_loss, valid_loss, *metrics]``."""
-
-    def __init__(self):
-        self.values: list[list[float]] = []
-
-    def append(self, row: list[float]):
-        self.values.append(row)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -103,28 +88,14 @@ class Learner:
         self.n_skip = n_skip
         self.grad_clip = grad_clip
         self.plot_fn = plot_fn or viz.plot_sequence
-        self.device = device or _auto_device()
-        self.recorder = Recorder()
+        dev = device or _auto_device()
+        if dev.type == "cuda" and dev.index is None:
+            dev = torch.device("cuda", torch.cuda.current_device())
+        self.device = dev
+        self.recorder: list[list[float]] = []
         self.opt = None
         self.pct_train: float = 0.0
         self._show_bar: bool = show_bar
-        self._composables_ready: bool = False
-        self._total_steps: int = 0
-        self._current_step: int = 0
-
-    # ── post-construction helpers ─────────────────────────────────────────
-
-    def add_aux_loss(self, obj):
-        """Append an auxiliary loss composable."""
-        self.aux_losses.append(obj)
-
-    def add_transform(self, obj):
-        """Append a transform composable (applied train + valid)."""
-        self.transforms.append(obj)
-
-    def add_augmentation(self, obj):
-        """Append an augmentation composable (applied train only)."""
-        self.augmentations.append(obj)
 
     # ── context managers ──────────────────────────────────────────────────
 
@@ -141,37 +112,14 @@ class Learner:
     # ── composable setup/teardown ─────────────────────────────────────────
 
     def _setup_composables(self):
-        if self._composables_ready:
-            return
         for obj in self.transforms + self.augmentations + self.aux_losses:
             if hasattr(obj, "setup"):
                 obj.setup(self)
-        self._composables_ready = True
 
     def _teardown_composables(self):
         for obj in self.transforms + self.augmentations + self.aux_losses:
             if hasattr(obj, "teardown"):
                 obj.teardown(self)
-        self._composables_ready = False
-
-    # ── device helpers ────────────────────────────────────────────────────
-
-    def _to_device(self, batch) -> tuple[Tensor, ...]:
-        # Strip custom tensor subclasses (e.g. TensorSequencesInput) so that
-        # standard loss functions like nn.L1Loss work without __torch_function__
-        return tuple(t.to(self.device).as_subclass(Tensor) for t in batch)
-
-    def _get_dl(self, ds_idx: int):
-        """Get DataLoader by index: 0=train, 1=valid, 2+=test, -1=last."""
-        if ds_idx == 0:
-            return self.dls.train
-        elif ds_idx == 1:
-            return self.dls.valid
-        elif ds_idx == -1:
-            return self.dls.test if self.dls.test is not None else self.dls.valid
-        elif ds_idx >= 2 and self.dls.test is not None:
-            return self.dls.test
-        return self.dls.valid
 
     # ── setup ─────────────────────────────────────────────────────────────
 
@@ -188,11 +136,11 @@ class Learner:
 
     def prepare_batch(self, batch, training: bool = True) -> tuple[Tensor, Tensor]:
         """Device transfer + transforms + augmentations (if training)."""
-        xb, yb = self._to_device(batch)
-        for t in self.transforms:
+        xb, yb = (t.to(self.device) for t in batch)
+        for t in self.transforms:  # feature: transforms
             xb, yb = t(xb, yb)
         if training:
-            for a in self.augmentations:
+            for a in self.augmentations:  # feature: augmentations
                 xb, yb = a(xb, yb)
         return xb, yb
 
@@ -203,11 +151,11 @@ class Learner:
         if n_skip is None:
             n_skip = self.n_skip
 
-        pred_skip = pred[:, n_skip:] if n_skip > 0 else pred
-        yb_skip = yb[:, n_skip:] if n_skip > 0 else yb
+        pred_skip = pred[:, n_skip:] if n_skip > 0 else pred  # feature: n_skip
+        yb_skip = yb[:, n_skip:] if n_skip > 0 else yb  # feature: n_skip
         loss = self.loss_func(pred_skip, yb_skip)
 
-        for aux in self.aux_losses:
+        for aux in self.aux_losses:  # feature: auxiliary losses
             loss = loss + aux(pred, yb, xb)
 
         return loss
@@ -217,7 +165,7 @@ class Learner:
     def backward_step(self, loss: Tensor):
         """Backward + grad_clip + optimizer step + zero_grad."""
         loss.backward()
-        if self.grad_clip is not None:
+        if self.grad_clip is not None:  # feature: gradient clipping
             nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
         self.opt.step()
         self.opt.zero_grad()
@@ -238,7 +186,7 @@ class Learner:
 
         loss = self.compute_loss(pred, yb, xb)
 
-        if torch.isnan(loss):
+        if torch.isnan(loss):  # feature: NaN guard
             self.opt.zero_grad()
             return float("nan")
 
@@ -247,30 +195,33 @@ class Learner:
 
     # ── epoch loop ────────────────────────────────────────────────────────
 
-    def train_one_epoch(self, sched=None, pbar=None) -> float:
+    def train_one_epoch(self, sched=None, pbar=None, epoch: int = 0, n_epoch: int = 1) -> float:
         """Run one training epoch.
 
         Args:
             sched: optional LR scheduler (stepped per batch)
             pbar: optional tqdm progress bar
+            epoch: current epoch index (0-based)
+            n_epoch: total number of epochs
 
         Returns:
             mean training loss for the epoch
         """
         self.model.train()
         train_losses = []
+        n_batches = len(self.dls.train)
+        total_steps = max(1, n_epoch * n_batches)
 
-        for batch in self.dls.train:
+        for batch_idx, batch in enumerate(self.dls.train):
             xb, yb = self.prepare_batch(batch, training=True)
-            self.pct_train = self._current_step / max(1, self._total_steps)
+            self.pct_train = (epoch * n_batches + batch_idx) / total_steps  # feature: training progress
 
             loss_val = self.training_step(xb, yb)
-            if not (loss_val != loss_val):  # not NaN
+            if not math.isnan(loss_val):
                 train_losses.append(loss_val)
 
-            if sched is not None:
+            if sched is not None:  # feature: LR scheduling
                 sched.step()
-            self._current_step += 1
             if pbar is not None:
                 pbar.update(1)
 
@@ -317,9 +268,7 @@ class Learner:
         self.setup(lr=lr)
 
         n_batches = len(self.dls.train)
-        self._total_steps = n_epoch * n_batches
-        self._current_step = 0
-        sched = scheduler_fn(self.opt, self._total_steps) if scheduler_fn is not None else None
+        sched = scheduler_fn(self.opt, n_epoch * n_batches) if scheduler_fn is not None else None
 
         try:
             for epoch in range(n_epoch):
@@ -329,7 +278,7 @@ class Learner:
                     disable=not self._show_bar,
                     mininterval=0.5,
                 ) as pbar:
-                    train_loss = self.train_one_epoch(sched=sched, pbar=pbar)
+                    train_loss = self.train_one_epoch(sched=sched, pbar=pbar, epoch=epoch, n_epoch=n_epoch)
 
                     # Validate
                     val_loss, metrics_dict = self.validate()
@@ -360,20 +309,15 @@ class Learner:
 
     # ── predictions ───────────────────────────────────────────────────────
 
-    def get_preds(self, ds_idx: int = 1, dl=None, with_inputs: bool = False):
+    def get_preds(self, dl=None, with_inputs: bool = False):
         """Batch-concatenated predictions and targets.
 
         Args:
-            ds_idx: DataLoader index (0=train, 1=valid)
-            dl: explicit DataLoader (overrides ds_idx)
+            dl: DataLoader to evaluate (defaults to validation set)
             with_inputs: if True, also return concatenated inputs
         """
-        dl = dl or self._get_dl(ds_idx)
-        # Only move when truly needed — a redundant .to() triggers
-        # nn.RNN flatten_parameters which reallocates weight memory and
-        # would invalidate any captured CUDA graph.
-        p = next(self.model.parameters())
-        if p.device.type != self.device.type or (p.device.index or 0) != (self.device.index or 0):
+        dl = dl or self.dls.valid
+        if next(self.model.parameters()).device != self.device:
             self.model.to(self.device)
         self.model.eval()
         all_preds, all_targs, all_inputs = [], [], []
@@ -398,13 +342,13 @@ class Learner:
 
     # ── worst-sample selection ──────────────────────────────────────────
 
-    def get_worst(self, max_n: int = 4, ds_idx: int = 1) -> tuple[Tensor, Tensor, Tensor]:
+    def get_worst(self, max_n: int = 4, dl=None) -> tuple[Tensor, Tensor, Tensor]:
         """Inputs, targets, and predictions for the samples with highest loss.
 
         Returns:
             (inputs, targets, predictions) sliced to the ``max_n`` worst samples
         """
-        preds, targs, inputs = self.get_preds(ds_idx=ds_idx, with_inputs=True)
+        preds, targs, inputs = self.get_preds(dl=dl, with_inputs=True)
         if hasattr(self.loss_func, "reduction"):
             orig = self.loss_func.reduction
             self.loss_func.reduction = "none"
@@ -430,10 +374,11 @@ class Learner:
         samples = [(xb[i].cpu(), yb[i].cpu()) for i in range(n)]
         viz.layout_samples(n, yb.shape[-1], samples, self.plot_fn, signal_names=get_signal_names(dl))
 
-    def show_results(self, max_n: int = 4, ds_idx: int = 1):
+    def show_results(self, max_n: int = 4, dl=None):
         """Plot predictions vs targets."""
-        dl = self._get_dl(ds_idx)
-        self.model.to(self.device)
+        dl = dl or self.dls.valid
+        if next(self.model.parameters()).device != self.device:
+            self.model.to(self.device)
         self.model.eval()
 
         batch = next(iter(dl))
@@ -448,10 +393,10 @@ class Learner:
         outs = [(pred[i].cpu(),) for i in range(n)]
         viz.layout_samples(n, yb.shape[-1], samples, self.plot_fn, outs, signal_names=get_signal_names(dl))
 
-    def show_worst(self, max_n: int = 4, ds_idx: int = 1):
+    def show_worst(self, max_n: int = 4, dl=None):
         """Plot samples with highest per-sample loss."""
-        inputs, targs, preds = self.get_worst(max_n=max_n, ds_idx=ds_idx)
-        dl = self._get_dl(ds_idx)
+        dl = dl or self.dls.valid
+        inputs, targs, preds = self.get_worst(max_n=max_n, dl=dl)
         samples = [(inputs[i], targs[i]) for i in range(len(inputs))]
         outs = [(preds[i],) for i in range(len(preds))]
         viz.layout_samples(len(inputs), targs.shape[-1], samples, self.plot_fn, outs, signal_names=get_signal_names(dl))
@@ -502,7 +447,7 @@ class TbpttLearner(Learner):
 
             loss = self.compute_loss(pred, yb_sub, xb_sub, n_skip=skip)
 
-            if torch.isnan(loss):
+            if torch.isnan(loss):  # feature: NaN guard
                 self.opt.zero_grad()
                 state = None
                 continue
