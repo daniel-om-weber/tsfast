@@ -264,11 +264,15 @@ def PIRNNLearner(
     transforms: list | None = None,
     augmentations: list | None = None,
     aux_losses: list | None = None,
+    grad_clip: float | None = None,
+    plot_fn: Callable | None = None,
     input_norm: type | None = StandardScaler,
     output_norm: type | None = None,
     prognosis: nn.Module | None = None,
     hidden_size: int = 100,
     rnn_layer: int = 1,
+    device: torch.device | None = None,
+    show_bar: bool = True,
     **kwargs,
 ) -> Learner:
     """Create PIRNN learner with appropriate configuration.
@@ -285,11 +289,15 @@ def PIRNNLearner(
         transforms: Additional transforms (train + valid).
         augmentations: Additional augmentations (train only).
         aux_losses: Additional auxiliary losses.
+        grad_clip: max gradient norm for clipping, or None to disable.
+        plot_fn: plotting function for show_batch/show_results.
         input_norm: Input normalization Scaler class.
         output_norm: Output denormalization Scaler class.
         prognosis: Custom prognosis model (default: RNN with ret_full_hidden=True).
         hidden_size: Hidden units for default prognosis and diagnosis.
         rnn_layer: Number of RNN layers for default prognosis and diagnosis.
+        device: target device (auto-detected if None).
+        show_bar: whether to show tqdm progress bars.
         **kwargs: Additional arguments for PIRNN.
     """
     if metrics is None:
@@ -369,10 +377,14 @@ def PIRNNLearner(
         dls,
         loss_func=loss_func,
         metrics=metrics,
+        lr=lr,
         n_skip=init_sz,
         opt_func=opt_func,
-        lr=lr,
         transforms=transforms,
         augmentations=augmentations,
         aux_losses=aux_losses,
+        grad_clip=grad_clip,
+        plot_fn=plot_fn,
+        device=device,
+        show_bar=show_bar,
     )

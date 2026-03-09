@@ -27,6 +27,7 @@ def RNNLearner(
     dls,
     loss_func=nn.L1Loss(),
     metrics: list | None = None,
+    lr: float = 3e-3,
     n_skip: int = 0,
     num_layers: int = 1,
     hidden_size: int = 100,
@@ -38,7 +39,10 @@ def RNNLearner(
     transforms: list | None = None,
     aux_losses: list | None = None,
     grad_clip: float | None = None,
+    plot_fn=None,
     cuda_graph: bool = False,
+    device: torch.device | None = None,
+    show_bar: bool = True,
     **kwargs,
 ):
     """Create a Learner with a SimpleRNN model and standard training setup.
@@ -58,7 +62,10 @@ def RNNLearner(
         transforms: list of transforms (train + valid).
         aux_losses: list of auxiliary loss functions.
         grad_clip: max gradient norm for clipping, or None to disable.
+        plot_fn: plotting function for show_batch/show_results.
         cuda_graph: if True and sub_seq_len is set, wrap the model in GraphedStatefulModel for faster training.
+        device: target device (auto-detected if None).
+        show_bar: whether to show tqdm progress bars.
         **kwargs: additional keyword arguments forwarded to ``SimpleRNN``.
     """
     if metrics is None:
@@ -79,13 +86,16 @@ def RNNLearner(
         dls,
         loss_func=loss_func,
         metrics=metrics,
+        lr=lr,
         n_skip=n_skip,
         opt_func=opt_func,
-        lr=3e-3,
         augmentations=augmentations,
         transforms=transforms,
         aux_losses=aux_losses,
         grad_clip=grad_clip,
+        plot_fn=plot_fn,
+        device=device,
+        show_bar=show_bar,
         **extra,
     )
 
@@ -94,10 +104,19 @@ def AR_RNNLearner(
     dls,
     alpha: float = 0,
     beta: float = 0,
+    loss_func=nn.L1Loss(),
     metrics: list | None = None,
+    lr: float = 3e-3,
     n_skip: int = 0,
     opt_func=torch.optim.Adam,
     input_norm: type | None = StandardScaler,
+    transforms: list | None = None,
+    augmentations: list | None = None,
+    aux_losses: list | None = None,
+    grad_clip: float | None = None,
+    plot_fn=None,
+    device: torch.device | None = None,
+    show_bar: bool = True,
     **kwargs,
 ):
     """Create a Learner with an autoregressive RNN model.
@@ -106,34 +125,54 @@ def AR_RNNLearner(
         dls: DataLoaders providing training and validation data.
         alpha: activation regularization penalty weight.
         beta: temporal activation regularization penalty weight.
+        loss_func: loss function for training.
         metrics: metric functions for validation, or None for default RMSE.
+        lr: learning rate.
         n_skip: number of initial timesteps to skip in metric computation.
         opt_func: optimizer constructor.
         input_norm: scaler class for input normalization, or None to disable.
+        transforms: list of transforms (train + valid); defaults to prediction_concat.
+        augmentations: list of augmentation transforms (train only).
+        aux_losses: list of auxiliary loss functions; defaults to activation regularizers.
+        grad_clip: max gradient norm for clipping, or None to disable.
+        plot_fn: plotting function for show_batch/show_results.
+        device: target device (auto-detected if None).
+        show_bar: whether to show tqdm progress bars.
         **kwargs: additional keyword arguments forwarded to ``SimpleRNN``.
     """
     if metrics is None:
         metrics = [fun_rmse]
 
+    if transforms is None:
+        transforms = [prediction_concat(t_offset=0)]
+
     inp, out = get_io_size(dls)
     ar_model = AR_Model(SimpleRNN(inp + out, out, **kwargs), ar=False)
-    rnn_module = ar_model.model.rnn
+
+    if aux_losses is None:
+        rnn_module = ar_model.model.rnn
+        aux_losses = [
+            ActivationRegularizer(modules=[rnn_module], alpha=alpha),
+            TemporalActivationRegularizer(modules=[rnn_module], beta=beta),
+        ]
 
     model = ScaledModel.from_dls(ar_model, dls, input_norm, autoregressive=True)
 
     return Learner(
         model,
         dls,
-        loss_func=nn.L1Loss(),
+        loss_func=loss_func,
         metrics=metrics,
+        lr=lr,
         n_skip=n_skip,
         opt_func=opt_func,
-        lr=3e-3,
-        transforms=[prediction_concat(t_offset=0)],
-        aux_losses=[
-            ActivationRegularizer(modules=[rnn_module], alpha=alpha),
-            TemporalActivationRegularizer(modules=[rnn_module], beta=beta),
-        ],
+        transforms=transforms,
+        augmentations=augmentations,
+        aux_losses=aux_losses,
+        grad_clip=grad_clip,
+        plot_fn=plot_fn,
+        device=device,
+        show_bar=show_bar,
     )
 
 
@@ -143,10 +182,18 @@ def TCNLearner(
     hidden_size: int = 100,
     loss_func: nn.Module = nn.L1Loss(),
     metrics: list | None = None,
+    lr: float = 3e-3,
     n_skip: int | None = None,
     opt_func: type = torch.optim.Adam,
     input_norm: type[Scaler] | None = StandardScaler,
     output_norm: type[Scaler] | None = None,
+    transforms: list | None = None,
+    augmentations: list | None = None,
+    aux_losses: list | None = None,
+    grad_clip: float | None = None,
+    plot_fn=None,
+    device: torch.device | None = None,
+    show_bar: bool = True,
     **kwargs,
 ):
     """Create a Learner with a TCN model.
@@ -157,10 +204,18 @@ def TCNLearner(
         hidden_size: Number of channels in hidden TCN layers.
         loss_func: Loss function instance.
         metrics: List of metric functions.
+        lr: learning rate.
         n_skip: Number of initial time steps to skip in the loss (defaults to 2**num_layers).
         opt_func: Optimizer constructor.
         input_norm: Input normalization scaler class, or None to disable.
         output_norm: Output denormalization scaler class, or None to disable.
+        transforms: list of transforms (train + valid).
+        augmentations: list of augmentation transforms (train only).
+        aux_losses: list of auxiliary loss functions.
+        grad_clip: max gradient norm for clipping, or None to disable.
+        plot_fn: plotting function for show_batch/show_results.
+        device: target device (auto-detected if None).
+        show_bar: whether to show tqdm progress bars.
         **kwargs: Additional arguments passed to ``TCN``.
     """
     if metrics is None:
@@ -171,17 +226,40 @@ def TCNLearner(
     model = TCN(inp, out, num_layers, hidden_size, **kwargs)
     model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
 
-    return Learner(model, dls, loss_func=loss_func, opt_func=opt_func, metrics=metrics, n_skip=n_skip, lr=3e-3)
+    return Learner(
+        model,
+        dls,
+        loss_func=loss_func,
+        metrics=metrics,
+        lr=lr,
+        n_skip=n_skip,
+        opt_func=opt_func,
+        transforms=transforms,
+        augmentations=augmentations,
+        aux_losses=aux_losses,
+        grad_clip=grad_clip,
+        plot_fn=plot_fn,
+        device=device,
+        show_bar=show_bar,
+    )
 
 
 def CRNNLearner(
     dls,
     loss_func: nn.Module = nn.L1Loss(),
     metrics: list | None = None,
+    lr: float = 3e-3,
     n_skip: int = 0,
     opt_func: type = torch.optim.Adam,
     input_norm: type[Scaler] | None = StandardScaler,
     output_norm: type[Scaler] | None = None,
+    transforms: list | None = None,
+    augmentations: list | None = None,
+    aux_losses: list | None = None,
+    grad_clip: float | None = None,
+    plot_fn=None,
+    device: torch.device | None = None,
+    show_bar: bool = True,
     **kwargs,
 ):
     """Create a Learner with a CRNN model.
@@ -190,10 +268,18 @@ def CRNNLearner(
         dls: DataLoaders providing training and validation data.
         loss_func: Loss function instance.
         metrics: List of metric functions.
+        lr: learning rate.
         n_skip: Number of initial time steps to skip in the loss.
         opt_func: Optimizer constructor.
         input_norm: Input normalization scaler class, or None to disable.
         output_norm: Output denormalization scaler class, or None to disable.
+        transforms: list of transforms (train + valid).
+        augmentations: list of augmentation transforms (train only).
+        aux_losses: list of auxiliary loss functions.
+        grad_clip: max gradient norm for clipping, or None to disable.
+        plot_fn: plotting function for show_batch/show_results.
+        device: target device (auto-detected if None).
+        show_bar: whether to show tqdm progress bars.
         **kwargs: Additional arguments passed to ``CRNN``.
     """
     if metrics is None:
@@ -203,7 +289,22 @@ def CRNNLearner(
     model = CRNN(inp, out, **kwargs)
     model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
 
-    return Learner(model, dls, loss_func=loss_func, opt_func=opt_func, metrics=metrics, n_skip=n_skip, lr=3e-3)
+    return Learner(
+        model,
+        dls,
+        loss_func=loss_func,
+        metrics=metrics,
+        lr=lr,
+        n_skip=n_skip,
+        opt_func=opt_func,
+        transforms=transforms,
+        augmentations=augmentations,
+        aux_losses=aux_losses,
+        grad_clip=grad_clip,
+        plot_fn=plot_fn,
+        device=device,
+        show_bar=show_bar,
+    )
 
 
 def AR_TCNLearner(
@@ -211,10 +312,19 @@ def AR_TCNLearner(
     hl_depth: int = 3,
     alpha: float = 1,
     beta: float = 1,
+    loss_func=nn.L1Loss(),
     metrics: list | None = None,
+    lr: float = 3e-3,
     n_skip: int | None = None,
     opt_func: type = torch.optim.Adam,
     input_norm: type[Scaler] | None = StandardScaler,
+    transforms: list | None = None,
+    augmentations: list | None = None,
+    aux_losses: list | None = None,
+    grad_clip: float | None = None,
+    plot_fn=None,
+    device: torch.device | None = None,
+    show_bar: bool = True,
     **kwargs,
 ):
     """Create a Learner with an autoregressive TCN model.
@@ -224,33 +334,53 @@ def AR_TCNLearner(
         hl_depth: Number of TCN hidden layers.
         alpha: Regularization weight for smoothness penalty.
         beta: Regularization weight for sparsity penalty.
+        loss_func: loss function for training.
         metrics: Metric functions (defaults to RMSE).
+        lr: learning rate.
         n_skip: Number of initial time steps to skip in the loss (defaults to 2**hl_depth).
         opt_func: Optimizer constructor.
         input_norm: Input normalization scaler class, or None to disable.
+        transforms: list of transforms (train + valid); defaults to prediction_concat.
+        augmentations: list of augmentation transforms (train only).
+        aux_losses: list of auxiliary loss functions; defaults to activation regularizers.
+        grad_clip: max gradient norm for clipping, or None to disable.
+        plot_fn: plotting function for show_batch/show_results.
+        device: target device (auto-detected if None).
+        show_bar: whether to show tqdm progress bars.
         **kwargs: Additional arguments passed to ``TCN``.
     """
     if metrics is None:
         metrics = [fun_rmse]
     n_skip = 2**hl_depth if n_skip is None else n_skip
 
+    if transforms is None:
+        transforms = [prediction_concat(t_offset=0)]
+
     inp, out = get_io_size(dls)
     ar_model = AR_Model(TCN(inp + out, out, hl_depth, **kwargs), ar=False)
-    conv_module = ar_model.model.conv_layers[-1]
+
+    if aux_losses is None:
+        conv_module = ar_model.model.conv_layers[-1]
+        aux_losses = [
+            ActivationRegularizer(modules=[conv_module], alpha=alpha),
+            TemporalActivationRegularizer(modules=[conv_module], beta=beta),
+        ]
 
     model = ScaledModel.from_dls(ar_model, dls, input_norm, autoregressive=True)
 
     return Learner(
         model,
         dls,
-        loss_func=nn.L1Loss(),
-        opt_func=opt_func,
+        loss_func=loss_func,
         metrics=metrics,
+        lr=lr,
         n_skip=n_skip,
-        lr=3e-3,
-        transforms=[prediction_concat(t_offset=0)],
-        aux_losses=[
-            ActivationRegularizer(modules=[conv_module], alpha=alpha),
-            TemporalActivationRegularizer(modules=[conv_module], beta=beta),
-        ],
+        opt_func=opt_func,
+        transforms=transforms,
+        augmentations=augmentations,
+        aux_losses=aux_losses,
+        grad_clip=grad_clip,
+        plot_fn=plot_fn,
+        device=device,
+        show_bar=show_bar,
     )
