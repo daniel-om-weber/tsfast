@@ -305,6 +305,8 @@ def FranSysLearner(
     transforms: list | None = None,
     augmentations: list | None = None,
     aux_losses: list | None = None,
+    grad_clip: float | None = None,
+    plot_fn=None,
     input_norm: type | None = StandardScaler,
     output_norm: type | None = None,
     prognosis: nn.Module | None = None,
@@ -316,6 +318,8 @@ def FranSysLearner(
     init_diag_only: bool = False,
     final_layer: int = 0,
     init_sz_range: tuple[int, int] | None = None,
+    device: torch.device | None = None,
+    show_bar: bool = True,
     **kwargs,
 ) -> Learner:
     """Create a Learner configured for FranSys diagnosis/prognosis training.
@@ -331,6 +335,8 @@ def FranSysLearner(
         transforms: additional transforms (train + valid)
         augmentations: additional augmentations (train only)
         aux_losses: additional auxiliary losses
+        grad_clip: max gradient norm for clipping, or None to disable
+        plot_fn: plotting function for show_batch/show_results
         input_norm: scaler class for input normalization, None to disable
         output_norm: scaler class for output denormalization, None to disable
         prognosis: custom prognosis model (default: RNN with ret_full_hidden=True)
@@ -342,6 +348,8 @@ def FranSysLearner(
         init_diag_only: if True, limit diagnosis to init_sz during training
         final_layer: number of additional layers in the output head
         init_sz_range: if set, randomize init_sz during training
+        device: target device (auto-detected if None)
+        show_bar: whether to show tqdm progress bars
     """
     if metrics is None:
         metrics = [fun_rmse]
@@ -403,10 +411,14 @@ def FranSysLearner(
         dls,
         loss_func=loss_func,
         metrics=metrics,
+        lr=lr,
         n_skip=init_sz,
         opt_func=opt_func,
-        lr=lr,
         transforms=transforms,
         augmentations=augmentations,
         aux_losses=aux_losses,
+        grad_clip=grad_clip,
+        plot_fn=plot_fn,
+        device=device,
+        show_bar=show_bar,
     )
