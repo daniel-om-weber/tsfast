@@ -20,11 +20,16 @@ import numpy as np
 import torch
 from torch import nn
 
-import ray
-from ray import tune
-from ray.tune import Checkpoint
-from ray.tune.experiment.trial import ExportFormat
-from ray.tune.schedulers import PopulationBasedTraining
+try:
+    import ray
+    from ray import tune
+    from ray.tune import Checkpoint
+    from ray.tune.experiment.trial import ExportFormat
+    from ray.tune.schedulers import PopulationBasedTraining
+except ImportError:
+    raise ImportError(
+        "ray[tune] is required for hyperparameter optimization. Install it with: pip install 'tsfast[tune]'"
+    )
 
 
 def _worker_device() -> torch.device:

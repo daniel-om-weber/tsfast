@@ -82,15 +82,12 @@ results.
 ``` python
 from tsfast.basics import *
 
-# Load benchmark dataset and visualize
+# Load benchmark dataset
 dls = create_dls_silverbox()
-dls.show_batch(max_n=1)
 
-# Train an RNN
+# Train an RNN and visualize results
 lrn = RNNLearner(dls)
 lrn.fit_flat_cos(1)
-
-# Visualize results
 lrn.show_results(max_n=1)
 ```
 
