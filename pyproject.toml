@@ -14,7 +14,7 @@ keywords = ["time-series", "system-identification", "deep-learning", "pytorch", 
 classifiers = [
     "Natural Language :: English",
     "Intended Audience :: Developers",
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.10",
@@ -30,7 +30,6 @@ dependencies = [
     "tqdm",
     "identibench",
     "matplotlib",
-    "ray[tune]",
 ]
 
 [project.optional-dependencies]
@@ -38,6 +37,9 @@ onnx = [
     "onnx>=1.14",
     "onnxruntime>=1.16,<1.24; python_version == '3.10'",
     "onnxruntime>=1.16; python_version >= '3.11'",
+]
+tune = [
+    "ray[tune]",
 ]
 dev = [
     "pytest",
@@ -48,6 +50,7 @@ dev = [
     "twine",
     "jupytext",
     "pre-commit",
+    "ray[tune]",
     "onnx>=1.14",
     "onnxruntime>=1.16,<1.24; python_version == '3.10'",
     "onnxruntime>=1.16; python_version >= '3.11'",
@@ -90,7 +93,6 @@ line-length = 120
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401", "F403"]      # re-export barrels: unused imports + wildcard imports
 "tsfast/basics.py" = ["F401", "F403"] # re-export barrel
-"tsfast/quaternions.py" = ["F811"]    # @dispatch overloads and encodes type-dispatch
 
 [tool.jupytext]
 formats = "notebooks//ipynb,scripts//py:percent"
