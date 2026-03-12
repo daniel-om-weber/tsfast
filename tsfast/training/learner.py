@@ -9,6 +9,7 @@ import math
 import os
 from collections.abc import Callable
 from contextlib import contextmanager
+from pathlib import Path
 
 import torch
 from torch import Tensor, nn
@@ -131,6 +132,69 @@ class Learner:
         self._setup_composables()
         self.model.to(self.device)
         self.opt = self.opt_func(self.model.parameters(), lr=lr or self.lr)
+        pending = getattr(self, "_pending_opt_state", None)
+        if pending is not None:
+            self.opt.load_state_dict(pending)
+            self._pending_opt_state = None
+
+    # ── save / load ────────────────────────────────────────────────────────
+
+    def save_model(self, path: str | Path):
+        """Save model for inference. Includes weights and normalization state."""
+        torch.save(self.model, path)
+
+    def save(self, path: str | Path):
+        """Save entire learner state for training resume.
+
+        Pickles everything except ``dls`` (DataLoaders cannot be serialized).
+        If pickling fails (e.g. lambda loss functions), use
+        ``save_checkpoint`` / ``load_checkpoint`` instead.
+        """
+        state = {k: v for k, v in self.__dict__.items() if k != "dls"}
+        state["_class"] = type(self)
+        torch.save(state, path)
+
+    @classmethod
+    def load(cls, path: str | Path, dls: "DataLoaders") -> "Learner":
+        """Load a saved learner to resume training.
+
+        Args:
+            path: checkpoint file saved by ``save()``
+            dls: DataLoaders (must match the original training data layout)
+        """
+        state = torch.load(path, map_location=_auto_device(), weights_only=False)
+        klass = state.pop("_class", cls)
+        lrn = klass.__new__(klass)
+        lrn.__dict__.update(state)
+        lrn.dls = dls
+        return lrn
+
+    def save_checkpoint(self, path: str | Path):
+        """Save model weights, optimizer state, and training history.
+
+        Fallback for learners with unpicklable components (e.g. lambda losses).
+        Use ``load_checkpoint`` to restore into a manually constructed Learner.
+        """
+        state = {"model": self.model.state_dict(), "recorder": self.recorder}
+        if self.opt is not None:
+            state["opt"] = self.opt.state_dict()
+        torch.save(state, path)
+
+    def load_checkpoint(self, path: str | Path):
+        """Load model weights, optimizer state, and training history.
+
+        Restores state saved by ``save_checkpoint`` into this Learner.
+        """
+        ckpt = torch.load(path, map_location=self.device, weights_only=False)
+        self.model.load_state_dict(ckpt["model"])
+        self.model.to(self.device)
+        self.recorder = ckpt.get("recorder", [])
+        opt_state = ckpt.get("opt")
+        if opt_state is not None:
+            if self.opt is not None:
+                self.opt.load_state_dict(opt_state)
+            else:
+                self._pending_opt_state = opt_state
 
     # ── batch preparation ─────────────────────────────────────────────────
 
