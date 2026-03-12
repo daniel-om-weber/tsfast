@@ -6,10 +6,10 @@ ray = pytest.importorskip("ray")
 tune = pytest.importorskip("ray.tune")
 
 
-@pytest.fixture(scope="module", autouse=True)
+@pytest.fixture(scope="module")
 def ray_init_shutdown():
     """Start and stop Ray once for the module."""
-    ray.init(num_cpus=2, num_gpus=0, log_to_driver=True)
+    ray.init(num_cpus=2, num_gpus=0, include_dashboard=False)
     yield
     ray.shutdown()
 
@@ -23,7 +23,7 @@ def dls_silverbox():
 
 
 @pytest.mark.slow
-def test_learner_optimize_cpu_only(dls_silverbox):
+def test_learner_optimize_cpu_only(ray_init_shutdown, dls_silverbox):
     """HPOptimizer.optimize completes when workers have no GPU access.
 
     Regression test: DataLoaders created on a CUDA host keep device='cuda'
@@ -66,7 +66,7 @@ def test_learner_optimize_cpu_only(dls_silverbox):
 
 
 @pytest.mark.slow
-def test_learner_optimize_callable_lr(dls_silverbox):
+def test_learner_optimize_callable_lr(ray_init_shutdown, dls_silverbox):
     """HPOptimizer.optimize works when lr is a callable sampler.
 
     Regression test: ``log_uniform`` returns a plain callable, not a Ray Tune

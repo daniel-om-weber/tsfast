@@ -11,10 +11,8 @@ __all__ = [
 
 from collections.abc import Callable, Iterator
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from matplotlib.lines import Line2D
 from torch import Tensor
 
 
@@ -56,6 +54,8 @@ def plot_seqs_single_figure(
     n_samples: int, n_targ: int, samples: list, plot_func: Callable, outs: list | None = None, **kwargs
 ):
     """Plot multiple sample sequences in a single figure grid."""
+    import matplotlib.pyplot as plt
+
     rows = max(1, ((n_samples - 1) // 3) + 1)
     cols = min(3, n_samples)
     fig = plt.figure(figsize=(9, 2 * cols))
@@ -74,6 +74,8 @@ def plot_seqs_multi_figures(
     n_samples: int, n_targ: int, samples: list, plot_func: Callable, outs: list | None = None, **kwargs
 ):
     """Plot each sample sequence in its own separate figure."""
+    import matplotlib.pyplot as plt
+
     for i in range(n_samples):
         fig = plt.figure(figsize=(9, 3))
         axs = fig.subplots(nrows=n_targ + 1, sharex=True)
@@ -101,6 +103,9 @@ def plot_grad_flow(named_parameters: Iterator) -> None:
     Args:
         named_parameters: iterator of (name, parameter) pairs from a model
     """
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+
     ave_grads = []
     max_grads = []
     layers = []

@@ -1,8 +1,9 @@
 """NumPy-in/NumPy-out inference for trained Learners."""
 
-__all__ = ["InferenceWrapper"]
+__all__ = ["InferenceWrapper", "load_model"]
 
 import warnings
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -27,6 +28,20 @@ def _get_n_model_inputs(model: torch.nn.Module) -> int | None:
         for buf in model.input_norm.buffers():
             return buf.shape[-1]
     return None
+
+
+def load_model(path: str | Path, device: torch.device | None = None) -> torch.nn.Module:
+    """Load a saved model for inference.
+
+    Returns:
+        nn.Module in eval mode on the target device
+    """
+    from ..training.learner import _auto_device
+
+    device = device or _auto_device()
+    model = torch.load(path, map_location=device, weights_only=False)
+    model.eval()
+    return model
 
 
 class InferenceWrapper:

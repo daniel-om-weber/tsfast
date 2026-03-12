@@ -708,6 +708,154 @@ class TestLearner:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+#  Integration tests — save / load
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestSaveLoad:
+    def test_save_load_model(self, tmp_path):
+        """save_model / load_model roundtrip: predictions match."""
+        from tsfast.inference import load_model
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import Learner
+
+        dls = _SyntheticDls(n_u=1, n_y=1)
+        model = SimpleRNN(1, 1, hidden_size=20)
+        lrn = Learner(model, dls, loss_func=nn.MSELoss(), device=torch.device("cpu"))
+        lrn.fit(1)
+
+        preds_before, _ = lrn.get_preds()
+
+        path = tmp_path / "model.pth"
+        lrn.save_model(path)
+
+        loaded_model = load_model(path, device=torch.device("cpu"))
+        assert isinstance(loaded_model, nn.Module)
+
+        # Predictions from loaded model should match
+        loaded_model.eval()
+        with torch.no_grad():
+            batch = next(iter(dls.valid))
+            xb = batch[0]
+            result = loaded_model(xb)
+            pred = result[0] if isinstance(result, tuple) else result
+
+        lrn.model.eval()
+        with torch.no_grad():
+            result_orig = lrn.model(xb)
+            pred_orig = result_orig[0] if isinstance(result_orig, tuple) else result_orig
+
+        assert torch.allclose(pred, pred_orig)
+
+    def test_save_load_learner(self, tmp_path):
+        """save / load roundtrip: model, optimizer, recorder all restored."""
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import Learner
+
+        dls = _SyntheticDls(n_u=1, n_y=1)
+        model = SimpleRNN(1, 1, hidden_size=20)
+        lrn = Learner(model, dls, loss_func=nn.MSELoss(), device=torch.device("cpu"))
+        lrn.fit(2)
+
+        preds_before, _ = lrn.get_preds()
+        recorder_before = list(lrn.recorder)
+
+        path = tmp_path / "learner.pth"
+        lrn.save(path)
+
+        # Load with same dls (validation data must match for prediction comparison)
+        lrn2 = Learner.load(path, dls=dls)
+        assert isinstance(lrn2, Learner)
+        assert lrn2.recorder == recorder_before
+
+        # Predictions should match
+        preds_after, _ = lrn2.get_preds()
+        assert torch.allclose(preds_before, preds_after)
+
+    def test_save_load_learner_resume_training(self, tmp_path):
+        """Resumed training appends to loaded recorder."""
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import Learner
+
+        dls = _SyntheticDls(n_u=1, n_y=1)
+        model = SimpleRNN(1, 1, hidden_size=20)
+        lrn = Learner(model, dls, loss_func=nn.MSELoss(), device=torch.device("cpu"))
+        lrn.fit(2)
+        assert len(lrn.recorder) == 2
+
+        path = tmp_path / "learner.pth"
+        lrn.save(path)
+
+        lrn2 = Learner.load(path, dls=dls)
+        lrn2.fit(3)
+        assert len(lrn2.recorder) == 5  # 2 original + 3 new
+
+    def test_save_load_tbptt_learner(self, tmp_path):
+        """save / load preserves TbpttLearner subclass and sub_seq_len."""
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import TbpttLearner
+
+        dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True)
+        lrn = TbpttLearner(model, dls, loss_func=nn.MSELoss(), sub_seq_len=25, device=torch.device("cpu"))
+        lrn.fit(1)
+
+        path = tmp_path / "tbptt.pth"
+        lrn.save(path)
+
+        lrn2 = TbpttLearner.load(path, dls=dls)
+        assert isinstance(lrn2, TbpttLearner)
+        assert lrn2.sub_seq_len == 25
+        assert len(lrn2.recorder) == 1
+
+    def test_save_load_checkpoint(self, tmp_path):
+        """save_checkpoint / load_checkpoint roundtrip."""
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import Learner
+
+        dls = _SyntheticDls(n_u=1, n_y=1)
+        model = SimpleRNN(1, 1, hidden_size=20)
+        lrn = Learner(model, dls, loss_func=nn.MSELoss(), device=torch.device("cpu"))
+        lrn.fit(2)
+
+        preds_before, _ = lrn.get_preds()
+        recorder_before = list(lrn.recorder)
+
+        path = tmp_path / "checkpoint.pth"
+        lrn.save_checkpoint(path)
+
+        # Reconstruct learner and load checkpoint
+        model2 = SimpleRNN(1, 1, hidden_size=20)
+        lrn2 = Learner(model2, dls, loss_func=nn.MSELoss(), device=torch.device("cpu"))
+        lrn2.load_checkpoint(path)
+
+        assert lrn2.recorder == recorder_before
+        preds_after, _ = lrn2.get_preds()
+        assert torch.allclose(preds_before, preds_after)
+
+    def test_save_load_checkpoint_resume_training(self, tmp_path):
+        """load_checkpoint + fit resumes with optimizer state and recorder."""
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import Learner
+
+        dls = _SyntheticDls(n_u=1, n_y=1)
+        model = SimpleRNN(1, 1, hidden_size=20)
+        lrn = Learner(model, dls, loss_func=nn.MSELoss(), device=torch.device("cpu"))
+        lrn.fit(2)
+        assert len(lrn.recorder) == 2
+
+        path = tmp_path / "checkpoint.pth"
+        lrn.save_checkpoint(path)
+
+        # Reconstruct and resume
+        model2 = SimpleRNN(1, 1, hidden_size=20)
+        lrn2 = Learner(model2, dls, loss_func=nn.MSELoss(), device=torch.device("cpu"))
+        lrn2.load_checkpoint(path)
+        lrn2.fit(3)
+        assert len(lrn2.recorder) == 5  # 2 loaded + 3 new
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 #  Integration tests — TbpttLearner
 # ──────────────────────────────────────────────────────────────────────────────
 
