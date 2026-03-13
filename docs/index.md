@@ -24,23 +24,22 @@ hide:
 - **Time Series Models** — RNNs (DenseNet, Residual), TCNs, CRNNs with layer normalization
 - **Integrated Training** — `RNNLearner`, `TCNLearner`, `CRNNLearner` with custom losses (`nrmse`, `cut_loss`) and transforms
 - **System Identification** — Simulation, N-step prediction, FranSys, autoregressive models
+- **Physics-Informed NNs** — Embed governing equations into training via `CollocationLoss`, `PhysicsLoss`, and `PIRNN`
 - **Hyperparameter Optimization** — Ray Tune integration via `HPOptimizer`
-- **Deployment** — `InferenceWrapper` for NumPy-in/NumPy-out inference, ONNX export
+- **Deployment** — `InferenceWrapper` for NumPy-in/NumPy-out inference, ONNX export, model save/load
+- **Performance** — CUDA graph acceleration via `GraphedStatefulModel` for low-overhead GPU training
 
 ## Quick Start
 
 ```python
 from tsfast.basics import *
 
-# Load benchmark dataset and visualize
+# Load benchmark dataset
 dls = create_dls_silverbox()
-dls.show_batch(max_n=1)
 
-# Train an RNN
+# Train an RNN and visualize results
 lrn = RNNLearner(dls)
 lrn.fit_flat_cos(1)
-
-# Visualize results
 lrn.show_results(max_n=1)
 ```
 

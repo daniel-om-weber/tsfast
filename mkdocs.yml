@@ -101,6 +101,8 @@ nav:
     - Hyperparameter Optimization: examples/notebooks/14_hyperparameter_optimization.ipynb
     - ONNX Export: examples/notebooks/15_onnx_export.ipynb
     - Stateful TBPTT: examples/notebooks/16_stateful_tbptt.ipynb
+    - CUDA Graphs: examples/notebooks/17_cuda_graphs.ipynb
+    - Saving and Loading: examples/notebooks/18_saving_and_loading.ipynb
   - API Reference:
     - Data (tsdata):
       - Pipeline: api/tsdata/pipeline.md
@@ -124,6 +126,8 @@ nav:
       - RNN: api/models/rnn.md
       - CNN / TCN: api/models/cnn.md
       - Scaling: api/models/scaling.md
+      - State: api/models/state.md
+      - CUDA Graphs: api/models/cudagraph.md
     - Prediction:
       - Autoregressive: api/prediction/ar.md
       - FranSys: api/prediction/fransys.md
