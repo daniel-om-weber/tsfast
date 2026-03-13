@@ -6,7 +6,7 @@ for GRU-based TBPTT training.  Runs on synthetic data — no dataset
 download required.
 
 Usage:
-    uv run python examples/04_benchmark_rnn.py
+    uv run python benchmarks/benchmark_rnn.py
 """
 
 import time

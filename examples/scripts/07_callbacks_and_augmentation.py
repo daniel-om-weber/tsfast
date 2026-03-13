@@ -33,7 +33,7 @@
 # - [Example 00: Your First Model](00_your_first_model.ipynb)
 # - [Example 01: Understanding the Data Pipeline](01_data_pipeline.ipynb)
 # - [Example 02: Simulation](02_simulation.ipynb)
-# - [Example 04: Benchmark RNN](04_benchmark_rnn.py)
+# - [Benchmark RNN](../../benchmarks/benchmark_rnn.py)
 
 # %% [markdown]
 # ## Setup

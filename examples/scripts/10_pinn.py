@@ -36,7 +36,7 @@
 # - [Example 01: Understanding the Data Pipeline](01_data_pipeline.ipynb)
 # - [Example 02: Simulation](02_simulation.ipynb)
 # - [Example 03: Prediction -- Using Output Feedback](03_prediction.ipynb)
-# - [Example 04: Benchmark RNN](04_benchmark_rnn.py)
+# - [Benchmark RNN](../../benchmarks/benchmark_rnn.py)
 
 # %% [markdown]
 # ## Setup
