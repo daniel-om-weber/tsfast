@@ -150,7 +150,7 @@ print(f"Speedup:     {t_eager / t_graph:.1f}x")
 #
 # Under the hood this wraps the model in `GraphedStatefulModel` before passing
 # it to `TbpttLearner`. See Example 16 for TBPTT details and
-# `examples/04_benchmark_rnn.py` for comprehensive training benchmarks.
+# `benchmarks/benchmark_rnn.py` for comprehensive training benchmarks.
 
 # %% [markdown]
 # ## Key Takeaways
