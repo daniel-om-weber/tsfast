@@ -166,6 +166,35 @@ lrn_wmae = RNNLearner(dls, rnn_type='lstm', loss_func=weighted_mae, metrics=[fun
 lrn_wmae.fit_flat_cos(n_epoch=5, lr=3e-3)
 
 # %% [markdown]
+# ## Custom Learning Rate Schedules
+#
+# All examples so far use `fit_flat_cos`, which keeps the learning rate flat
+# then cosine-decays it to zero. For more control, call `fit()` directly with
+# a `scheduler_fn`. TSFast provides several schedule functions:
+#
+# - **`sched_flat_cos`** -- flat then cosine decay (used by `fit_flat_cos`)
+# - **`sched_ramp`** -- constant at `start`, linear ramp to `end`, then constant
+# - **`sched_lin_p`** -- linear decay from `start` to `end`, reaching `end` by
+#   position `p`
+#
+# `scheduler_fn` is a factory `(optimizer, total_steps) -> scheduler` that
+# creates a PyTorch LR scheduler. The schedule functions return a multiplier
+# for a given position in [0, 1].
+
+# %%
+from torch.optim.lr_scheduler import LambdaLR
+from tsfast.training import sched_ramp
+
+lrn_sched = RNNLearner(dls, rnn_type='lstm', metrics=[fun_rmse])
+lrn_sched.fit(
+    n_epoch=5,
+    lr=3e-3,
+    scheduler_fn=lambda opt, steps: LambdaLR(
+        opt, lambda s: sched_ramp(start=1.0, end=0.01, pos=s / steps)
+    ),
+)
+
+# %% [markdown]
 # ## Key Takeaways
 #
 # - **MAE (default)** is robust to outliers -- a good default for system
@@ -181,5 +210,8 @@ lrn_wmae.fit_flat_cos(n_epoch=5, lr=3e-3)
 #   computing the loss in normalized space.
 # - **`weighted_mae`** emphasizes early timesteps, useful for transient-response
 #   modeling.
+# - **`fit()` with `scheduler_fn`** gives full control over the learning rate
+#   schedule. Use `sched_ramp` or `sched_lin_p` for custom warmup/decay
+#   profiles.
 # - Choose metrics that match your evaluation requirements -- different
 #   applications call for different measures of model quality.

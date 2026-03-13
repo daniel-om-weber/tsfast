@@ -60,7 +60,11 @@ plugins:
 markdown_extensions:
   - admonition
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.inlinehilite
@@ -77,11 +81,13 @@ markdown_extensions:
 
 extra_javascript:
   - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+  - https://unpkg.com/mermaid@11/dist/mermaid.min.js
 
 nav:
   - Home: index.md
   - Getting Started:
     - Installation: getting-started/installation.md
+    - Concepts: getting-started/concepts.md
     - Your First Model: examples/notebooks/00_your_first_model.ipynb
   - Tutorials:
     - Data Pipeline: examples/notebooks/01_data_pipeline.ipynb
@@ -90,19 +96,19 @@ nav:
     - Model Architectures: examples/notebooks/04_model_architectures.ipynb
     - Losses and Metrics: examples/notebooks/05_losses_and_metrics.ipynb
     - Custom Normalization: examples/notebooks/06_custom_normalization.ipynb
-    - Callbacks and Augmentation: examples/notebooks/07_callbacks_and_augmentation.ipynb
+    - Augmentation and Regularization: examples/notebooks/07_callbacks_and_augmentation.ipynb
+    - Saving and Loading: examples/notebooks/08_saving_and_loading.ipynb
+    - Custom Data Pipelines: examples/notebooks/09_custom_data_pipelines.ipynb
   - Advanced:
-    - FranSys: examples/notebooks/08_fransys.ipynb
-    - Autoregressive Models: examples/notebooks/09_autoregressive.ipynb
-    - Physics-Informed NNs: examples/notebooks/10_pinn.ipynb
-    - IdentiBench: examples/notebooks/11_identibench.ipynb
-    - Seq-to-Scalar: examples/notebooks/12_seq_to_scalar.ipynb
-    - Custom Data Pipelines: examples/notebooks/13_custom_data_pipelines.ipynb
-    - Hyperparameter Optimization: examples/notebooks/14_hyperparameter_optimization.ipynb
-    - ONNX Export: examples/notebooks/15_onnx_export.ipynb
-    - Stateful TBPTT: examples/notebooks/16_stateful_tbptt.ipynb
-    - CUDA Graphs: examples/notebooks/17_cuda_graphs.ipynb
-    - Saving and Loading: examples/notebooks/18_saving_and_loading.ipynb
+    - FranSys: examples/notebooks/10_fransys.ipynb
+    - Autoregressive Models: examples/notebooks/11_autoregressive.ipynb
+    - Physics-Informed NNs: examples/notebooks/12_pinn.ipynb
+    - IdentiBench: examples/notebooks/13_identibench.ipynb
+    - Seq-to-Scalar: examples/notebooks/14_seq_to_scalar.ipynb
+    - Hyperparameter Optimization: examples/notebooks/15_hyperparameter_optimization.ipynb
+    - ONNX Export: examples/notebooks/16_onnx_export.ipynb
+    - Stateful TBPTT: examples/notebooks/17_stateful_tbptt.ipynb
+    - CUDA Graphs: examples/notebooks/18_cuda_graphs.ipynb
   - API Reference:
     - Data (tsdata):
       - Pipeline: api/tsdata/pipeline.md

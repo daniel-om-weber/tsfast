@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown]
-# # Example 07: Augmentations, Auxiliary Losses, and Training Options
+# # Example 07: Augmentations, Regularizers, and Training Options
 #
 # TSFast provides composable building blocks that customize training without
 # modifying model code:
@@ -46,7 +46,8 @@ from tsfast.training import (
     fun_rmse,
     ActivationRegularizer,
     TemporalActivationRegularizer,
-    noise, vary_seq_len, truncate_sequence,
+    noise, bias, vary_seq_len, truncate_sequence,
+    plot_grad_flow,
 )
 
 # %% [markdown]
@@ -78,6 +79,12 @@ lrn_noisy = RNNLearner(
 #
 # Adds a constant offset per signal per sample. This simulates sensor drift or
 # calibration errors, making the model more robust to such shifts.
+
+# %%
+lrn_bias = RNNLearner(
+    dls, rnn_type='lstm', metrics=[fun_rmse],
+    augmentations=[bias(std=0.05)],
+)
 
 # %% [markdown]
 # ### Training with Augmentation
@@ -128,6 +135,18 @@ lrn_reg.show_results(max_n=2)
 # %%
 lrn_clip = RNNLearner(dls, rnn_type='lstm', metrics=[fun_rmse], grad_clip=10)
 lrn_clip.fit_flat_cos(n_epoch=5, lr=3e-3)
+
+# %% [markdown]
+# ## Diagnosing Gradient Issues
+#
+# When training is unstable or the model isn't learning, visualizing gradients
+# helps identify the problem. `plot_grad_flow` shows the gradient magnitude
+# at each layer -- vanishing gradients appear as near-zero bars, exploding
+# gradients as very tall bars.
+
+# %%
+lrn_clip.train_one_epoch()
+plot_grad_flow(lrn_clip.model.named_parameters())
 
 # %% [markdown]
 # ## vary_seq_len
@@ -187,6 +206,8 @@ lrn_combined.show_results(max_n=2)
 #   predictions with activation and temporal penalties. Pass them as
 #   `aux_losses=[...]` or via `lrn.aux_losses.append(...)`.
 # - **`grad_clip`** prevents exploding gradients on long sequences.
+# - **`plot_grad_flow`** visualizes gradient magnitudes per layer -- use it to
+#   diagnose vanishing or exploding gradients.
 # - **`vary_seq_len`** acts as augmentation by varying sequence length each
 #   batch.
 # - **`truncate_sequence`** implements curriculum learning with progressive

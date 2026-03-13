@@ -103,6 +103,29 @@ print(f"Validation loss: {val_loss}")
 print(f"Validation metrics: {val_metrics}")
 
 # %% [markdown]
+# ## Plotting Training History
+#
+# The `recorder` stores training and validation loss (plus any metrics) for
+# each epoch. This is useful for diagnosing underfitting, overfitting, or
+# unstable training.
+
+# %%
+import matplotlib.pyplot as plt
+
+epochs = range(1, len(lrn.recorder) + 1)
+train_losses = [row[0] for row in lrn.recorder]
+val_losses = [row[1] for row in lrn.recorder]
+
+fig, ax = plt.subplots()
+ax.plot(epochs, train_losses, label='Train loss')
+ax.plot(epochs, val_losses, label='Valid loss')
+ax.set_xlabel('Epoch')
+ax.set_ylabel('Loss')
+ax.legend()
+ax.set_title('Training History')
+plt.show()
+
+# %% [markdown]
 # ## Getting Predictions
 #
 # `get_preds` returns a tuple of `(predictions, targets)` as tensors. This is
@@ -160,6 +183,8 @@ print(f"Output shape: {y_pred.shape}")
 #   The model must learn the full system dynamics from the excitation signal u(t).
 # - **`n_skip` handles the RNN warmup transient** by excluding early timesteps from
 #   the loss, so the model isn't penalized while its hidden state initializes.
+# - **`lrn.recorder`** stores per-epoch training and validation loss (plus
+#   metrics). Plot it to diagnose training progress.
 # - **Pass `dl=` to evaluate on a specific split**: e.g. `dl=lrn.dls.test`
 #   for the test set (defaults to validation).
 # - **`InferenceWrapper` provides numpy-in / numpy-out inference** with automatic

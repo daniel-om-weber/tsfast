@@ -74,6 +74,43 @@ for f in files:
     print(f"  {f.parent.name}/{f.name}")
 
 # %% [markdown]
+# ## Converting Your Data to HDF5
+#
+# TSFast expects data in HDF5 format. If your data is in CSV files or numpy
+# arrays, convert it with a few lines of code. Each HDF5 file should contain
+# one experiment or recording, with each signal stored as a 1-D dataset.
+# Organize files into `train/`, `valid/`, and optionally `test/`
+# subdirectories.
+#
+# **From numpy arrays:**
+#
+# ```python
+# import h5py
+# import numpy as np
+#
+# u = np.load('my_input.npy')   # shape: (timesteps,)
+# y = np.load('my_output.npy')  # shape: (timesteps,)
+#
+# with h5py.File('train/experiment_01.hdf5', 'w') as f:
+#     f.create_dataset('u', data=u)
+#     f.create_dataset('y', data=y)
+# ```
+#
+# **From CSV files:**
+#
+# ```python
+# import pandas as pd
+# import h5py
+#
+# df = pd.read_csv('experiment.csv')
+# with h5py.File('train/experiment_01.hdf5', 'w') as f:
+#     f.create_dataset('u', data=df['input_column'].values)
+#     f.create_dataset('y', data=df['output_column'].values)
+# ```
+#
+# Then load with `create_dls(u=['u'], y=['y'], dataset=path)` as shown below.
+
+# %% [markdown]
 # ## The Standard Approach
 #
 # Before building anything custom, let's see the standard `create_dls` call for

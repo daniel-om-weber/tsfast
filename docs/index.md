@@ -32,14 +32,15 @@ hide:
 ## Quick Start
 
 ```python
-from tsfast.basics import *
+from tsfast.tsdata.benchmark import create_dls_silverbox
+from tsfast.training import RNNLearner
 
 # Load benchmark dataset
 dls = create_dls_silverbox()
 
 # Train an RNN and visualize results
 lrn = RNNLearner(dls)
-lrn.fit_flat_cos(1)
+lrn.fit_flat_cos(n_epoch=1)
 lrn.show_results(max_n=1)
 ```
 
