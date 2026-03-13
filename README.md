@@ -24,36 +24,25 @@ utilities.
 
 ## Key Features
 
-- **Specialized Data Handling for Time Series**:
-  - HDF5-backed data pipeline with signal blocks for flexible sequence
-    data processing.
-  - Includes a range of transforms tailored for sequences, such as
-    noise injection and normalization adapted for time series tensors.
-  - Features advanced data loading with TBPTT (Truncated
-    Backpropagation Through Time) support.
-- **Predefined Datasets & Helpers**: Offers easy-to-use benchmark
-  datasets (e.g., `create_dls_silverbox` from `identibench`) for rapid
-  prototyping and experimentation.
-- **Tailored Time Series Models**: Provides implementations of Recurrent
-  Neural Networks (RNNs, including `DenseNet_RNN`, `ResidualBlock_RNN`),
-  Convolutional Neural Networks (TCNs, `CausalConv1d`),
-  and combined architectures (`CRNN`, `SeperateCRNN`)
-  specifically designed for sequence modeling. Includes building blocks
-  like `SeqLinear` and layer normalization.
-- **Integrated Training**: Features `RNNLearner`, `TCNLearner`,
-  `CRNNLearner`, etc., with a lightweight pure-PyTorch training loop,
-  custom time-series losses (e.g., `fun_rmse`, `nrmse`), and composable
-  transforms for augmentation and regularization.
-- **System Identification & Prediction**:
-  - Supports simulation (prediction based on inputs) and N-step ahead
-    forecasting.
-  - Includes specialized models for system identification
-    tasks like FRANSYS (`FranSys`, `FranSysLearner`) and AR models
-    (`AR_Model`, `ARProg`).
-  - Provides an `InferenceWrapper` for easier model deployment and
-    prediction.
-- **Hyperparameter Optimization**: Integrates with Ray Tune via
-  `HPOptimizer` for efficient hyperparameter searching.
+- **Specialized Data Handling** — HDF5-backed data pipeline with
+  sequence transforms, noise injection, normalization, and TBPTT
+  (Truncated Backpropagation Through Time) support.
+- **Benchmark Datasets** — One-line access to Silverbox,
+  Wiener-Hammerstein, Cascaded Tanks, and more via `identibench`.
+- **Time Series Models** — RNNs (DenseNet, Residual), TCNs, CRNNs
+  with layer normalization, and combined architectures.
+- **Integrated Training** — `RNNLearner`, `TCNLearner`, `CRNNLearner`
+  with custom losses (`nrmse`, `cut_loss`) and composable transforms.
+- **System Identification** — Simulation, N-step prediction, FranSys,
+  and autoregressive models with `InferenceWrapper` for deployment.
+- **Physics-Informed NNs** — Embed governing equations into training
+  via `CollocationLoss`, `PhysicsLoss`, and `PIRNN`.
+- **Hyperparameter Optimization** — Ray Tune integration via
+  `HPOptimizer`.
+- **Deployment** — Model save/load, `InferenceWrapper` for
+  NumPy-in/NumPy-out inference, and ONNX export.
+- **Performance** — CUDA graph acceleration via `GraphedStatefulModel`
+  for low-overhead GPU training.
 
 ## Installation
 
