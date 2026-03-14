@@ -1,5 +1,6 @@
 """Tests for the Ray Tune hyperparameter optimization integration."""
 
+import os
 import pytest
 
 ray = pytest.importorskip("ray")
@@ -9,6 +10,7 @@ tune = pytest.importorskip("ray.tune")
 @pytest.fixture(scope="module")
 def ray_init_shutdown():
     """Start and stop Ray once for the module."""
+    os.environ["RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO"] = "0"
     ray.init(num_cpus=2, num_gpus=0, include_dashboard=False)
     yield
     ray.shutdown()
@@ -23,85 +25,125 @@ def dls_silverbox():
 
 
 @pytest.mark.slow
-def test_learner_optimize_cpu_only(ray_init_shutdown, dls_silverbox):
-    """HPOptimizer.optimize completes when workers have no GPU access.
+def test_trainable_cpu(ray_init_shutdown, dls_silverbox):
+    """Training function with ray_device completes on CPU-only workers.
 
     Regression test: DataLoaders created on a CUDA host keep device='cuda'
-    after being serialized to Ray workers that only have CPU.  The optimize
-    path must move the DataLoaders to the worker's device before building
-    the Learner, otherwise ``dls.one_batch()`` raises
-    ``RuntimeError: No CUDA GPUs are available``.
+    after being serialized to Ray workers that only have CPU.  The trainable
+    must work correctly on CPU-only workers.
     """
-    from tsfast.training import RNNLearner
-    from tsfast.tune import HPOptimizer
-    from tsfast.training import fun_rmse
+    from tsfast.training import RNNLearner, fun_rmse
+    from tsfast.tune import ray_device, report_metrics, resume_checkpoint
 
-    def create_learner(dls, config):
-        return RNNLearner(
+    dls = dls_silverbox
+
+    def trainable(config):
+        lrn = RNNLearner(
             dls,
             rnn_type=config["rnn_type"],
             hidden_size=config["hidden_size"],
             n_skip=5,
             metrics=[fun_rmse],
+            device=ray_device(),
         )
+        resume_checkpoint(lrn)
+        with lrn.no_bar(), report_metrics(lrn):
+            lrn.fit_flat_cos(config["n_epoch"], lr=config.get("lr"))
 
-    search_config = {
-        "rnn_type": tune.choice(["gru"]),
-        "hidden_size": tune.choice([32]),
-        "n_epoch": 1,
-        "lr": 3e-3,
-    }
-
-    optimizer = HPOptimizer(create_lrn=create_learner, dls=dls_silverbox)
-    results = optimizer.optimize(
-        config=search_config,
-        num_samples=1,
-        resources_per_trial={"cpu": 1, "gpu": 0},
+    tuner = tune.Tuner(
+        tune.with_resources(trainable, {"cpu": 1, "gpu": 0}),
+        param_space={
+            "rnn_type": tune.choice(["gru"]),
+            "hidden_size": tune.choice([32]),
+            "n_epoch": 1,
+            "lr": 3e-3,
+        },
+        tune_config=tune.TuneConfig(metric="valid_loss", mode="min", num_samples=1),
     )
+    results = tuner.fit()
 
-    assert results is not None
-    best = optimizer.analysis.get_best_config(metric="valid_loss", mode="min")
-    assert "rnn_type" in best
-    assert "hidden_size" in best
+    assert not results.errors
+    best = results.get_best_result()
+    assert best.config["rnn_type"] == "gru"
+    assert best.config["hidden_size"] == 32
+    assert "valid_loss" in best.metrics
 
 
 @pytest.mark.slow
-def test_learner_optimize_callable_lr(ray_init_shutdown, dls_silverbox):
-    """HPOptimizer.optimize works when lr is a callable sampler.
+def test_trainable_loguniform(ray_init_shutdown, dls_silverbox):
+    """tune.loguniform produces a concrete float by the time the trainable runs."""
+    from tsfast.training import RNNLearner, fun_rmse
+    from tsfast.tune import ray_device, report_metrics
 
-    Regression test: ``log_uniform`` returns a plain callable, not a Ray Tune
-    sampling primitive.  ``learner_optimize`` must call it to obtain a float
-    before assigning to ``lrn.lr``, otherwise ``fit_flat_cos`` raises
-    ``TypeError: unsupported operand type(s) for /: 'function' and 'float'``.
-    """
-    from tsfast.training import RNNLearner
-    from tsfast.tune import HPOptimizer, log_uniform
-    from tsfast.training import fun_rmse
+    dls = dls_silverbox
 
-    def create_learner(dls, config):
-        return RNNLearner(
+    def trainable(config):
+        lrn = RNNLearner(
             dls,
             rnn_type=config["rnn_type"],
             hidden_size=config["hidden_size"],
             n_skip=5,
             metrics=[fun_rmse],
+            device=ray_device(),
         )
+        with lrn.no_bar(), report_metrics(lrn):
+            lrn.fit_flat_cos(config["n_epoch"], lr=config.get("lr"))
 
-    search_config = {
-        "rnn_type": tune.choice(["gru"]),
-        "hidden_size": tune.choice([32]),
-        "lr": log_uniform(1e-4, 1e-2),
-        "n_epoch": 1,
-    }
+    tuner = tune.Tuner(
+        tune.with_resources(trainable, {"cpu": 1, "gpu": 0}),
+        param_space={
+            "rnn_type": tune.choice(["gru"]),
+            "hidden_size": tune.choice([32]),
+            "lr": tune.loguniform(1e-4, 1e-2),
+            "n_epoch": 1,
+        },
+        tune_config=tune.TuneConfig(metric="valid_loss", mode="min", num_samples=1),
+    )
+    results = tuner.fit()
 
-    optimizer = HPOptimizer(create_lrn=create_learner, dls=dls_silverbox)
-    results = optimizer.optimize(
-        config=search_config,
-        num_samples=1,
-        resources_per_trial={"cpu": 1, "gpu": 0},
+    assert not results.errors
+    best = results.get_best_result()
+    assert isinstance(best.config["lr"], float)
+    assert 1e-4 <= best.config["lr"] <= 1e-2
+
+
+@pytest.mark.slow
+def test_report_metrics_restores_log_epoch(ray_init_shutdown, dls_silverbox):
+    """report_metrics restores the original log_epoch after the context exits."""
+    from tsfast.training import RNNLearner, fun_rmse
+    from tsfast.tune import report_metrics
+
+    lrn = RNNLearner(
+        dls_silverbox,
+        rnn_type="gru",
+        hidden_size=16,
+        n_skip=5,
+        metrics=[fun_rmse],
     )
 
-    assert results is not None
-    best = optimizer.analysis.get_best_config(metric="valid_loss", mode="min")
-    assert "rnn_type" in best
-    assert isinstance(best["lr"], float) or callable(best["lr"])
+    assert "log_epoch" not in lrn.__dict__
+
+    with report_metrics(lrn):
+        assert "log_epoch" in lrn.__dict__
+
+    assert "log_epoch" not in lrn.__dict__
+
+
+def test_learner_freed_by_refcount(dls_silverbox):
+    """Learner is freed by refcounting alone after fit() — no gc.collect() needed."""
+    import gc
+    import weakref
+    from tsfast.training import RNNLearner, fun_rmse
+
+    lrn = RNNLearner(
+        dls_silverbox, rnn_type="gru", hidden_size=16, n_skip=5, metrics=[fun_rmse],
+    )
+    ref = weakref.ref(lrn)
+    lrn.fit_flat_cos(1, lr=3e-3)
+
+    gc.disable()
+    try:
+        del lrn
+        assert ref() is None, "Learner not freed by refcount — cycle exists after fit()"
+    finally:
+        gc.enable()
