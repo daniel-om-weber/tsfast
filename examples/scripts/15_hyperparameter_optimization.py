@@ -41,7 +41,7 @@
 
 # %%
 from tsfast.tsdata.benchmark import create_dls_silverbox
-from tsfast.tune import HPOptimizer, log_uniform
+from tsfast.tune import ray_device, report_metrics, resume_checkpoint
 from tsfast.training import RNNLearner, fun_rmse
 from ray import tune
 
@@ -61,8 +61,13 @@ from ray import tune
 #   combining exploration with exploitation.
 #
 # Ray Tune provides all of these strategies (and more) behind a unified API.
-# TSFast's `HPOptimizer` wraps Ray Tune so you can search over model
-# configurations with minimal boilerplate.
+# TSFast provides three helpers that bridge a Learner and Ray Tune:
+#
+# - **`ray_device()`** -- detects the GPU assigned to the current Ray worker.
+# - **`report_metrics(lrn)`** -- patches `log_epoch` to report metrics and
+#   checkpoints to Ray Tune after every epoch.
+# - **`resume_checkpoint(lrn)`** -- restores from a Ray Tune checkpoint when
+#   resuming a trial (e.g. population-based training).
 
 # %% [markdown]
 # ## Prepare the DataLoaders
@@ -74,22 +79,25 @@ from ray import tune
 dls = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
 
 # %% [markdown]
-# ## Define a Learner Factory
+# ## Define a Training Function
 #
-# `HPOptimizer` needs a factory function that takes `(dls, config)` and returns
-# a configured Learner. Ray Tune calls this function once per trial, each time
-# with a different hyperparameter configuration sampled from the search space.
+# Ray Tune calls a training function once per trial, each time with a different
+# hyperparameter configuration sampled from the search space. The DataLoaders
+# are captured via closure.
 
 # %%
-def create_learner(dls, config):
-    """Create a configured RNNLearner from hyperparameter config."""
-    return RNNLearner(
+def train(config):
+    lrn = RNNLearner(
         dls,
         rnn_type=config["rnn_type"],
         hidden_size=config["hidden_size"],
         n_skip=50,
         metrics=[fun_rmse],
+        device=ray_device(),
     )
+    resume_checkpoint(lrn)
+    with lrn.no_bar(), report_metrics(lrn):
+        lrn.fit_flat_cos(config["n_epoch"], lr=config.get("lr"))
 
 
 # %% [markdown]
@@ -100,117 +108,93 @@ def create_learner(dls, config):
 #
 # - **`tune.choice`** -- samples uniformly from a list of discrete options.
 #   Good for categorical parameters like architecture type or layer count.
-# - **`log_uniform`** -- samples uniformly on a logarithmic scale. Ideal for
-#   parameters that span orders of magnitude, such as learning rate.
+# - **`tune.loguniform`** -- samples uniformly on a logarithmic scale. Ideal
+#   for parameters that span orders of magnitude, such as learning rate.
 #
-# We start with a small search over two parameters: RNN cell type and hidden
-# size.
-
-# %%
-search_config = {
-    "rnn_type": tune.choice(["gru", "lstm"]),
-    "hidden_size": tune.choice([32, 40]),
-    "n_epoch": 3,
-    "lr": 3e-3,
-}
-
-# %% [markdown]
-# The config also contains fixed training parameters:
-#
-# - **`n_epoch=3`** -- each trial trains for 3 epochs (enough to compare
-#   configurations, not enough for final training).
-# - **`lr=3e-3`** -- fixed learning rate for all trials in this first search.
+# Training parameters (`n_epoch`, `lr`) go in the same dict --
+# they are read by the training function and logged by Ray Tune.
 
 # %% [markdown]
 # ## Run the Optimization
 #
-# `HPOptimizer` takes the learner factory and the DataLoaders. Calling
-# `optimize` launches the search: `num_samples=4` runs 4 independent trials,
-# each with a different hyperparameter combination drawn from `search_config`.
-#
-# The default training function uses `fit_flat_cos` and reports training loss,
-# validation loss, and metrics to Ray Tune after every epoch.
+# Pass the training function to `tune.Tuner` together with the search space.
+# `num_samples=4` runs 4 independent trials, each with a different
+# hyperparameter combination.
 
 # %%
-optimizer = HPOptimizer(
-    create_lrn=create_learner,
-    dls=dls,
+tuner = tune.Tuner(
+    tune.with_resources(train, {"cpu": 1, "gpu": 0}),
+    param_space={
+        "rnn_type": tune.choice(["gru", "lstm"]),
+        "hidden_size": tune.choice([32, 40]),
+        "n_epoch": 3,
+        "lr": 3e-3,
+    },
+    tune_config=tune.TuneConfig(metric="valid_loss", mode="min", num_samples=4),
 )
 
-results = optimizer.optimize(
-    config=search_config,
-    num_samples=4,
-    resources_per_trial={"cpu": 1, "gpu": 0},
-)
+results = tuner.fit()
 
 # %% [markdown]
 # ## Analyze Results
 #
-# The `optimize` call returns a Ray Tune `ExperimentAnalysis` object stored in
-# `optimizer.analysis`. You can query it for the best trial configuration,
-# inspect per-trial results, or export data for further analysis.
+# `tuner.fit()` returns a `ResultGrid`. You can query it for the best trial
+# configuration, inspect per-trial metrics, or export data for further
+# analysis.
 
 # %%
-best = optimizer.analysis.get_best_config(metric="valid_loss", mode="min")
+best = results.get_best_result()
 print("Best config:")
 for key in ["rnn_type", "hidden_size", "lr"]:
-    print(f"  {key}: {best[key]}")
+    print(f"  {key}: {best.config[key]}")
 
 # %%
-result_df = optimizer.analysis.results_df
+result_df = results.get_dataframe()
 print("\nAll trial results:")
 result_df[["config/rnn_type", "config/hidden_size", "valid_loss"]]
 
 # %% [markdown]
-# ## Using log_uniform for Learning Rate
+# ## Using tune.loguniform for Learning Rate
 #
 # In the first search we fixed the learning rate. A more thorough search treats
-# `lr` as a tunable parameter using `log_uniform`. This samples on a
+# `lr` as a tunable parameter using `tune.loguniform`. This samples on a
 # logarithmic scale between the given bounds -- appropriate because the
 # difference between `1e-4` and `1e-3` matters more than between `1e-2` and
 # `1.1e-2`.
 
 # %%
-search_config_v2 = {
-    "rnn_type": tune.choice(["gru", "lstm"]),
-    "hidden_size": tune.choice([32, 40]),
-    "lr": log_uniform(1e-4, 1e-2),
-    "n_epoch": 3,
-}
-
-# %% [markdown]
-# When `lr` is a callable sampler in the config, the training function samples
-# a fresh value for each trial. This overrides any fixed learning rate.
-
-# %%
-optimizer_v2 = HPOptimizer(
-    create_lrn=create_learner,
-    dls=dls,
+tuner_v2 = tune.Tuner(
+    tune.with_resources(train, {"cpu": 1, "gpu": 0}),
+    param_space={
+        "rnn_type": tune.choice(["gru", "lstm"]),
+        "hidden_size": tune.choice([32, 40]),
+        "lr": tune.loguniform(1e-4, 1e-2),
+        "n_epoch": 3,
+    },
+    tune_config=tune.TuneConfig(metric="valid_loss", mode="min", num_samples=4),
 )
 
-results_v2 = optimizer_v2.optimize(
-    config=search_config_v2,
-    num_samples=4,
-    resources_per_trial={"cpu": 1, "gpu": 0},
-)
+results_v2 = tuner_v2.fit()
 
 # %%
-best_v2 = optimizer_v2.analysis.get_best_config(metric="valid_loss", mode="min")
+best_v2 = results_v2.get_best_result()
 print("Best config (with lr search):")
 for key in ["rnn_type", "hidden_size", "lr"]:
-    print(f"  {key}: {best_v2[key]}")
+    print(f"  {key}: {best_v2.config[key]}")
 
 # %% [markdown]
 # ## Key Takeaways
 #
-# - **`HPOptimizer`** wraps Ray Tune for easy hyperparameter search with
-#   TSFast. Pass a learner factory and DataLoaders, then call `optimize`.
-# - **Learner factory** -- a function `(dls, config) -> Learner` that builds a
-#   fresh model from the hyperparameter config each trial.
+# - **`ray_device()`** detects the GPU assigned to the current Ray worker --
+#   pass it as `device` when constructing your Learner.
+# - **`report_metrics(lrn)`** patches `log_epoch` to report metrics and
+#   checkpoints to Ray Tune after every epoch.
+# - **`resume_checkpoint(lrn)`** restores from a Ray Tune checkpoint when
+#   resuming a trial (needed for population-based training).
 # - **`tune.choice`** for categorical parameters (architecture, layer count);
-#   **`log_uniform`** for continuous parameters on a log scale (learning rate).
+#   **`tune.loguniform`** for continuous parameters on a log scale (learning
+#   rate). No custom samplers needed.
+# - **`tune.Tuner`** gives you full control over scheduling, stopping
+#   criteria, and resource allocation.
 # - **Start small** -- few trials, few epochs -- to validate the pipeline
 #   before scaling up.
-# - **`optimizer.analysis`** gives access to the full Ray Tune
-#   `ExperimentAnalysis` for querying best configs, exporting results, and
-#   loading the best checkpoint.
