@@ -407,7 +407,8 @@ class Learner:
             return
         self._chunked_equiv_checked.add(chunk_sz)
 
-        n_in = next(iter(dl))[0].shape[-1]
+        xb, _ = self.prepare_batch(next(iter(dl)), training=False)
+        n_in = xb.shape[-1]
         x = torch.randn(1, 2 * chunk_sz, n_in, device=self.device)
         with torch.no_grad():
             full_result = self.model(x)
