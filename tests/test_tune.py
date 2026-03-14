@@ -129,6 +129,56 @@ def test_report_metrics_restores_log_epoch(ray_init_shutdown, dls_silverbox):
     assert "log_epoch" not in lrn.__dict__
 
 
+@pytest.mark.slow
+def test_checkpoint_every(ray_init_shutdown, dls_silverbox):
+    """checkpoint_every controls how often checkpoints are saved."""
+    from unittest.mock import patch, MagicMock
+    from tsfast.training import RNNLearner, fun_rmse
+    from tsfast.tune import report_metrics
+
+    lrn = RNNLearner(
+        dls_silverbox, rnn_type="gru", hidden_size=16, n_skip=5, metrics=[fun_rmse],
+    )
+
+    calls = []
+    orig_report = ray.tune.report
+
+    def tracking_report(metrics, *, checkpoint=None):
+        calls.append(checkpoint is not None)
+        return orig_report(metrics, checkpoint=checkpoint)
+
+    with patch("ray.tune.report", side_effect=tracking_report):
+        with lrn.no_bar(), report_metrics(lrn, checkpoint_every=2):
+            lrn.fit_flat_cos(4, lr=3e-3)
+
+    assert calls == [False, True, False, True]
+
+
+@pytest.mark.slow
+def test_checkpoint_every_none(ray_init_shutdown, dls_silverbox):
+    """checkpoint_every=None disables checkpointing entirely."""
+    from unittest.mock import patch
+    from tsfast.training import RNNLearner, fun_rmse
+    from tsfast.tune import report_metrics
+
+    lrn = RNNLearner(
+        dls_silverbox, rnn_type="gru", hidden_size=16, n_skip=5, metrics=[fun_rmse],
+    )
+
+    calls = []
+    orig_report = ray.tune.report
+
+    def tracking_report(metrics, *, checkpoint=None):
+        calls.append(checkpoint is not None)
+        return orig_report(metrics, checkpoint=checkpoint)
+
+    with patch("ray.tune.report", side_effect=tracking_report):
+        with lrn.no_bar(), report_metrics(lrn, checkpoint_every=None):
+            lrn.fit_flat_cos(3, lr=3e-3)
+
+    assert calls == [False, False, False]
+
+
 def test_learner_freed_by_refcount(dls_silverbox):
     """Learner is freed by refcounting alone after fit() — no gc.collect() needed."""
     import gc
