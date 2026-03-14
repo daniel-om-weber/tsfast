@@ -14,6 +14,7 @@ matplotlib.use("Agg")
 requires_cuda = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
 
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 #  Helpers
 # ──────────────────────────────────────────────────────────────────────────────
@@ -720,6 +721,29 @@ class TestLearner:
             lrn.get_preds(chunk_sz=50)
             assert any("Chunked evaluation" in str(warning.message) for warning in w), (
                 "RNN without return_state should warn about chunked evaluation divergence"
+            )
+
+    def test_chunked_equivalence_cached(self):
+        """Chunked-equivalence warning fires only on the first call (cached)."""
+        import warnings
+
+        from tsfast.models.cnn import TCN
+        from tsfast.training import Learner
+
+        dls = _SyntheticDls(n_u=2, n_y=1, seq_len=200, n_valid=4, bs=2)
+        model = TCN(2, 1, hl_depth=2, hl_width=16)
+        lrn = Learner(model, dls, loss_func=nn.MSELoss(), device=torch.device("cpu"))
+
+        with warnings.catch_warnings(record=True) as w1:
+            warnings.simplefilter("always")
+            lrn.get_preds(chunk_sz=50)
+            assert any("Chunked evaluation" in str(m.message) for m in w1)
+
+        with warnings.catch_warnings(record=True) as w2:
+            warnings.simplefilter("always")
+            lrn.get_preds(chunk_sz=50)
+            assert not any("Chunked evaluation" in str(m.message) for m in w2), (
+                "Second call should be cached — no warning expected"
             )
 
     def test_validate_chunked(self):

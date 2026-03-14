@@ -36,40 +36,6 @@ def _auto_device() -> torch.device:
     return torch.device("cpu")
 
 
-def _check_chunked_equivalence(model: nn.Module, chunk_sz: int, n_in: int, device: torch.device):
-    """Probe whether chunked evaluation matches full forward pass.
-
-    Runs a small synthetic input through the model both as a single forward pass
-    and as two chunks, then compares results.  Warns if they diverge — typically
-    because the model is stateful but ``return_state`` is not enabled, or because
-    the model uses convolutions whose receptive field spans the chunk boundary.
-    """
-    x = torch.randn(1, 2 * chunk_sz, n_in, device=device)
-    with torch.no_grad():
-        full_result = model(x)
-        full = full_result[0] if isinstance(full_result, tuple) else full_result
-
-        r1 = model(x[:, :chunk_sz, :])
-        if isinstance(r1, tuple):
-            p1, state = r1
-            r2 = model(x[:, chunk_sz:, :], state=state)
-        else:
-            p1 = r1
-            r2 = model(x[:, chunk_sz:, :])
-        p2 = r2[0] if isinstance(r2, tuple) else r2
-        chunked = torch.cat([p1, p2], dim=1)
-
-    if not torch.allclose(full, chunked, atol=1e-4):
-        warnings.warn(
-            "Chunked evaluation produces different results than a full forward pass "
-            "for this model.  For RNNs, set return_state=True so hidden state is "
-            "carried across chunks.  For convolutional models (TCN/CNN), use a larger "
-            "chunk_sz or avoid chunking — receptive-field effects at chunk boundaries "
-            "cause small numerical differences.",
-            stacklevel=3,
-        )
-
-
 # ──────────────────────────────────────────────────────────────────────────────
 #  Learner
 # ──────────────────────────────────────────────────────────────────────────────
@@ -132,6 +98,7 @@ class Learner:
         self.opt = None
         self.pct_train: float = 0.0
         self._show_bar: bool = show_bar
+        self._chunked_equiv_checked: set[int] = set()
 
     # ── context managers ──────────────────────────────────────────────────
 
@@ -410,6 +377,48 @@ class Learner:
             parts.append(f"{k}={v:.4f}")
         pbar.set_postfix_str(" | ".join(parts))
 
+    # ── chunked-evaluation helpers ─────────────────────────────────────────
+
+    def _check_chunked_equivalence(self, chunk_sz: int, dl):
+        """Probe whether chunked evaluation matches full forward pass.
+
+        Runs a small synthetic input through the model both as a single forward
+        pass and as two chunks, then compares results.  Warns if they diverge —
+        typically because the model is stateful but ``return_state`` is not
+        enabled, or because the model uses convolutions whose receptive field
+        spans the chunk boundary.  Results are cached per *chunk_sz* so the
+        probe (and the DataLoader iteration it requires) only runs once.
+        """
+        if chunk_sz in self._chunked_equiv_checked:
+            return
+        self._chunked_equiv_checked.add(chunk_sz)
+
+        n_in = next(iter(dl))[0].shape[-1]
+        x = torch.randn(1, 2 * chunk_sz, n_in, device=self.device)
+        with torch.no_grad():
+            full_result = self.model(x)
+            full = full_result[0] if isinstance(full_result, tuple) else full_result
+
+            r1 = self.model(x[:, :chunk_sz, :])
+            if isinstance(r1, tuple):
+                p1, state = r1
+                r2 = self.model(x[:, chunk_sz:, :], state=state)
+            else:
+                p1 = r1
+                r2 = self.model(x[:, chunk_sz:, :])
+            p2 = r2[0] if isinstance(r2, tuple) else r2
+            chunked = torch.cat([p1, p2], dim=1)
+
+        if not torch.allclose(full, chunked, atol=1e-4):
+            warnings.warn(
+                "Chunked evaluation produces different results than a full forward pass "
+                "for this model.  For RNNs, set return_state=True so hidden state is "
+                "carried across chunks.  For convolutional models (TCN/CNN), use a larger "
+                "chunk_sz or avoid chunking — receptive-field effects at chunk boundaries "
+                "cause small numerical differences.",
+                stacklevel=2,
+            )
+
     # ── predictions ───────────────────────────────────────────────────────
 
     def get_preds(self, dl=None, with_inputs: bool = False, chunk_sz: int | None = None):
@@ -430,9 +439,7 @@ class Learner:
         all_preds, all_targs, all_inputs = [], [], []
 
         if chunk_sz is not None:
-            first_batch = next(iter(dl))
-            n_in = first_batch[0].shape[-1]
-            _check_chunked_equivalence(self.model, chunk_sz, n_in, self.device)
+            self._check_chunked_equivalence(chunk_sz, dl)
 
         with torch.no_grad():
             for batch in dl:
