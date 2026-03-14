@@ -41,9 +41,10 @@
 
 # %%
 from tsfast.tsdata.benchmark import create_dls_silverbox
-from tsfast.tune import ray_device, report_metrics, resume_checkpoint
+from tsfast.tune import LearnerTrainable, ray_device, report_metrics, resume_checkpoint
 from tsfast.training import RNNLearner, fun_rmse
 from ray import tune
+from ray.tune.schedulers import PopulationBasedTraining
 
 # %% [markdown]
 # ## Why Hyperparameter Optimization?
@@ -61,13 +62,16 @@ from ray import tune
 #   combining exploration with exploitation.
 #
 # Ray Tune provides all of these strategies (and more) behind a unified API.
-# TSFast provides three helpers that bridge a Learner and Ray Tune:
+# TSFast provides helpers that bridge a Learner and Ray Tune:
 #
 # - **`ray_device()`** -- detects the GPU assigned to the current Ray worker.
 # - **`report_metrics(lrn)`** -- patches `log_epoch` to report metrics and
 #   checkpoints to Ray Tune after every epoch.
 # - **`resume_checkpoint(lrn)`** -- restores from a Ray Tune checkpoint when
 #   resuming a trial (e.g. population-based training).
+# - **`LearnerTrainable`** -- a class-based Trainable that wraps a Learner for
+#   schedulers like Population-Based Training that need checkpoint/restore and
+#   actor reuse.
 
 # %% [markdown]
 # ## Prepare the DataLoaders
@@ -183,6 +187,71 @@ for key in ["rnn_type", "hidden_size", "lr"]:
     print(f"  {key}: {best_v2.config[key]}")
 
 # %% [markdown]
+# ## Population-Based Training
+#
+# The examples above run each trial independently. **Population-Based Training
+# (PBT)** takes a different approach: it trains a population of models in
+# parallel, periodically copying weights from the best performers and perturbing
+# their hyperparameters. This combines the exploration of random search with the
+# exploitation of hand-tuning.
+#
+# PBT requires the class-based Trainable API so that Ray can checkpoint, restore,
+# and mutate trials. `LearnerTrainable` provides this -- you supply a
+# `create_learner` factory and an optional `apply_config` callback for actor
+# reuse.
+
+# %%
+def create_learner(config):
+    return RNNLearner(
+        dls,
+        rnn_type="gru",
+        hidden_size=32,
+        n_skip=50,
+        metrics=[fun_rmse],
+        device=ray_device(),
+    )
+
+
+def apply_config(lrn, config):
+    for pg in lrn.opt.param_groups:
+        pg["lr"] = config["lr"]
+
+
+# %%
+pbt_scheduler = PopulationBasedTraining(
+    time_attr="training_iteration",
+    perturbation_interval=2,
+    hyperparam_mutations={"lr": tune.loguniform(1e-4, 1e-2)},
+)
+
+tuner_pbt = tune.Tuner(
+    tune.with_resources(
+        tune.with_parameters(
+            LearnerTrainable,
+            create_learner=create_learner,
+            apply_config=apply_config,
+        ),
+        {"cpu": 1, "gpu": 0},
+    ),
+    param_space={"lr": 3e-3},
+    tune_config=tune.TuneConfig(
+        metric="valid_loss",
+        mode="min",
+        num_samples=4,
+        scheduler=pbt_scheduler,
+    ),
+    run_config=tune.RunConfig(stop={"training_iteration": 6}),
+)
+
+results_pbt = tuner_pbt.fit()
+
+# %%
+best_pbt = results_pbt.get_best_result()
+print("Best PBT config:")
+print(f"  lr: {best_pbt.config['lr']}")
+print(f"  valid_loss: {best_pbt.metrics['valid_loss']:.4f}")
+
+# %% [markdown]
 # ## Key Takeaways
 #
 # - **`ray_device()`** detects the GPU assigned to the current Ray worker --
@@ -191,6 +260,10 @@ for key in ["rnn_type", "hidden_size", "lr"]:
 #   checkpoints to Ray Tune after every epoch.
 # - **`resume_checkpoint(lrn)`** restores from a Ray Tune checkpoint when
 #   resuming a trial (needed for population-based training).
+# - **`LearnerTrainable`** wraps a Learner as a class-based Trainable for
+#   schedulers like PBT that need checkpoint/restore and actor reuse. Supply a
+#   `create_learner` factory and an optional `apply_config` callback via
+#   `tune.with_parameters`.
 # - **`tune.choice`** for categorical parameters (architecture, layer count);
 #   **`tune.loguniform`** for continuous parameters on a log scale (learning
 #   rate). No custom samplers needed.
