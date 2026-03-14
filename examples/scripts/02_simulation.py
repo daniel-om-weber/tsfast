@@ -169,7 +169,7 @@ lrn_wh.show_results(max_n=3)
 # %%
 wrapper = InferenceWrapper(lrn)
 
-xb, yb = dls.valid.one_batch()
+xb, yb = next(iter(dls.valid))
 np_input = xb.cpu().numpy()
 
 y_pred = wrapper.inference(np_input)

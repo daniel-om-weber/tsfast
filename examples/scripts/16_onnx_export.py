@@ -73,7 +73,7 @@ lrn.show_results(max_n=2)
 # %%
 pytorch_wrapper = InferenceWrapper(lrn)
 
-xb, yb = dls.valid.one_batch()
+xb, yb = next(iter(dls.valid))
 np_input = xb.cpu().numpy()
 
 y_pytorch = pytorch_wrapper.inference(np_input)

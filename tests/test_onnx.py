@@ -105,7 +105,7 @@ class TestOnnxInferenceWrapper:
         lrn = RNNLearner(dls_simulation)
         path = export_onnx(lrn, tmp_path / "model.onnx")
 
-        # Batched 3D input with batch_size > 1 (matches dls.valid.one_batch() usage)
+        # Batched 3D input with batch_size > 1 (matches next(iter(dls.valid)) usage)
         inp = np.random.randn(4, 100, 1).astype(np.float32)
         pt_result = InferenceWrapper(lrn)(inp)
         onnx_result = OnnxInferenceWrapper(path)(inp)
