@@ -1026,6 +1026,32 @@ class TestTbpttLearner:
             f"(expected once per batch, not once per chunk)"
         )
 
+    def test_tbptt_get_preds_defaults_to_chunked(self):
+        """TbpttLearner.get_preds() defaults chunk_sz to sub_seq_len."""
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import TbpttLearner
+
+        dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100, n_valid=4, bs=2)
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True)
+        lrn = TbpttLearner(model, dls, loss_func=nn.MSELoss(), sub_seq_len=25, device=torch.device("cpu"))
+        preds_default, targs_default = lrn.get_preds()
+        preds_explicit, targs_explicit = lrn.get_preds(chunk_sz=25)
+        assert torch.allclose(preds_default, preds_explicit)
+        assert torch.allclose(targs_default, targs_explicit)
+
+    def test_tbptt_get_preds_explicit_override(self):
+        """Explicit chunk_sz overrides the sub_seq_len default."""
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import TbpttLearner
+
+        dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100, n_valid=4, bs=2)
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True)
+        lrn = TbpttLearner(model, dls, loss_func=nn.MSELoss(), sub_seq_len=25, device=torch.device("cpu"))
+        preds_50, _ = lrn.get_preds(chunk_sz=50)
+        preds_25, _ = lrn.get_preds(chunk_sz=25)
+        assert preds_50.shape == preds_25.shape
+        assert torch.allclose(preds_50, preds_25, atol=1e-4)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  GraphedStatefulModel
@@ -1198,6 +1224,26 @@ class TestGraphedStatefulModel:
         pred_test, state_test = graphed(x_test)
         assert pred_test.shape == (1, 10, 1)
         assert state_test is not None
+
+    def test_tbptt_cudagraph_validation_reuses_graph(self):
+        """TbpttLearner + GraphedStatefulModel: validation chunks match captured graph shape."""
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.cudagraph import GraphedStatefulModel
+        from tsfast.training import TbpttLearner
+
+        seq_len, sub_seq_len = 100, 25
+        dls = _SyntheticDls(n_u=1, n_y=1, seq_len=seq_len, n_valid=4, bs=4)
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
+        graphed = GraphedStatefulModel(model)
+        lrn = TbpttLearner(graphed, dls, loss_func=nn.MSELoss(), sub_seq_len=sub_seq_len)
+        lrn.fit(1)
+
+        assert graphed._graphed_shape is not None
+        captured_seq_len = graphed._graphed_shape[1]
+        assert captured_seq_len == sub_seq_len
+
+        val_loss, _ = lrn.validate()
+        assert math.isfinite(val_loss)
 
     def test_eager_fallback_different_seq_len(self):
         """Falls back to eager when sequence length differs from captured shape."""

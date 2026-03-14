@@ -608,3 +608,9 @@ class TbpttLearner(Learner):
         if not losses:
             return float("nan")
         return sum(losses) / len(losses)
+
+    def get_preds(self, dl=None, with_inputs: bool = False, chunk_sz: int | None = None):
+        """Defaults ``chunk_sz`` to ``sub_seq_len`` so validation reuses CUDA graph shapes."""
+        if chunk_sz is None:
+            chunk_sz = self.sub_seq_len
+        return super().get_preds(dl=dl, with_inputs=with_inputs, chunk_sz=chunk_sz)
