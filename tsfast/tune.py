@@ -17,24 +17,30 @@ except ImportError:
 
 
 @contextmanager
-def report_metrics(lrn):
-    """Patch a Learner's ``log_epoch`` to report metrics and checkpoints to Ray Tune.
+def report_metrics(lrn, checkpoint_every: int | None = 1):
+    """Wrap a Learner's ``log_epoch`` to also report metrics and checkpoints to Ray Tune.
 
-    Use this context manager when you need full control over the training loop
-    but still want per-epoch Ray Tune reporting and checkpointing.
+    The original ``log_epoch`` (progress bar, custom loggers, etc.) still runs;
+    Ray Tune reporting is added after it.
 
     Args:
-        lrn: a Learner instance whose ``log_epoch`` will be temporarily replaced.
+        lrn: a Learner instance whose ``log_epoch`` will be temporarily wrapped.
+        checkpoint_every: save a checkpoint every N epochs. ``None`` disables
+            checkpointing entirely (only metrics are reported).
     """
     had_instance_attr = "log_epoch" in lrn.__dict__
-    orig_log_epoch = lrn.__dict__.get("log_epoch")
+    orig_log_epoch = lrn.log_epoch
 
     def _ray_log_epoch(epoch, n_epoch, train_loss, val_loss, metrics, pbar):
+        orig_log_epoch(epoch, n_epoch, train_loss, val_loss, metrics, pbar)
         result = {"train_loss": train_loss, "valid_loss": val_loss}
         result.update(metrics)
-        with tempfile.TemporaryDirectory() as d:
-            lrn.save_checkpoint(os.path.join(d, "checkpoint.pt"))
-            ray.tune.report(result, checkpoint=Checkpoint.from_directory(d))
+        if checkpoint_every is not None and (epoch + 1) % checkpoint_every == 0:
+            with tempfile.TemporaryDirectory() as d:
+                lrn.save_checkpoint(os.path.join(d, "checkpoint.pt"))
+                ray.tune.report(result, checkpoint=Checkpoint.from_directory(d))
+        else:
+            ray.tune.report(result)
 
     lrn.log_epoch = _ray_log_epoch
     try:
