@@ -104,6 +104,110 @@ class TestReaders:
         assert arr.shape == (2,)
         np.testing.assert_allclose(arr, [1.0, 1.0], rtol=1e-5)
 
+    def test_hdf5attrs_array(self, tmp_path):
+        from tsfast.tsdata.readers import HDF5Attrs
+
+        path = str(tmp_path / "test.h5")
+        with h5py.File(path, "w") as f:
+            f.attrs["dt"] = np.float32(0.01)
+            f.attrs["ja_rr"] = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+            f.attrs["ja_rsaddle"] = np.array([4.0, 5.0, 6.0, 7.0, 8.0, 9.0], dtype=np.float32)
+
+        block = HDF5Attrs(["dt", "ja_rr", "ja_rsaddle"])
+        arr = block.read(path)
+        assert arr.shape == (10,)
+        assert block.n_features == 10
+        np.testing.assert_allclose(arr, [0.01, 1, 2, 3, 4, 5, 6, 7, 8, 9], rtol=1e-5)
+
+    def test_hdf5attrs_probe(self, tmp_path):
+        from tsfast.tsdata.readers import HDF5Attrs
+
+        path = str(tmp_path / "test.h5")
+        with h5py.File(path, "w") as f:
+            f.attrs["dt"] = np.float32(0.01)
+            f.attrs["ja_rr"] = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+
+        block = HDF5Attrs(["dt", "ja_rr"])
+        with pytest.warns(UserWarning, match="n_features accessed before probing"):
+            assert block.n_features == 2  # fallback before probe
+        block.probe(path)
+        assert block.n_features == 4  # 1 scalar + 3 array elements
+
+    def test_hdf5signals_2d(self, tmp_path):
+        from tsfast.tsdata.readers import HDF5Signals
+
+        T = 200
+        path = str(tmp_path / "test.h5")
+        with h5py.File(path, "w") as f:
+            f.create_dataset("scalar_sig", data=np.arange(T, dtype=np.float32))
+            f.create_dataset(
+                "vector_sig",
+                data=np.arange(T * 3, dtype=np.float32).reshape(T, 3),
+            )
+
+        block = HDF5Signals(["scalar_sig", "vector_sig"])
+        arr = block.read(path, 0, T)
+        assert arr.shape == (T, 4)
+        assert block.n_features == 4
+        np.testing.assert_array_equal(arr[:, 0], np.arange(T, dtype=np.float32))
+        expected_2d = np.arange(T * 3, dtype=np.float32).reshape(T, 3)
+        np.testing.assert_array_equal(arr[:, 1:4], expected_2d)
+
+    def test_hdf5signals_2d_no_mmap(self, tmp_path):
+        """use_mmap=False with 2D datasets uses seek+read path."""
+        from tsfast.tsdata.readers import HDF5Signals
+
+        T = 200
+        path = str(tmp_path / "test.h5")
+        with h5py.File(path, "w") as f:
+            f.create_dataset("scalar_sig", data=np.arange(T, dtype=np.float32))
+            f.create_dataset(
+                "vector_sig",
+                data=np.arange(T * 3, dtype=np.float32).reshape(T, 3),
+            )
+
+        block = HDF5Signals(["scalar_sig", "vector_sig"], use_mmap=False)
+        arr = block.read(path, 0, T)
+        assert arr.shape == (T, 4)
+        assert block.n_features == 4
+        np.testing.assert_array_equal(arr[:, 0], np.arange(T, dtype=np.float32))
+        expected_2d = np.arange(T * 3, dtype=np.float32).reshape(T, 3)
+        np.testing.assert_array_equal(arr[:, 1:4], expected_2d)
+        # Probe cache should store int offsets (not memmap objects)
+        assert path in block._probe_cache
+        for name in ["scalar_sig", "vector_sig"]:
+            assert isinstance(block._probe_cache[path][name], int)
+
+    def test_hdf5signals_2d_chunked(self, tmp_path):
+        """Chunked 2D datasets fall back to h5py and still return correct results."""
+        from tsfast.tsdata.readers import HDF5Signals
+
+        T = 200
+        path = str(tmp_path / "test.h5")
+        with h5py.File(path, "w") as f:
+            f.create_dataset(
+                "scalar_sig",
+                data=np.arange(T, dtype=np.float32),
+                chunks=(50,),
+            )
+            f.create_dataset(
+                "vector_sig",
+                data=np.arange(T * 3, dtype=np.float32).reshape(T, 3),
+                chunks=(50, 3),
+            )
+
+        block = HDF5Signals(["scalar_sig", "vector_sig"])
+        arr = block.read(path, 0, T)
+        assert arr.shape == (T, 4)
+        assert block.n_features == 4
+        np.testing.assert_array_equal(arr[:, 0], np.arange(T, dtype=np.float32))
+        expected_2d = np.arange(T * 3, dtype=np.float32).reshape(T, 3)
+        np.testing.assert_array_equal(arr[:, 1:4], expected_2d)
+        # Chunked datasets should have None in probe cache
+        assert path in block._probe_cache
+        for name in ["scalar_sig", "vector_sig"]:
+            assert block._probe_cache[path][name] is None
+
     def test_resampled_identity(self):
         from tsfast.tsdata.readers import HDF5Signals, Resampled
 
@@ -234,6 +338,8 @@ class TestCached:
         from tsfast.tsdata.readers import Cached, HDF5Signals
 
         cached = Cached(HDF5Signals(["u", "y"]))
+        path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
+        cached.read(path, 0, 10)  # probe before accessing n_features
         assert cached.n_features == 2
 
     def test_cached_delegates_file_len(self):
@@ -482,6 +588,26 @@ class TestDataset:
         ds = WindowedDataset(entries, block_u, block_y, win_sz=100, stp_sz=100)
         # Both files accessible
         assert len(ds) > 800
+
+    def test_windowed_dataset_probes_attrs(self, tmp_path):
+        from tsfast.tsdata.readers import HDF5Signals, HDF5Attrs
+        from tsfast.tsdata.dataset import FileEntry, WindowedDataset
+
+        T = 200
+        path = str(tmp_path / "test.h5")
+        with h5py.File(path, "w") as f:
+            f.create_dataset("u", data=np.zeros(T, dtype=np.float32))
+            f.create_dataset("y", data=np.zeros(T, dtype=np.float32))
+            f.attrs["dt"] = np.float32(0.01)
+            f.attrs["ja_rr"] = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+
+        block_u = HDF5Signals(["u"])
+        block_y = HDF5Signals(["y"])
+        block_attrs = HDF5Attrs(["dt", "ja_rr"])
+        entries = [FileEntry(path=path)]
+        ds = WindowedDataset(entries, block_u, (block_y, block_attrs), win_sz=10, stp_sz=10)
+        # n_features should be correct immediately after construction
+        assert block_attrs.n_features == 4
 
     def test_windowed_dataset_multi_block_tuple(self):
         from tsfast.tsdata.readers import HDF5Signals
