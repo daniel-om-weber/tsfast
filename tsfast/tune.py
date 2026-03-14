@@ -74,26 +74,36 @@ class LearnerTrainable(ray.tune.Trainable):
     Enables Population-Based Training and other schedulers that require
     the class-based Trainable API.
 
-    Pass ``create_learner`` and optionally ``apply_config`` via
-    ``tune.with_parameters``.
+    Pass ``create_learner`` and optionally ``apply_config`` and
+    ``scheduler_fn`` via ``tune.with_parameters``.
 
     Args (via tune.with_parameters):
         create_learner: factory ``(config) -> Learner``
         apply_config: optional ``(lrn, config) -> None`` that applies
             mutated hyperparameters to an existing Learner for actor reuse.
             If not provided, ``reset_config`` returns False (actor rebuilt).
+        scheduler_fn: optional factory ``(optimizer, total_steps) -> scheduler``
+            for LR scheduling across training iterations. When provided,
+            ``config["n_iter"]`` must specify the total number of iterations.
     """
 
-    def setup(self, config, create_learner=None, apply_config=None):
+    def setup(self, config, create_learner=None, apply_config=None, scheduler_fn=None):
         self._create_learner = create_learner
         self._apply_config = apply_config
         self.lrn = create_learner(config)
-        self.lrn.setup(lr=config.get("lr"))
+        self.lrn.setup(
+            lr=config.get("lr"),
+            scheduler_fn=scheduler_fn,
+            n_epoch=config.get("n_iter"),
+        )
         self.lrn._show_bar = False
 
     def step(self):
         lrn = self.lrn
-        train_loss = lrn.train_one_epoch(epoch=0, n_epoch=1)
+        train_loss = lrn.train_one_epoch(
+            epoch=self.iteration,
+            n_epoch=self.config.get("n_iter", 1),
+        )
         val_loss, metrics = lrn.validate()
         lrn.recorder.append([train_loss, val_loss] + [metrics[k] for k in sorted(metrics)])
         return {"train_loss": train_loss, "valid_loss": val_loss, **metrics}

@@ -248,6 +248,82 @@ def test_learner_trainable_reset_config(ray_init_shutdown, dls_silverbox):
     t2.cleanup()
 
 
+@pytest.mark.slow
+def test_learner_trainable_scheduler(ray_init_shutdown, dls_silverbox):
+    """LearnerTrainable with scheduler_fn applies LR schedule across iterations."""
+    from torch.optim.lr_scheduler import LambdaLR
+    from tsfast.training import RNNLearner, fun_rmse
+    from tsfast.training.schedulers import sched_flat_cos
+    from tsfast.tune import LearnerTrainable, ray_device
+
+    dls = dls_silverbox
+
+    def create_learner(config):
+        return RNNLearner(
+            dls, rnn_type="gru", hidden_size=16, n_skip=5,
+            metrics=[fun_rmse], device=ray_device(),
+        )
+
+    def flat_cos_fn(opt, total_steps):
+        return LambdaLR(opt, lambda s: sched_flat_cos(s / total_steps))
+
+    tuner = tune.Tuner(
+        tune.with_resources(
+            tune.with_parameters(
+                LearnerTrainable,
+                create_learner=create_learner,
+                scheduler_fn=flat_cos_fn,
+            ),
+            {"cpu": 1, "gpu": 0},
+        ),
+        param_space={"hidden_size": 16, "lr": 3e-3, "n_iter": 3},
+        run_config=tune.RunConfig(stop={"training_iteration": 3}),
+        tune_config=tune.TuneConfig(metric="valid_loss", mode="min", num_samples=1),
+    )
+    results = tuner.fit()
+
+    assert not results.errors
+    best = results.get_best_result()
+    assert "valid_loss" in best.metrics
+
+
+@pytest.mark.slow
+def test_learner_trainable_scheduler_checkpoint(ray_init_shutdown, dls_silverbox):
+    """Scheduler state is preserved across checkpoint save/restore."""
+    import tempfile
+    from torch.optim.lr_scheduler import LambdaLR
+    from tsfast.training import RNNLearner, fun_rmse
+    from tsfast.training.schedulers import sched_flat_cos
+    from tsfast.tune import LearnerTrainable
+
+    dls = dls_silverbox
+
+    def create_learner(config):
+        return RNNLearner(
+            dls, rnn_type="gru", hidden_size=16, n_skip=5, metrics=[fun_rmse],
+        )
+
+    def flat_cos_fn(opt, total_steps):
+        return LambdaLR(opt, lambda s: sched_flat_cos(s / total_steps))
+
+    trainable = tune.with_parameters(
+        LearnerTrainable,
+        create_learner=create_learner,
+        scheduler_fn=flat_cos_fn,
+    )({"lr": 3e-3, "n_iter": 4})
+
+    trainable.step()
+    trainable.step()
+    last_epoch_before = trainable.lrn.sched.last_epoch
+
+    with tempfile.TemporaryDirectory() as d:
+        trainable.save_checkpoint(d)
+        trainable.load_checkpoint(d)
+
+    assert trainable.lrn.sched.last_epoch == last_epoch_before
+    trainable.cleanup()
+
+
 def test_learner_freed_by_refcount(dls_silverbox):
     """Learner is freed by refcounting alone after fit() — no gc.collect() needed."""
     import gc
