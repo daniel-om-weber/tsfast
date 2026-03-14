@@ -96,6 +96,7 @@ class Learner:
         self.device = dev
         self.recorder: list[list[float]] = []
         self.opt = None
+        self.sched = None
         self.pct_train: float = 0.0
         self._show_bar: bool = show_bar
         self._chunked_equiv_checked: set[int] = set()
@@ -126,8 +127,13 @@ class Learner:
 
     # ── setup ─────────────────────────────────────────────────────────────
 
-    def setup(self, lr: float | None = None):
+    def setup(self, lr: float | None = None, scheduler_fn: Callable | None = None, n_epoch: int | None = None):
         """Create optimizer, move model to device, setup composables.
+
+        Args:
+            lr: learning rate (uses self.lr if None)
+            scheduler_fn: factory ``(optimizer, total_steps) -> scheduler``
+            n_epoch: total epochs — required when *scheduler_fn* is provided
 
         Enables manual training loops without calling ``fit()``.
         """
@@ -138,6 +144,11 @@ class Learner:
         if pending is not None:
             self.opt.load_state_dict(pending)
             self._pending_opt_state = None
+        if scheduler_fn is not None:
+            n_batches = len(self.dls.train)
+            self.sched = scheduler_fn(self.opt, n_epoch * n_batches)
+        else:
+            self.sched = None
 
     # ── save / load ────────────────────────────────────────────────────────
 
@@ -180,6 +191,8 @@ class Learner:
         state = {"model": self.model.state_dict(), "recorder": self.recorder}
         if self.opt is not None:
             state["opt"] = self.opt.state_dict()
+        if self.sched is not None:
+            state["sched"] = self.sched.state_dict()
         torch.save(state, path)
 
     def load_checkpoint(self, path: str | Path):
@@ -197,6 +210,9 @@ class Learner:
                 self.opt.load_state_dict(opt_state)
             else:
                 self._pending_opt_state = opt_state
+        sched_state = ckpt.get("sched")
+        if sched_state is not None and self.sched is not None:
+            self.sched.load_state_dict(sched_state)
 
     # ── batch preparation ─────────────────────────────────────────────────
 
@@ -261,11 +277,10 @@ class Learner:
 
     # ── epoch loop ────────────────────────────────────────────────────────
 
-    def train_one_epoch(self, sched=None, pbar=None, epoch: int = 0, n_epoch: int = 1) -> float:
+    def train_one_epoch(self, pbar=None, epoch: int = 0, n_epoch: int = 1) -> float:
         """Run one training epoch.
 
         Args:
-            sched: optional LR scheduler (stepped per batch)
             pbar: optional tqdm progress bar
             epoch: current epoch index (0-based)
             n_epoch: total number of epochs
@@ -286,8 +301,8 @@ class Learner:
             if not math.isnan(loss_val):
                 train_losses.append(loss_val)
 
-            if sched is not None:  # feature: LR scheduling
-                sched.step()
+            if self.sched is not None:  # feature: LR scheduling
+                self.sched.step()
             if pbar is not None:
                 pbar.update(1)
 
@@ -335,10 +350,9 @@ class Learner:
             lr: learning rate (uses self.lr if None)
             scheduler_fn: factory ``(optimizer, total_steps) -> scheduler`` (None = no scheduler)
         """
-        self.setup(lr=lr)
+        self.setup(lr=lr, scheduler_fn=scheduler_fn, n_epoch=n_epoch)
 
         n_batches = len(self.dls.train)
-        sched = scheduler_fn(self.opt, n_epoch * n_batches) if scheduler_fn is not None else None
 
         try:
             for epoch in range(n_epoch):
@@ -348,7 +362,7 @@ class Learner:
                     disable=not self._show_bar,
                     mininterval=0.5,
                 ) as pbar:
-                    train_loss = self.train_one_epoch(sched=sched, pbar=pbar, epoch=epoch, n_epoch=n_epoch)
+                    train_loss = self.train_one_epoch(pbar=pbar, epoch=epoch, n_epoch=n_epoch)
 
                     # Validate
                     val_loss, metrics_dict = self.validate()
