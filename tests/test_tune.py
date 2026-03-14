@@ -179,6 +179,75 @@ def test_checkpoint_every_none(ray_init_shutdown, dls_silverbox):
     assert calls == [False, False, False]
 
 
+@pytest.mark.slow
+def test_learner_trainable_basic(ray_init_shutdown, dls_silverbox):
+    """LearnerTrainable runs training iterations and reports metrics."""
+    from tsfast.training import RNNLearner, fun_rmse
+    from tsfast.tune import LearnerTrainable, ray_device
+
+    dls = dls_silverbox
+
+    def create_learner(config):
+        return RNNLearner(
+            dls,
+            rnn_type="gru",
+            hidden_size=config["hidden_size"],
+            n_skip=5,
+            metrics=[fun_rmse],
+            device=ray_device(),
+        )
+
+    tuner = tune.Tuner(
+        tune.with_resources(
+            tune.with_parameters(LearnerTrainable, create_learner=create_learner),
+            {"cpu": 1, "gpu": 0},
+        ),
+        param_space={"hidden_size": 16, "lr": 3e-3},
+        run_config=tune.RunConfig(stop={"training_iteration": 2}),
+        tune_config=tune.TuneConfig(metric="valid_loss", mode="min", num_samples=1),
+    )
+    results = tuner.fit()
+
+    assert not results.errors
+    best = results.get_best_result()
+    assert "valid_loss" in best.metrics
+    assert "train_loss" in best.metrics
+    assert "fun_rmse" in best.metrics
+
+
+@pytest.mark.slow
+def test_learner_trainable_reset_config(ray_init_shutdown, dls_silverbox):
+    """reset_config uses apply_config when provided, returns False otherwise."""
+    from tsfast.training import RNNLearner, fun_rmse
+    from tsfast.tune import LearnerTrainable
+
+    dls = dls_silverbox
+
+    def create_learner(config):
+        return RNNLearner(
+            dls, rnn_type="gru", hidden_size=16, n_skip=5, metrics=[fun_rmse],
+        )
+
+    def apply_config(lrn, config):
+        for pg in lrn.opt.param_groups:
+            pg["lr"] = config["lr"]
+
+    trainable_with = tune.with_parameters(
+        LearnerTrainable, create_learner=create_learner, apply_config=apply_config,
+    )
+    t = trainable_with({"lr": 1e-3})
+    assert t.reset_config({"lr": 5e-4}) is True
+    assert t.lrn.opt.param_groups[0]["lr"] == 5e-4
+    t.cleanup()
+
+    trainable_without = tune.with_parameters(
+        LearnerTrainable, create_learner=create_learner,
+    )
+    t2 = trainable_without({"lr": 1e-3})
+    assert t2.reset_config({"lr": 5e-4}) is False
+    t2.cleanup()
+
+
 def test_learner_freed_by_refcount(dls_silverbox):
     """Learner is freed by refcounting alone after fit() — no gc.collect() needed."""
     import gc
