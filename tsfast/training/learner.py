@@ -7,6 +7,7 @@ __all__ = [
 
 import math
 import os
+import warnings
 from collections.abc import Callable
 from contextlib import contextmanager
 from pathlib import Path
@@ -33,6 +34,40 @@ def _auto_device() -> torch.device:
     if os.environ.get("TSFAST_ENABLE_MPS") and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         return torch.device("mps")
     return torch.device("cpu")
+
+
+def _check_chunked_equivalence(model: nn.Module, chunk_sz: int, n_in: int, device: torch.device):
+    """Probe whether chunked evaluation matches full forward pass.
+
+    Runs a small synthetic input through the model both as a single forward pass
+    and as two chunks, then compares results.  Warns if they diverge — typically
+    because the model is stateful but ``return_state`` is not enabled, or because
+    the model uses convolutions whose receptive field spans the chunk boundary.
+    """
+    x = torch.randn(1, 2 * chunk_sz, n_in, device=device)
+    with torch.no_grad():
+        full_result = model(x)
+        full = full_result[0] if isinstance(full_result, tuple) else full_result
+
+        r1 = model(x[:, :chunk_sz, :])
+        if isinstance(r1, tuple):
+            p1, state = r1
+            r2 = model(x[:, chunk_sz:, :], state=state)
+        else:
+            p1 = r1
+            r2 = model(x[:, chunk_sz:, :])
+        p2 = r2[0] if isinstance(r2, tuple) else r2
+        chunked = torch.cat([p1, p2], dim=1)
+
+    if not torch.allclose(full, chunked, atol=1e-4):
+        warnings.warn(
+            "Chunked evaluation produces different results than a full forward pass "
+            "for this model.  For RNNs, set return_state=True so hidden state is "
+            "carried across chunks.  For convolutional models (TCN/CNN), use a larger "
+            "chunk_sz or avoid chunking — receptive-field effects at chunk boundaries "
+            "cause small numerical differences.",
+            stacklevel=3,
+        )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -293,14 +328,18 @@ class Learner:
 
     # ── validation ────────────────────────────────────────────────────────
 
-    def validate(self, dl=None) -> tuple[float, dict[str, float]]:
+    def validate(self, dl=None, chunk_sz: int | None = None) -> tuple[float, dict[str, float]]:
         """Run validation and compute loss + metrics on concatenated predictions.
+
+        Args:
+            dl: DataLoader to evaluate (defaults to validation set)
+            chunk_sz: forwarded to :meth:`get_preds` for chunked evaluation
 
         Returns:
             (val_loss, {metric_name: value})
         """
         dl = dl or self.dls.valid
-        preds, targs = self.get_preds(dl=dl)
+        preds, targs = self.get_preds(dl=dl, chunk_sz=chunk_sz)
 
         pred_skip = preds[:, self.n_skip :] if self.n_skip > 0 else preds
         targ_skip = targs[:, self.n_skip :] if self.n_skip > 0 else targs
@@ -373,12 +412,16 @@ class Learner:
 
     # ── predictions ───────────────────────────────────────────────────────
 
-    def get_preds(self, dl=None, with_inputs: bool = False):
+    def get_preds(self, dl=None, with_inputs: bool = False, chunk_sz: int | None = None):
         """Batch-concatenated predictions and targets.
 
         Args:
             dl: DataLoader to evaluate (defaults to validation set)
             with_inputs: if True, also return concatenated inputs
+            chunk_sz: when set, split each batch's sequence into chunks of this
+                size along the time axis and forward them sequentially, carrying
+                model state across chunks (for RNNs). Keeps GPU memory bounded
+                for very long sequences.
         """
         dl = dl or self.dls.valid
         if next(self.model.parameters()).device != self.device:
@@ -386,12 +429,33 @@ class Learner:
         self.model.eval()
         all_preds, all_targs, all_inputs = [], [], []
 
+        if chunk_sz is not None:
+            first_batch = next(iter(dl))
+            n_in = first_batch[0].shape[-1]
+            _check_chunked_equivalence(self.model, chunk_sz, n_in, self.device)
+
         with torch.no_grad():
             for batch in dl:
                 xb, yb = self.prepare_batch(batch, training=False)
 
-                result = self.model(xb)
-                pred = result[0] if isinstance(result, tuple) else result
+                if chunk_sz is None or xb.shape[1] <= chunk_sz:
+                    result = self.model(xb)
+                    pred = result[0] if isinstance(result, tuple) else result
+                else:
+                    xb_chunks = xb.split(chunk_sz, dim=1)
+                    chunk_preds = []
+                    state = None
+                    for xb_sub in xb_chunks:
+                        if state is not None:
+                            result = self.model(xb_sub, state=state)
+                        else:
+                            result = self.model(xb_sub)
+                        if isinstance(result, tuple):
+                            p, state = result
+                        else:
+                            p, state = result, None
+                        chunk_preds.append(p)
+                    pred = torch.cat(chunk_preds, dim=1)
 
                 all_preds.append(pred.cpu())
                 all_targs.append(yb.cpu())
