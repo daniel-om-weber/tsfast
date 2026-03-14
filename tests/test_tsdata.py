@@ -133,10 +133,10 @@ class TestReaders:
         path = str(PINN_PATH / "train" / "trajectory_sine_1hz.h5")
         arr = block.read(path, 0, 100)
         assert arr.shape == (100, 3)
-        # Verify mmap cache was populated with memmap views
-        assert path in block._mmap_cache
+        # Verify probe cache was populated with memmap views
+        assert path in block._probe_cache
         for name in ["u", "x", "v"]:
-            assert block._mmap_cache[path][name] is not None
+            assert block._probe_cache[path][name] is not None
         # Verify values match direct h5py read
         with h5.File(path, "r") as f:
             expected = np.stack([f["u"][:100], f["x"][:100], f["v"][:100]], axis=-1)
@@ -152,14 +152,44 @@ class TestReaders:
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
         arr = block.read(path, 0, 100)
         assert arr.shape == (100, 2)
-        # Chunked datasets should have None in mmap cache
-        assert path in block._mmap_cache
+        # Chunked datasets should have None in probe cache
+        assert path in block._probe_cache
         for name in ["u", "y"]:
-            assert block._mmap_cache[path][name] is None
+            assert block._probe_cache[path][name] is None
         # Verify values match direct h5py read
         with h5.File(path, "r") as f:
             expected = np.stack([f["u"][:100], f["y"][:100]], axis=-1)
         np.testing.assert_array_equal(arr, expected)
+
+    def test_hdf5signals_no_mmap_contiguous(self):
+        """use_mmap=False stores byte offsets and reads via seek+read."""
+        import h5py as h5
+
+        from tsfast.tsdata.readers import HDF5Signals
+
+        block = HDF5Signals(["u", "x", "v"], use_mmap=False)
+        path = str(PINN_PATH / "train" / "trajectory_sine_1hz.h5")
+        arr = block.read(path, 0, 100)
+        assert arr.shape == (100, 3)
+        # Verify probe cache stores int offsets, not memmap objects
+        assert path in block._probe_cache
+        for name in ["u", "x", "v"]:
+            assert isinstance(block._probe_cache[path][name], int)
+        # Verify values match direct h5py read
+        with h5.File(path, "r") as f:
+            expected = np.stack([f["u"][:100], f["x"][:100], f["v"][:100]], axis=-1)
+        np.testing.assert_array_equal(arr, expected)
+
+    def test_hdf5signals_no_mmap_matches_mmap(self):
+        """use_mmap=False produces identical results to use_mmap=True."""
+        from tsfast.tsdata.readers import HDF5Signals
+
+        path = str(PINN_PATH / "train" / "trajectory_sine_1hz.h5")
+        block_mmap = HDF5Signals(["u", "x", "v"], use_mmap=True)
+        block_direct = HDF5Signals(["u", "x", "v"], use_mmap=False)
+        arr_mmap = block_mmap.read(path, 10, 200)
+        arr_direct = block_direct.read(path, 10, 200)
+        np.testing.assert_array_equal(arr_mmap, arr_direct)
 
     def test_hdf5signals_pickle_roundtrip(self):
         """Block survives pickle (simulating multiprocessing worker spawn)."""
