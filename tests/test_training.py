@@ -669,6 +669,70 @@ class TestLearner:
         assert preds.shape[1] == 100
         assert preds.shape[2] == 1
 
+    def test_get_preds_chunked_rnn(self):
+        import warnings
+
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import Learner
+
+        dls = _SyntheticDls(n_u=2, n_y=1, seq_len=200, n_valid=4, bs=2)
+        model = SimpleRNN(2, 1, hidden_size=20, return_state=True)
+        lrn = Learner(model, dls, loss_func=nn.MSELoss(), device=torch.device("cpu"))
+        full, targs_full = lrn.get_preds()
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            chunked, targs_chunked = lrn.get_preds(chunk_sz=50)
+            assert len(w) == 0, "RNN with return_state=True should not warn"
+        assert chunked.shape == full.shape
+        assert torch.allclose(chunked, full, atol=1e-4)
+        assert torch.allclose(targs_chunked, targs_full)
+
+    def test_get_preds_chunked_tcn(self):
+        import warnings
+
+        from tsfast.models.cnn import TCN
+        from tsfast.training import Learner
+
+        dls = _SyntheticDls(n_u=2, n_y=1, seq_len=200, n_valid=4, bs=2)
+        model = TCN(2, 1, hl_depth=2, hl_width=16)
+        lrn = Learner(model, dls, loss_func=nn.MSELoss(), device=torch.device("cpu"))
+        full, _ = lrn.get_preds()
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            chunked, _ = lrn.get_preds(chunk_sz=50)
+            assert any("Chunked evaluation" in str(warning.message) for warning in w), (
+                "TCN should warn about chunked evaluation divergence"
+            )
+        assert chunked.shape == full.shape
+
+    def test_get_preds_chunked_rnn_no_state_warns(self):
+        """RNN without return_state=True should warn when chunking."""
+        import warnings
+
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import Learner
+
+        dls = _SyntheticDls(n_u=2, n_y=1, seq_len=200, n_valid=4, bs=2)
+        model = SimpleRNN(2, 1, hidden_size=20, return_state=False)
+        lrn = Learner(model, dls, loss_func=nn.MSELoss(), device=torch.device("cpu"))
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            lrn.get_preds(chunk_sz=50)
+            assert any("Chunked evaluation" in str(warning.message) for warning in w), (
+                "RNN without return_state should warn about chunked evaluation divergence"
+            )
+
+    def test_validate_chunked(self):
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import Learner
+
+        dls = _SyntheticDls(n_u=1, n_y=1, seq_len=200, n_valid=4, bs=2)
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True)
+        lrn = Learner(model, dls, loss_func=nn.MSELoss(), device=torch.device("cpu"))
+        loss_full, metrics_full = lrn.validate()
+        loss_chunked, metrics_chunked = lrn.validate(chunk_sz=50)
+        assert abs(loss_full - loss_chunked) < 1e-4
+
     def test_show_batch_show_results(self):
         import matplotlib.pyplot as plt
 
