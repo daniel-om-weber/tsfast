@@ -21,24 +21,29 @@ class HDF5Signals:
     Args:
         names: dataset column names to extract
         dataset: HDF5 group name containing the datasets, None for root
+        use_mmap: if True (default), use np.memmap for contiguous datasets;
+            if False, use direct seek+read to avoid kernel VMA pressure
+            with many files / DataLoader workers
     """
 
     def __init__(
         self,
         names: list[str],
         dataset: str | None = None,
+        use_mmap: bool = True,
     ):
         self.names = names
         self.dataset = dataset
+        self._use_mmap = use_mmap
         self._len_cache: dict[str, int] = {}
-        self._mmap_cache: dict[str, dict[str, np.ndarray | None]] = {}
+        self._probe_cache: dict[str, dict[str, np.ndarray | int | None]] = {}
         self._dtype: np.dtype | None = None
 
     def _probe(self, path: str) -> None:
-        """Probe HDF5 datasets and cache memmap views for contiguous ones."""
-        if path in self._mmap_cache:
+        """Probe HDF5 datasets and cache access info for contiguous ones."""
+        if path in self._probe_cache:
             return
-        mmaps = {}
+        entries = {}
         with h5py.File(path, "r") as f:
             ds = f if self.dataset is None else f[self.dataset]
             for name in self.names:
@@ -46,36 +51,51 @@ class HDF5Signals:
                 if self._dtype is None:
                     self._dtype = dataset.dtype
                 if dataset.chunks is not None:
-                    mmaps[name] = None
+                    entries[name] = None
                     continue
                 byte_offset = dataset.id.get_offset()
                 if byte_offset is None or byte_offset == 0:
-                    mmaps[name] = None
+                    entries[name] = None
                     continue
-                mmaps[name] = np.memmap(
-                    path,
-                    dtype=dataset.dtype,
-                    mode="r",
-                    offset=byte_offset,
-                    shape=dataset.shape,
-                )
+                if self._use_mmap:
+                    entries[name] = np.memmap(
+                        path,
+                        dtype=dataset.dtype,
+                        mode="r",
+                        offset=byte_offset,
+                        shape=dataset.shape,
+                    )
+                else:
+                    entries[name] = byte_offset
             if path not in self._len_cache:
                 self._len_cache[path] = ds[self.names[0]].shape[0]
-        self._mmap_cache[path] = mmaps
+        self._probe_cache[path] = entries
 
     def read(self, path: str, l_slc: int, r_slc: int) -> np.ndarray:
         """Read columns into pre-allocated array -> [seq_len, n_features]."""
         self._probe(path)
-        mmaps = self._mmap_cache[path]
+        entries = self._probe_cache[path]
         n = len(self.names)
-        out = np.empty((r_slc - l_slc, n), dtype=self._dtype)
+        count = r_slc - l_slc
+        out = np.empty((count, n), dtype=self._dtype)
         h5py_indices = []
-        for i, name in enumerate(self.names):
-            mm = mmaps[name]
-            if mm is not None:
-                out[:, i] = mm[l_slc:r_slc]
-            else:
-                h5py_indices.append(i)
+        if self._use_mmap:
+            for i, name in enumerate(self.names):
+                mm = entries[name]
+                if mm is not None:
+                    out[:, i] = mm[l_slc:r_slc]
+                else:
+                    h5py_indices.append(i)
+        else:
+            itemsize = self._dtype.itemsize
+            with open(path, "rb") as fh:
+                for i, name in enumerate(self.names):
+                    off = entries[name]
+                    if off is not None:
+                        fh.seek(off + l_slc * itemsize)
+                        out[:, i] = np.frombuffer(fh.read(count * itemsize), dtype=self._dtype)
+                    else:
+                        h5py_indices.append(i)
         if h5py_indices:
             with h5py.File(path, "r") as f:
                 ds = f if self.dataset is None else f[self.dataset]
