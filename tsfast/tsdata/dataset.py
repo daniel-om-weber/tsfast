@@ -50,6 +50,12 @@ class WindowedDataset(Dataset):
         self.stp_sz = stp_sz
         self._ref_block = self._find_temporal(*self._inputs, *self._targets)
 
+        if entries:
+            first_path = entries[0].path
+            for block in (*self._inputs, *self._targets):
+                if hasattr(block, "probe") and not hasattr(block, "file_len"):
+                    block.probe(first_path)
+
         if win_sz is not None:
             ref_block = self._ref_block
             counts = []

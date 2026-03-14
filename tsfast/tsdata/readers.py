@@ -2,6 +2,7 @@
 
 import math
 import re
+import warnings
 from pathlib import Path
 
 import h5py
@@ -38,6 +39,7 @@ class HDF5Signals:
         self._len_cache: dict[str, int] = {}
         self._probe_cache: dict[str, dict[str, np.ndarray | int | None]] = {}
         self._dtype: np.dtype | None = None
+        self._widths: dict[str, int] = {}
 
     def _probe(self, path: str) -> None:
         """Probe HDF5 datasets and cache access info for contiguous ones."""
@@ -50,6 +52,8 @@ class HDF5Signals:
                 dataset = ds[name]
                 if self._dtype is None:
                     self._dtype = dataset.dtype
+                if name not in self._widths:
+                    self._widths[name] = dataset.shape[1] if dataset.ndim == 2 else 1
                 if dataset.chunks is not None:
                     entries[name] = None
                     continue
@@ -75,32 +79,47 @@ class HDF5Signals:
         """Read columns into pre-allocated array -> [seq_len, n_features]."""
         self._probe(path)
         entries = self._probe_cache[path]
-        n = len(self.names)
         count = r_slc - l_slc
-        out = np.empty((count, n), dtype=self._dtype)
-        h5py_indices = []
+        out = np.empty((count, self.n_features), dtype=self._dtype)
+        h5py_deferred: list[tuple[str, int, int]] = []
+        col = 0
         if self._use_mmap:
-            for i, name in enumerate(self.names):
+            for name in self.names:
+                w = self._widths[name]
                 mm = entries[name]
                 if mm is not None:
-                    out[:, i] = mm[l_slc:r_slc]
+                    if w == 1:
+                        out[:, col] = mm[l_slc:r_slc]
+                    else:
+                        out[:, col : col + w] = mm[l_slc:r_slc]
                 else:
-                    h5py_indices.append(i)
+                    h5py_deferred.append((name, col, w))
+                col += w
         else:
             itemsize = self._dtype.itemsize
             with open(path, "rb") as fh:
-                for i, name in enumerate(self.names):
+                for name in self.names:
+                    w = self._widths[name]
                     off = entries[name]
                     if off is not None:
-                        fh.seek(off + l_slc * itemsize)
-                        out[:, i] = np.frombuffer(fh.read(count * itemsize), dtype=self._dtype)
+                        fh.seek(off + l_slc * w * itemsize)
+                        buf = np.frombuffer(fh.read(count * w * itemsize), dtype=self._dtype)
+                        if w == 1:
+                            out[:, col] = buf
+                        else:
+                            out[:, col : col + w] = buf.reshape(count, w)
                     else:
-                        h5py_indices.append(i)
-        if h5py_indices:
+                        h5py_deferred.append((name, col, w))
+                    col += w
+        if h5py_deferred:
             with h5py.File(path, "r") as f:
                 ds = f if self.dataset is None else f[self.dataset]
-                for i in h5py_indices:
-                    out[:, i] = ds[self.names[i]][l_slc:r_slc]
+                for name, c, w in h5py_deferred:
+                    data = ds[name][l_slc:r_slc]
+                    if w == 1:
+                        out[:, c] = data
+                    else:
+                        out[:, c : c + w] = data
         return out
 
     def file_len(self, path: str) -> int:
@@ -115,11 +134,21 @@ class HDF5Signals:
 
     @property
     def n_features(self) -> int:
-        return len(self.names)
+        if not self._widths:
+            warnings.warn(
+                "n_features accessed before probing; may be wrong for 2D datasets. Call read() or file_len() first.",
+                stacklevel=2,
+            )
+            return len(self.names)
+        return sum(self._widths.values())
 
 
 class HDF5Attrs:
-    """Scalar reader: reads named HDF5 attributes.
+    """Reader for named HDF5 attributes (scalar or array).
+
+    Scalar and array attributes are flattened into a single 1-D output vector.
+    For example, reading a scalar ``dt`` and a (3,) array ``ja_rr`` produces
+    a 4-element vector ``[dt, ja_rr[0], ja_rr[1], ja_rr[2]]``.
 
     Args:
         names: attribute names to extract
@@ -136,11 +165,31 @@ class HDF5Attrs:
         self.names = names
         self.dataset = dataset
         self.dtype = dtype
+        self._n_features: int | None = None
+
+    def probe(self, path: str) -> None:
+        """Probe attribute sizes from a file."""
+        if self._n_features is not None:
+            return
+        with h5py.File(path, "r") as f:
+            ds = f if self.dataset is None else f[self.dataset]
+            total = 0
+            for n in self.names:
+                val = np.atleast_1d(np.asarray(ds.attrs[n], dtype=self.dtype))
+                total += val.size
+        self._n_features = total
 
     def read(self, path: str) -> np.ndarray:
         with h5py.File(path, "r") as f:
             ds = f if self.dataset is None else f[self.dataset]
-            return np.array([self.dtype(ds.attrs[n]).item() for n in self.names])
+            parts = []
+            for n in self.names:
+                val = np.atleast_1d(np.asarray(ds.attrs[n], dtype=self.dtype))
+                parts.append(val.ravel())
+            result = np.concatenate(parts)
+        if self._n_features is None:
+            self._n_features = len(result)
+        return result
 
     @property
     def signal_names(self) -> list[str]:
@@ -148,7 +197,13 @@ class HDF5Attrs:
 
     @property
     def n_features(self) -> int:
-        return len(self.names)
+        if self._n_features is None:
+            warnings.warn(
+                "n_features accessed before probing; may be wrong for array attributes. Call read() or probe() first.",
+                stacklevel=2,
+            )
+            return len(self.names)
+        return self._n_features
 
 
 class Resampled:
