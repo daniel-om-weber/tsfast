@@ -15,6 +15,7 @@ __all__ = [
 import numpy as np
 import torch
 from torch import Tensor, nn
+from torch.nn import functional as F
 from torch.nn import Mish
 from torch.nn.utils.parametrizations import weight_norm
 
@@ -122,8 +123,7 @@ class CausalConv1d(torch.nn.Conv1d):
         self.__init_size = (kernel_size - 1) * dilation
 
     def forward(self, x: Tensor) -> Tensor:
-        padding = torch.zeros((x.shape[0], x.shape[1], self.__init_size), device=x.device)
-        return super().forward(torch.cat([padding, x], dim=-1))
+        return super().forward(F.pad(x, (self.__init_size, 0)))
 
 
 def CConv1D(
