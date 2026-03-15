@@ -59,7 +59,7 @@ class SafeDataLoader:
 
     def __iter__(self):
         it = iter(self._dl)
-        if getattr(self._dl, "num_workers", 0) > 0:
+        if getattr(self._dl, "num_workers", 0) > 0 and not getattr(self._dl, "persistent_workers", False):
             return SafeDataLoaderIterator(it)
         return it
 
