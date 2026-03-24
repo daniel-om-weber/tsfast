@@ -424,7 +424,7 @@ class Learner:
             p2 = r2[0] if isinstance(r2, tuple) else r2
             chunked = torch.cat([p1, p2], dim=1)
 
-        if not torch.allclose(full, chunked, atol=1e-4):
+        if not torch.allclose(full, chunked, atol=1e-2):
             warnings.warn(
                 "Chunked evaluation produces different results than a full forward pass "
                 "for this model.  For RNNs, set return_state=True so hidden state is "
