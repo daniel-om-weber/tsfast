@@ -53,7 +53,7 @@ class WindowedDataset(Dataset):
         if entries:
             first_path = entries[0].path
             for block in (*self._inputs, *self._targets):
-                if hasattr(block, "probe") and not hasattr(block, "file_len"):
+                if hasattr(block, "probe"):
                     block.probe(first_path)
 
         if win_sz is not None:
