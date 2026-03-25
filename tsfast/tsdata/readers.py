@@ -41,7 +41,7 @@ class HDF5Signals:
         self._dtype: np.dtype | None = None
         self._widths: dict[str, int] = {}
 
-    def _probe(self, path: str) -> None:
+    def probe(self, path: str) -> None:
         """Probe HDF5 datasets and cache access info for contiguous ones."""
         if path in self._probe_cache:
             return
@@ -77,7 +77,7 @@ class HDF5Signals:
 
     def read(self, path: str, l_slc: int, r_slc: int) -> np.ndarray:
         """Read columns into pre-allocated array -> [seq_len, n_features]."""
-        self._probe(path)
+        self.probe(path)
         entries = self._probe_cache[path]
         count = r_slc - l_slc
         out = np.empty((count, self.n_features), dtype=self._dtype)
@@ -125,7 +125,7 @@ class HDF5Signals:
     def file_len(self, path: str) -> int:
         """Length of first named dataset. Cached per path."""
         if path not in self._len_cache:
-            self._probe(path)
+            self.probe(path)
         return self._len_cache[path]
 
     @property
@@ -227,6 +227,9 @@ class Resampled:
         self.fs_idx = fs_idx
         self.dt_idx = dt_idx
         self.fast_resample = fast_resample
+
+    def probe(self, path: str) -> None:
+        self.block.probe(path)
 
     def read(self, path: str, l_slc: int, r_slc: int, factor: float) -> np.ndarray:
         """Read and resample a window. l_slc/r_slc are in resampled coordinates."""
