@@ -39,7 +39,7 @@ class GraphedStatefulModel(nn.Module):
         num_warmup_iters: warmup iterations before graph capture
     """
 
-    def __init__(self, model: nn.Module, num_warmup_iters: int = 3):
+    def __init__(self, model: nn.Module, num_warmup_iters: int = 11):
         super().__init__()
         self.model = model
         self.num_warmup_iters = num_warmup_iters
