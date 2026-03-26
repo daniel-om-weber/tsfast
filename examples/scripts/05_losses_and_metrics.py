@@ -195,6 +195,25 @@ lrn_sched.fit(
 )
 
 # %% [markdown]
+# ### Using PyTorch Built-in Schedulers
+#
+# Any `torch.optim.lr_scheduler` works as a `scheduler_fn`. For example,
+# `OneCycleLR` implements the 1cycle policy (warmup then cosine decay) and
+# controls the learning rate entirely via `max_lr` -- the `lr` passed to
+# `fit()` sets the optimizer baseline but `OneCycleLR` overrides it
+# immediately.
+
+# %%
+from torch.optim.lr_scheduler import OneCycleLR
+
+lrn_onecycle = RNNLearner(dls, rnn_type='lstm', metrics=[fun_rmse])
+lrn_onecycle.fit(
+    n_epoch=5,
+    lr=3e-3,
+    scheduler_fn=lambda opt, steps: OneCycleLR(opt, max_lr=3e-3, total_steps=steps),
+)
+
+# %% [markdown]
 # ## Key Takeaways
 #
 # - **MAE (default)** is robust to outliers -- a good default for system
@@ -212,6 +231,6 @@ lrn_sched.fit(
 #   modeling.
 # - **`fit()` with `scheduler_fn`** gives full control over the learning rate
 #   schedule. Use `sched_ramp` or `sched_lin_p` for custom warmup/decay
-#   profiles.
+#   profiles, or pass any PyTorch built-in scheduler like `OneCycleLR`.
 # - Choose metrics that match your evaluation requirements -- different
 #   applications call for different measures of model quality.
