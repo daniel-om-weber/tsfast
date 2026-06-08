@@ -83,6 +83,64 @@ class TestLayers:
         x = torch.rand(2, 50, 10)
         assert m(x).shape == (2, 50, 3)
 
+    @pytest.mark.parametrize("hidden_layer", [0, 1, 3])
+    def test_seq_linear_matches_conv1d(self, hidden_layer):
+        """nn.Linear SeqLinear is numerically equal to the old Conv1d(1x1) formulation."""
+        from tsfast.models.layers import SeqLinear
+        nn = torch.nn
+
+        torch.manual_seed(0)
+        m = SeqLinear(7, 3, hidden_size=11, hidden_layer=hidden_layer)
+
+        # Build the old Conv1d(1x1) reference, then copy the Linear weights into it.
+        def conv_act(inp, out):
+            return nn.Sequential(nn.Conv1d(inp, out, 1), nn.Mish())
+        if hidden_layer < 1:
+            ref_lin = nn.Conv1d(7, 3, 1)
+        else:
+            ref_lin = nn.Sequential(
+                conv_act(7, 11),
+                *[conv_act(11, 11) for _ in range(hidden_layer - 1)],
+                nn.Conv1d(11, 3, 1),
+            )
+        linears = [mod for mod in m.lin.modules() if isinstance(mod, nn.Linear)]
+        convs = [mod for mod in ref_lin.modules() if isinstance(mod, nn.Conv1d)]
+        for lin, conv in zip(linears, convs):
+            conv.weight.data.copy_(lin.weight.data.unsqueeze(-1))
+            conv.bias.data.copy_(lin.bias.data)
+
+        x = torch.rand(2, 50, 7)
+        ref_out = ref_lin(x.transpose(1, 2)).transpose(1, 2)  # old forward: [B,S,C]->[B,C,S]->...
+        torch.testing.assert_close(m(x), ref_out, atol=1e-5, rtol=1e-5)
+
+    def test_seq_linear_preserves_leading_dims(self):
+        """nn.Linear maps the last dim and keeps all leading dims (2-D / 3-D / 4-D)."""
+        from tsfast.models.layers import SeqLinear
+        m = SeqLinear(6, 4, hidden_size=8, hidden_layer=2)
+        assert m(torch.rand(5, 6)).shape == (5, 4)
+        assert m(torch.rand(2, 5, 6)).shape == (2, 5, 4)
+        assert m(torch.rand(2, 3, 5, 6)).shape == (2, 3, 5, 4)
+
+    @pytest.mark.parametrize("hidden_layer", [0, 2])
+    def test_seq_linear_loads_old_conv_checkpoint(self, hidden_layer):
+        """Old Conv1d-layout checkpoints (3-D ``*.weight``) load into the nn.Linear SeqLinear."""
+        from tsfast.models.layers import SeqLinear
+        torch.manual_seed(1)
+        m = SeqLinear(5, 2, hidden_size=8, hidden_layer=hidden_layer)
+        x = torch.rand(2, 10, 5)
+        ref = m(x)
+
+        # Emulate the old conv layout: every ``*.weight`` gains a trailing singleton dim.
+        old_sd = {
+            k: (v.unsqueeze(-1) if k.endswith("weight") else v)
+            for k, v in m.state_dict().items()
+        }
+        assert any(v.dim() == 3 for k, v in old_sd.items() if k.endswith("weight"))
+
+        m2 = SeqLinear(5, 2, hidden_size=8, hidden_layer=hidden_layer)
+        m2.load_state_dict(old_sd)  # must not raise on the 3-D weights
+        torch.testing.assert_close(m2(x), ref, atol=1e-6, rtol=1e-6)
+
 
 class TestSeperateModels:
     def test_seperate_rnn_shape(self, dls_simulation):

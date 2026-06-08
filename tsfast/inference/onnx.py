@@ -56,7 +56,10 @@ def _get_dummy_input(learner, seq_len: int | None = None):
     batch = learner.dls.one_batch()
     n_features = batch[0].shape[-1]
     sl = seq_len or batch[0].shape[1]
-    return torch.randn(1, sl, n_features)
+    # Trace with batch=2, not 1: a size-1 dim triggers torch.export's 0/1 specialization, which
+    # bakes the batch *and* sequence axes of nn.Linear's flatten-reshape into constants and breaks
+    # dynamic-shape inference at runtime. The exported weights are independent of the dummy batch.
+    return torch.randn(2, sl, n_features)
 
 
 def export_onnx(
