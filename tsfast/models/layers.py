@@ -14,15 +14,22 @@ from torch.nn import Mish
 
 
 class SeqLinear(nn.Module):
-    """Pointwise MLP applied independently at each sequence position via 1x1 convolutions.
+    """Pointwise MLP applied independently at each sequence position.
+
+    Maps the last (feature) dimension through an MLP while preserving all leading dimensions, so
+    ``[batch, seq, features]`` in gives ``[batch, seq, output_size]`` out (2-D and higher-rank
+    inputs work too). Implemented with ``nn.Linear``, which broadcasts over leading dims since
+    PyTorch 0.4; earlier versions used ``Conv1d(kernel_size=1)`` and those checkpoints still load
+    (see ``_load_from_state_dict``).
 
     Args:
         input_size: number of input features
         output_size: number of output features
         hidden_size: number of hidden units per layer
-        hidden_layer: number of hidden layers
+        hidden_layer: number of hidden layers (``0`` = a single linear map, no activation)
         act: activation function class
-        batch_first: if ``True``, input shape is ``[batch, seq, features]``
+        batch_first: retained for API compatibility; ``nn.Linear`` preserves leading-dim order, so
+            this no longer changes the result.
     """
 
     def __init__(
@@ -37,26 +44,31 @@ class SeqLinear(nn.Module):
         super().__init__()
         self.batch_first = batch_first
 
-        def conv_act(inp, out):
-            return nn.Sequential(nn.Conv1d(inp, out, 1), act())
+        def lin_act(inp, out):
+            return nn.Sequential(nn.Linear(inp, out), act())
 
         if hidden_layer < 1:
-            self.lin = nn.Conv1d(input_size, output_size, 1)
+            self.lin = nn.Linear(input_size, output_size)
         else:
             self.lin = nn.Sequential(
-                conv_act(input_size, hidden_size),
-                *[conv_act(hidden_size, hidden_size) for _ in range(hidden_layer - 1)],
-                nn.Conv1d(hidden_size, output_size, 1),
+                lin_act(input_size, hidden_size),
+                *[lin_act(hidden_size, hidden_size) for _ in range(hidden_layer - 1)],
+                nn.Linear(hidden_size, output_size),
             )
 
     def forward(self, x):
-        if not self.batch_first:
-            x = x.transpose(0, 1)
-        out = self.lin(x.transpose(1, 2)).transpose(1, 2)
+        return self.lin(x)  # nn.Linear maps the last dim, preserving all leading dims
 
-        if not self.batch_first:
-            out = out.transpose(0, 1)
-        return out
+    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+        # Back-compat: pre-Linear SeqLinear stored Conv1d(1x1) weights of shape (out, in, 1).
+        # Squeeze the trailing singleton so they load into the (out, in) Linear weights. This runs
+        # before the child Linear modules load, and keys are unchanged, so only the shape is fixed.
+        for key in list(state_dict.keys()):
+            if key.startswith(prefix) and key.endswith("weight"):
+                w = state_dict[key]
+                if w.dim() == 3 and w.shape[-1] == 1:
+                    state_dict[key] = w.squeeze(-1)
+        super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
 
 class AR_Model(nn.Module):
