@@ -1,7 +1,6 @@
 """Pre-configured DataLoader factories for identibench benchmark datasets."""
 
 __all__ = [
-    "create_dls_downl",
     "create_dls_from_spec",
     "create_dls_wh",
     "create_dls_silverbox",
@@ -30,14 +29,11 @@ __all__ = [
     "external_datasets_prediction",
 ]
 
-import os
 from functools import partial
-from pathlib import Path
 
 import identibench as idb
 
 from .pipeline import DataLoaders, create_dls
-from .split import is_dataset_directory
 
 BENCHMARK_DL_KWARGS = {
     # Simulation Benchmarks
@@ -67,74 +63,45 @@ BENCHMARK_DL_KWARGS = {
 }
 
 
-def _get_default_dataset_path() -> Path:
-    """Return default directory for storing datasets."""
-    data_dir = Path.home() / ".tsfast" / "datasets"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    return data_dir
-
-
-def _get_dataset_path() -> Path:
-    """Return dataset directory from TSFAST_PATH env var, or the default."""
-    env_path = os.getenv("TSFAST_PATH")
-    return Path(env_path) if env_path else _get_default_dataset_path()
-
-
-def create_dls_downl(
-    u: list[str],
-    y: list[str],
-    dataset: Path | str | None = None,
-    download_function=None,
-    **kwargs,
-) -> DataLoaders:
-    """Create DataLoaders, downloading the dataset first if needed.
-
-    Args:
-        u: list of input signal names
-        y: list of output signal names
-        dataset: path to the dataset directory
-        download_function: callable that downloads the dataset to a given path
-    """
-    if dataset is None and download_function is not None:
-        dataset = _get_dataset_path() / download_function.__name__
-    elif dataset is not None:
-        dataset = Path(dataset)
-    else:
-        raise ValueError("Must provide either dataset path or download_function")
-
-    if not is_dataset_directory(dataset):
-        if download_function is not None:
-            print(f'Dataset not found. Downloading it to "{dataset}"')
-            download_function(dataset)
-        else:
-            raise ValueError(f"{dataset} does not contain a dataset. Check the path or activate the download flag.")
-
-    return create_dls(u=u, y=y, dataset=dataset, **kwargs)
-
-
 def create_dls_from_spec(
-    spec: idb.benchmark.BenchmarkSpecBase,
+    spec: idb.BenchmarkSpec,
     **kwargs,
 ) -> DataLoaders:
     """Create DataLoaders from an identibench benchmark specification.
 
+    Download/preparation is delegated to identibench (`spec.ensure_dataset_exists`,
+    cached under the identibench data root). Files are resolved through the spec
+    (`spec.files` / `spec.test_set_files`), never by parsing the on-disk layout;
+    the test split is the spec's primary test set. Evaluation parameters are read
+    off `spec.task` (e.g. window sizing for prediction benchmarks).
+
+    Precondition: the spec must have non-empty train AND valid roles (the
+    workshop/robot/quad/ship benchmarks). All-test specs (orientation, IAS)
+    have no DataLoader factory here.
+
     Args:
         spec: benchmark specification from identibench
     """
+    spec.ensure_dataset_exists()
+
+    dataset = {
+        "train": [str(f) for f in spec.files("train")],
+        "valid": [str(f) for f in spec.files("valid")],
+        "test": [str(f) for f in spec.test_set_files().get(spec.primary_set(), [])],
+    }
     spec_kwargs = {
         "u": spec.u_cols,
         "y": spec.y_cols,
-        "download_function": spec.download_func,
-        "dataset": spec.dataset_path,
+        "dataset": dataset,
     }
 
     # Prediction specs: in Phase 1 we only handle the window sizing, not the
     # actual prediction input concatenation (deferred to Phase 3).
-    if isinstance(spec, idb.benchmark.BenchmarkSpecPrediction):
+    if isinstance(spec.task, idb.Prediction):
         spec_kwargs.update(
             {
-                "win_sz": spec.pred_horizon + spec.init_window,
-                "valid_stp_sz": spec.pred_step,
+                "win_sz": spec.task.horizon + spec.task.init_window,
+                "valid_stp_sz": spec.task.step,
             }
         )
 
@@ -142,7 +109,7 @@ def create_dls_from_spec(
         spec_kwargs.update(BENCHMARK_DL_KWARGS[spec.name])
 
     dl_kwargs = {**spec_kwargs, **kwargs}
-    return create_dls_downl(**dl_kwargs)
+    return create_dls(**dl_kwargs)
 
 
 # --- Simulation benchmarks ---
@@ -179,14 +146,27 @@ broad_y_opt_pos = [f"opt_pos{i}" for i in range(4)]
 broad_y_opt_quat = [f"opt_quat{i}" for i in range(4)]
 broad_u = broad_u_imu_acc + broad_u_imu_gyr
 
-create_dls_broad = partial(
-    create_dls_downl,
-    download_function=idb.datasets.broad.dl_broad,
-    u=broad_u,
-    y=broad_y_opt_quat,
-    win_sz=100,
-    stp_sz=30,
-)
+
+def create_dls_broad(**kwargs) -> DataLoaders:
+    """Create DataLoaders for the BROAD dataset (bespoke columns and windowing).
+
+    BROAD is an all-test spec with custom column names, so it does not go through
+    `create_dls_from_spec`. NOTE: the column names used here (`imu_acc0`, ...)
+    do not match what identibench's `dl_broad` writes (`acc_x`, ...); verify
+    against your prepared data before use.
+    """
+    spec = idb.BenchmarkBROAD_Inclination
+    spec.ensure_dataset_exists()
+    dl_kwargs = {
+        "u": broad_u,
+        "y": broad_y_opt_quat,
+        "dataset": spec.dataset_path,
+        "win_sz": 100,
+        "stp_sz": 30,
+        **kwargs,
+    }
+    return create_dls(**dl_kwargs)
+
 
 # --- Collection lists ---
 external_datasets_simulation = [

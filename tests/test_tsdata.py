@@ -788,6 +788,44 @@ class TestPipeline:
         )
         assert dls.test is not None
 
+    def test_create_dls_from_spec(self):
+        # End-to-end over the identibench spec resolver (no network: local test
+        # data + convention fallback, downloader never runs since the dir exists).
+        import identibench as idb
+
+        from tsfast.tsdata.benchmark import create_dls_from_spec
+
+        spec = idb.BenchmarkSpec(
+            name="TestWH_Simulation",
+            dataset_id="WienerHammerstein",
+            u_cols=["u"],
+            y_cols=["y"],
+            task=idb.Simulation(metric=idb.metrics.rmse, init_window=50),
+            data_root=PROJECT_ROOT / "test_data",
+        )
+        dls = create_dls_from_spec(spec, win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2)
+        assert dls.test is not None
+        batch = dls.one_batch()
+        assert list(batch[0].shape) == [64, 100, 1]
+
+    def test_create_dls_from_spec_prediction_window(self):
+        # Prediction specs derive win_sz/valid_stp_sz from the task parameters.
+        import identibench as idb
+
+        from tsfast.tsdata.benchmark import create_dls_from_spec
+
+        spec = idb.BenchmarkSpec(
+            name="TestWH_Prediction",
+            dataset_id="WienerHammerstein",
+            u_cols=["u"],
+            y_cols=["y"],
+            task=idb.Prediction(horizon=80, step=80, metric=idb.metrics.rmse, init_window=20),
+            data_root=PROJECT_ROOT / "test_data",
+        )
+        dls = create_dls_from_spec(spec, num_workers=0, n_batches_train=2)
+        batch = dls.one_batch()
+        assert list(batch[0].shape) == [64, 100, 1]  # win_sz = horizon + init_window
+
     def test_create_dls_norm_stats_structure(self):
         from tsfast.tsdata import create_dls
 
