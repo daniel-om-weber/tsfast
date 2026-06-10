@@ -28,7 +28,7 @@ dependencies = [
     "scipy",
     "h5py",
     "tqdm",
-    "identibench",
+    "identibench>=0.4.0",
     "matplotlib",
 ]
 

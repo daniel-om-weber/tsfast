@@ -61,6 +61,8 @@ spec = idb.BenchmarkSilverbox_Simulation
 print(f"Input columns:  {spec.u_cols}")
 print(f"Output columns: {spec.y_cols}")
 print(f"Dataset path:   {spec.dataset_path}")
+print(f"Train files:    {len(spec.files('train'))}")
+print(f"Test sets:      {list(spec.test_set_files())} (primary: {spec.primary_set()})")
 
 # %% [markdown]
 # ## Building the DataLoaders Explicitly
@@ -75,8 +77,10 @@ print(f"Dataset path:   {spec.dataset_path}")
 #   the signals that drive the system (e.g., voltage applied to a circuit).
 # - **`y`** -- list of output signal column names. These are the signals the
 #   model learns to predict (e.g., the circuit's response).
-# - **`dataset`** -- path to the dataset directory, which must contain `train/`,
-#   `valid/`, and optionally `test/` subdirectories with HDF5 files.
+# - **`dataset`** -- a `{'train': [...], 'valid': [...], 'test': [...]}` dict of
+#   file lists. The benchmark spec resolves these for us (`spec.files(role)` and
+#   `spec.test_set_files()`), so we never parse the on-disk layout; a plain
+#   directory with `train/`/`valid/`/`test/` subdirectories also works.
 # - **`win_sz`** -- window size: how many consecutive time steps make up one
 #   training sample.
 # - **`stp_sz`** -- step size: the stride between consecutive windows. A smaller
@@ -90,7 +94,11 @@ print(f"Dataset path:   {spec.dataset_path}")
 dls_explicit = create_dls(
     u=spec.u_cols,
     y=spec.y_cols,
-    dataset=spec.dataset_path,
+    dataset={
+        "train": spec.files("train"),
+        "valid": spec.files("valid"),
+        "test": spec.test_set_files()[spec.primary_set()],
+    },
     win_sz=500,
     stp_sz=10,
     bs=16,

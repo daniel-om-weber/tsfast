@@ -64,14 +64,15 @@ from tsfast.training import RNNLearner, fun_rmse
 # `TrainingContext` and returns a callable model for evaluation. The context
 # provides:
 #
-# - **`context.spec`** -- the benchmark specification (dataset path, column
-#   names, window sizes, metric function)
+# - **`context.spec`** -- the benchmark specification (column names, file
+#   resolution). Evaluation parameters live on the task:
+#   `context.spec.task.init_window`, `context.spec.task.horizon`, ...
 # - **`context.hyperparameters`** -- your model's hyperparameters, passed
 #   through from the benchmark runner
 #
-# The returned model must accept numpy arrays: `model(u_test, y_init)` for
-# simulation benchmarks, where `u_test` is the full input signal and
-# `y_init` is the initial output window.
+# The returned model must accept numpy arrays: `model(u, y_init, attrs)` for
+# simulation benchmarks, where `u` is the full input signal and `y_init` is
+# the initial output window.
 
 # %%
 def build_model(context: idb.TrainingContext):
@@ -83,7 +84,7 @@ def build_model(context: idb.TrainingContext):
         rnn_type=context.hyperparameters.get('model_type', 'lstm'),
         num_layers=context.hyperparameters.get('num_layers', 1),
         hidden_size=context.hyperparameters.get('hidden_size', 40),
-        n_skip=context.spec.init_window,
+        n_skip=context.spec.task.init_window,
         metrics=[fun_rmse],
     )
 
@@ -98,7 +99,7 @@ def build_model(context: idb.TrainingContext):
 #   sizes, and prediction settings from the benchmark spec. It also applies
 #   benchmark-specific DataLoader defaults (e.g., batch size, step size)
 #   from TSFast's `BENCHMARK_DL_KWARGS` table.
-# - **`n_skip=context.spec.init_window`** uses the benchmark-defined
+# - **`n_skip=context.spec.task.init_window`** uses the benchmark-defined
 #   initialization window to skip the initial transient in the loss. This
 #   matches IdentiBench's evaluation protocol, which discards the first
 #   `init_window` timesteps.
@@ -124,7 +125,7 @@ model_config = {
     'hidden_size': 40,
 }
 
-benchmarks = list(idb.workshop_benchmarks.values())
+benchmarks = [idb.BenchmarkWH_Simulation, idb.BenchmarkSilverbox_Simulation, idb.BenchmarkCascadedTanks_Simulation]
 results = idb.run_benchmarks(benchmarks, build_model, model_config)
 
 # %% [markdown]
