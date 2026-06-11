@@ -1,11 +1,15 @@
 """Training schedule functions."""
 
 import math
+from functools import partial
+
+from torch.optim.lr_scheduler import LambdaLR
 
 __all__ = [
     "sched_flat_cos",
     "sched_lin_p",
     "sched_ramp",
+    "flat_cos_scheduler",
 ]
 
 
@@ -15,6 +19,19 @@ def sched_flat_cos(pos: float, pct_start: float = 0.75) -> float:
         return 1.0
     progress = (pos - pct_start) / (1.0 - pct_start)
     return 0.5 * (1.0 + math.cos(math.pi * progress))
+
+
+def _flat_cos_factor(step: int, total_steps: int, pct_start: float) -> float:
+    return sched_flat_cos(step / total_steps, pct_start)
+
+
+def flat_cos_scheduler(opt, total_steps: int, pct_start: float = 0.75) -> LambdaLR:
+    """LambdaLR with a flat-then-cosine schedule, built from picklable parts.
+
+    The schedule lambda is a partial of a module-level function (not a closure),
+    so a Learner holding this scheduler can be pickled by ``Learner.save``.
+    """
+    return LambdaLR(opt, partial(_flat_cos_factor, total_steps=total_steps, pct_start=pct_start))
 
 
 def sched_lin_p(start: float, end: float, pos: float, p: float = 0.75) -> float:
