@@ -605,7 +605,7 @@ class TestDataset:
         block_y = HDF5Signals(["y"])
         block_attrs = HDF5Attrs(["dt", "ja_rr"])
         entries = [FileEntry(path=path)]
-        ds = WindowedDataset(entries, block_u, (block_y, block_attrs), win_sz=10, stp_sz=10)
+        WindowedDataset(entries, block_u, (block_y, block_attrs), win_sz=10, stp_sz=10)
         # n_features should be correct immediately after construction
         assert block_attrs.n_features == 4
 
@@ -789,21 +789,24 @@ class TestPipeline:
         assert dls.test is not None
 
     def test_create_dls_from_spec(self):
-        # End-to-end over the identibench spec resolver (no network: local test
-        # data + convention fallback, downloader never runs since the dir exists).
+        # End-to-end over the identibench spec resolver (no network: user-managed
+        # dataset under the local test-data root, so no preparer ever runs).
         import identibench as idb
 
         from tsfast.tsdata.benchmark import create_dls_from_spec
 
-        spec = idb.BenchmarkSpec(
-            name="TestWH_Simulation",
-            dataset_id="WienerHammerstein",
-            u_cols=["u"],
-            y_cols=["y"],
-            task=idb.Simulation(metric=idb.metrics.rmse, init_window=50),
-            data_root=PROJECT_ROOT / "test_data",
-        )
-        dls = create_dls_from_spec(spec, win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2)
+        with idb.data_root(PROJECT_ROOT / "test_data"):
+            ds = idb.Dataset("WienerHammerstein", prepare=None)
+            spec = idb.BenchmarkSpec(
+                name="TestWH_Simulation",
+                u_cols=["u"],
+                y_cols=["y"],
+                train=[(ds, "train/*.hdf5")],
+                valid=[(ds, "valid/*.hdf5")],
+                test_sets={"test": [(ds, "test/*.hdf5")]},
+                task=idb.Simulation(metric=idb.metrics.rmse, init_window=50),
+            )
+            dls = create_dls_from_spec(spec, win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2)
         assert dls.test is not None
         batch = dls.one_batch()
         assert list(batch[0].shape) == [64, 100, 1]
@@ -814,17 +817,75 @@ class TestPipeline:
 
         from tsfast.tsdata.benchmark import create_dls_from_spec
 
-        spec = idb.BenchmarkSpec(
-            name="TestWH_Prediction",
-            dataset_id="WienerHammerstein",
-            u_cols=["u"],
-            y_cols=["y"],
-            task=idb.Prediction(horizon=80, step=80, metric=idb.metrics.rmse, init_window=20),
-            data_root=PROJECT_ROOT / "test_data",
-        )
-        dls = create_dls_from_spec(spec, num_workers=0, n_batches_train=2)
+        with idb.data_root(PROJECT_ROOT / "test_data"):
+            ds = idb.Dataset("WienerHammerstein", prepare=None)
+            spec = idb.BenchmarkSpec(
+                name="TestWH_Prediction",
+                u_cols=["u"],
+                y_cols=["y"],
+                train=[(ds, "train/*.hdf5")],
+                valid=[(ds, "valid/*.hdf5")],
+                test_sets={"test": [(ds, "test/*.hdf5")]},
+                task=idb.Prediction(horizon=80, step=80, metric=idb.metrics.rmse, init_window=20),
+            )
+            dls = create_dls_from_spec(spec, num_workers=0, n_batches_train=2)
         batch = dls.one_batch()
         assert list(batch[0].shape) == [64, 100, 1]  # win_sz = horizon + init_window
+
+    def test_create_dls_from_spec_test_set_union(self, tmp_path):
+        # The test split is the union of every named test set (spec.test_files).
+        import shutil
+
+        import identibench as idb
+
+        from tsfast.tsdata.benchmark import create_dls_from_spec
+
+        root = tmp_path / "WienerHammerstein"
+        for role in ("train", "valid"):
+            (root / role).mkdir(parents=True)
+            shutil.copy(WH_PATH / role / f"WienerHammerstein_{role}.hdf5", root / role)
+        (root / "test").mkdir()
+        for name in ("set_a.hdf5", "set_b.hdf5"):
+            shutil.copy(WH_PATH / "test" / "WienerHammerstein_test.hdf5", root / "test" / name)
+
+        with idb.data_root(tmp_path):
+            ds = idb.Dataset("WienerHammerstein", prepare=None)
+            spec = idb.BenchmarkSpec(
+                name="TestWH_TestSetUnion",
+                u_cols=["u"],
+                y_cols=["y"],
+                train=[(ds, "train/*.hdf5")],
+                valid=[(ds, "valid/*.hdf5")],
+                test_sets={
+                    "set_a": [(ds, "test/set_a.hdf5")],
+                    "set_b": [(ds, "test/set_b.hdf5")],
+                },
+                task=idb.Simulation(metric=idb.metrics.rmse, init_window=50),
+            )
+            dls = create_dls_from_spec(spec, win_sz=100, stp_sz=100, num_workers=0, n_batches_train=2)
+        assert dls.test is not None
+        assert len(dls.test.dataset) == 2  # full sequences: one entry per test file
+
+    def test_create_dls_from_spec_rejects_all_test_spec(self):
+        # All-test evaluation specs (no train/valid split) fail loudly at the
+        # boundary instead of producing empty DataLoaders.
+        import identibench as idb
+
+        from tsfast.tsdata.benchmark import create_dls_from_spec
+
+        with idb.data_root(PROJECT_ROOT / "test_data"):
+            ds = idb.Dataset("WienerHammerstein", prepare=None)
+            spec = idb.BenchmarkSpec(
+                name="TestWH_AllTest",
+                u_cols=["u"],
+                y_cols=["y"],
+                train=[],
+                valid=[],
+                test_sets={"test": [(ds, "test/*.hdf5")]},
+                task=idb.Simulation(metric=idb.metrics.rmse, init_window=50),
+            )
+            with pytest.raises(ValueError, match="all-test"):
+                create_dls_from_spec(spec, num_workers=0)
 
     def test_create_dls_norm_stats_structure(self):
         from tsfast.tsdata import create_dls

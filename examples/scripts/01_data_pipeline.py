@@ -60,9 +60,9 @@ dls_convenience = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
 spec = idb.BenchmarkSilverbox_Simulation
 print(f"Input columns:  {spec.u_cols}")
 print(f"Output columns: {spec.y_cols}")
-print(f"Dataset path:   {spec.dataset_path}")
-print(f"Train files:    {len(spec.files('train'))}")
-print(f"Test sets:      {list(spec.test_set_files())} (primary: {spec.primary_set()})")
+print(f"Datasets:       {[ds.dataset_id for ds in spec.datasets]}")
+print(f"Train files:    {len(spec.train_files())}")
+print(f"Test sets:      {list(spec.test_set_files())} (headline: {next(iter(spec.test_sets))})")
 
 # %% [markdown]
 # ## Building the DataLoaders Explicitly
@@ -78,7 +78,8 @@ print(f"Test sets:      {list(spec.test_set_files())} (primary: {spec.primary_se
 # - **`y`** -- list of output signal column names. These are the signals the
 #   model learns to predict (e.g., the circuit's response).
 # - **`dataset`** -- a `{'train': [...], 'valid': [...], 'test': [...]}` dict of
-#   file lists. The benchmark spec resolves these for us (`spec.files(role)` and
+#   file lists. The benchmark spec resolves these for us from its explicit
+#   `(dataset, glob)` patterns (`spec.train_files()`, `spec.valid_files()`, and
 #   `spec.test_set_files()`), so we never parse the on-disk layout; a plain
 #   directory with `train/`/`valid/`/`test/` subdirectories also works.
 # - **`win_sz`** -- window size: how many consecutive time steps make up one
@@ -95,9 +96,9 @@ dls_explicit = create_dls(
     u=spec.u_cols,
     y=spec.y_cols,
     dataset={
-        "train": spec.files("train"),
-        "valid": spec.files("valid"),
-        "test": spec.test_set_files()[spec.primary_set()],
+        "train": spec.train_files(),
+        "valid": spec.valid_files(),
+        "test": spec.test_set_files()["multisine"],
     },
     win_sz=500,
     stp_sz=10,

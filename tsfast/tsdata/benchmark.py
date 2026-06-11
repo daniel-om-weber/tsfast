@@ -24,7 +24,7 @@ __all__ = [
     "create_dls_ship_prediction",
     "create_dls_quad_pelican_prediction",
     "create_dls_quad_pi_prediction",
-    "create_dls_broad",
+    "create_dls_riann",
     "external_datasets_simulation",
     "external_datasets_prediction",
 ]
@@ -60,6 +60,8 @@ BENCHMARK_DL_KWARGS = {
     "BenchmarkShip_Prediction": {},
     "BenchmarkQuadPelican_Prediction": {"valid_stp_sz": 40},
     "BenchmarkQuadPi_Prediction": {"valid_stp_sz": 20},
+    # Orientation Estimation
+    "BenchmarkRIANN_Inclination": {"win_sz": 100, "stp_sz": 30},
 }
 
 
@@ -69,25 +71,35 @@ def create_dls_from_spec(
 ) -> DataLoaders:
     """Create DataLoaders from an identibench benchmark specification.
 
-    Download/preparation is delegated to identibench (`spec.ensure_dataset_exists`,
-    cached under the identibench data root). Files are resolved through the spec
-    (`spec.files` / `spec.test_set_files`), never by parsing the on-disk layout;
-    the test split is the spec's primary test set. Evaluation parameters are read
-    off `spec.task` (e.g. window sizing for prediction benchmarks).
+    Download/preparation is delegated to identibench (`spec.ensure_datasets_exist`,
+    cached under the identibench data root). Files are resolved through the spec's
+    role accessors (`spec.train_files`/`valid_files`/`test_files`), never by
+    parsing the on-disk layout; the test split is the union of the spec's named
+    test sets. Evaluation parameters are read off `spec.task` (e.g. window sizing
+    for prediction benchmarks).
 
-    Precondition: the spec must have non-empty train AND valid roles (the
-    workshop/robot/quad/ship benchmarks). All-test specs (orientation, IAS)
-    have no DataLoader factory here.
+    Requires a trainable spec (the workshop/robot/quad/ship benchmarks and the
+    combined RIANN orientation benchmark). All-test evaluation specs
+    (per-source orientation, DFJIMU) have no DataLoader factory here.
 
     Args:
         spec: benchmark specification from identibench
+
+    Raises:
+        ValueError: If the spec defines no train/valid split (`spec.is_trainable`
+            is False).
     """
-    spec.ensure_dataset_exists()
+    if not spec.is_trainable:
+        raise ValueError(
+            f"{spec.name} is an all-test evaluation spec (no train/valid split); "
+            "it cannot provide training DataLoaders."
+        )
+    spec.ensure_datasets_exist()
 
     dataset = {
-        "train": [str(f) for f in spec.files("train")],
-        "valid": [str(f) for f in spec.files("valid")],
-        "test": [str(f) for f in spec.test_set_files().get(spec.primary_set(), [])],
+        "train": [str(f) for f in spec.train_files()],
+        "valid": [str(f) for f in spec.valid_files()],
+        "test": [str(f) for f in spec.test_files()],
     }
     spec_kwargs = {
         "u": spec.u_cols,
@@ -138,34 +150,11 @@ create_dls_ship_prediction = partial(create_dls_from_spec, spec=idb.BenchmarkShi
 create_dls_quad_pelican_prediction = partial(create_dls_from_spec, spec=idb.BenchmarkQuadPelican_Prediction)
 create_dls_quad_pi_prediction = partial(create_dls_from_spec, spec=idb.BenchmarkQuadPi_Prediction)
 
-# --- BROAD dataset ---
-broad_u_imu_acc = [f"imu_acc{i}" for i in range(3)]
-broad_u_imu_gyr = [f"imu_gyr{i}" for i in range(3)]
-broad_u_imu_mag = [f"imu_mag{i}" for i in range(3)]
-broad_y_opt_pos = [f"opt_pos{i}" for i in range(4)]
-broad_y_opt_quat = [f"opt_quat{i}" for i in range(4)]
-broad_u = broad_u_imu_acc + broad_u_imu_gyr
-
-
-def create_dls_broad(**kwargs) -> DataLoaders:
-    """Create DataLoaders for the BROAD dataset (bespoke columns and windowing).
-
-    BROAD is an all-test spec with custom column names, so it does not go through
-    `create_dls_from_spec`. NOTE: the column names used here (`imu_acc0`, ...)
-    do not match what identibench's `dl_broad` writes (`acc_x`, ...); verify
-    against your prepared data before use.
-    """
-    spec = idb.BenchmarkBROAD_Inclination
-    spec.ensure_dataset_exists()
-    dl_kwargs = {
-        "u": broad_u,
-        "y": broad_y_opt_quat,
-        "dataset": spec.dataset_path,
-        "win_sz": 100,
-        "stp_sz": 30,
-        **kwargs,
-    }
-    return create_dls(**dl_kwargs)
+# --- Orientation estimation (IMU inclination) ---
+# Only the combined RIANN corpus carries train/valid roles (the paper's
+# cross-dataset split); the per-source specs (BROAD, TUM-VI, OxIOD, EuRoC,
+# RepoIMU, Caruso, DFJIMU) are all-test evaluation benchmarks.
+create_dls_riann = partial(create_dls_from_spec, spec=idb.BenchmarkRIANN_Inclination)
 
 
 # --- Collection lists ---
