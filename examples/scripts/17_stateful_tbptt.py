@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown]
-# # Example 16: Stateful Models and TBPTT
+# # Example 17: Stateful Models and TBPTT
 #
 # Standard backpropagation through time (BPTT) requires storing intermediate
 # activations for every timestep in a sequence. For very long sequences this
@@ -76,39 +76,28 @@ print(f"Standard: {lrn_standard.validate()}")
 # %% [markdown]
 # ## TBPTT Training
 #
-# Now train with TBPTT by adding `sub_seq_len` to the DataLoader creation.
-# This tells TSFast to split each window into sub-windows for truncated
-# backpropagation.
-#
-# Key parameters:
-#
-# - **`win_sz=500`** -- each training sample is 500 timesteps long (same as
-#   the baseline above).
-# - **`sub_seq_len=100`** -- split each 500-step window into 5 sub-windows of
-#   100 timesteps each.
-#
-# Gradients flow through only 100 timesteps at a time (memory-efficient), but
-# the hidden state spans all 500 timesteps within each window. The total
-# sequence length `win_sz` must be divisible by `sub_seq_len`.
+# The DataLoaders for TBPTT are identical to the baseline -- they yield full
+# 500-step windows. The splitting into sub-windows happens inside the learner,
+# so `sub_seq_len` is a learner parameter, not a DataLoader parameter.
 
 # %%
-dls_tbptt = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10, sub_seq_len=100)
+dls_tbptt = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
 
 # %% [markdown]
 # ## Stateful Model
 #
 # Create a stateful RNN that maintains hidden state across sub-windows.
 #
-# - **`sub_seq_len=100`** -- enables TBPTT with 100-step sub-windows. The RNN
-#   does **not** reset its hidden state between forward passes. Instead, the
-#   state from the previous sub-window initializes the next one, allowing
-#   information to flow across sub-window boundaries.
+# - **`sub_seq_len=100`** -- enables TBPTT: each 500-step window is split into
+#   5 sub-windows of 100 timesteps. The RNN does **not** reset its hidden
+#   state between sub-windows. Instead, the state from the previous sub-window
+#   initializes the next one, allowing information to flow across sub-window
+#   boundaries. The window size `win_sz` must be divisible by `sub_seq_len`.
 #
 # When `sub_seq_len` is set, `RNNLearner` automatically uses `TbpttLearner`
-# with `TbpttResetCB`. This callback monitors the DataLoader and resets the
-# hidden state whenever a new main window starts (i.e., at sequence boundaries).
-# Without this reset, the hidden state from one training sample would bleed
-# into the next, unrelated sample.
+# and a stateful RNN. The hidden state is carried across the sub-windows of
+# one window and reset between batches, so the state from one training sample
+# never bleeds into the next, unrelated sample.
 
 # %%
 lrn_tbptt = RNNLearner(
@@ -120,8 +109,9 @@ lrn_tbptt = RNNLearner(
 # ## Train with TBPTT
 #
 # Training proceeds exactly like standard training. Under the hood, the
-# DataLoader yields sub-windows in order, the stateful RNN carries hidden state
-# across them, and `TbpttResetCB` resets state at sequence boundaries.
+# learner splits each batch into sub-windows, runs forward/backward on each
+# sub-window in turn, and carries the detached hidden state from one
+# sub-window to the next.
 
 # %%
 lrn_tbptt.fit_flat_cos(n_epoch=10, lr=3e-3)
@@ -165,13 +155,12 @@ print(f"Stateful (TBPTT):      {lrn_tbptt.validate()}")
 # %% [markdown]
 # ## Key Takeaways
 #
-# - **TBPTT splits long sequences into sub-windows** with the `sub_seq_len`
-#   parameter on `create_dls_silverbox` (or any `create_dls` variant).
+# - **TBPTT splits long windows into sub-windows** inside the learner; the
+#   DataLoaders are the same as for standard training.
 # - **`sub_seq_len`** in `RNNLearner` enables TBPTT and makes the RNN carry its
 #   hidden state across sub-windows instead of resetting to zero each time.
-# - **`TbpttResetCB`** resets hidden state at sequence boundaries so different
-#   training samples do not bleed into each other. It is added automatically
-#   when `sub_seq_len` is set.
+# - **Hidden state is reset between batches** so different training samples do
+#   not bleed into each other.
 # - **Gradients are truncated** to `sub_seq_len` timesteps, bounding memory
 #   usage regardless of the full sequence length.
 # - **Hidden state spans the full sequence**, preserving long-range information
