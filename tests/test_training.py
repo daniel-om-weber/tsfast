@@ -878,6 +878,22 @@ class TestSaveLoad:
         lrn2.fit(3)
         assert len(lrn2.recorder) == 5  # 2 original + 3 new
 
+    def test_save_after_fit_flat_cos(self, tmp_path):
+        """save works after fit_flat_cos: the scheduler must be picklable (no closures)."""
+        from tsfast.models.rnn import SimpleRNN
+        from tsfast.training import Learner
+
+        dls = _SyntheticDls(n_u=1, n_y=1)
+        model = SimpleRNN(1, 1, hidden_size=20)
+        lrn = Learner(model, dls, loss_func=nn.MSELoss(), device=torch.device("cpu"))
+        lrn.fit_flat_cos(2)
+
+        path = tmp_path / "learner.pth"
+        lrn.save(path)
+
+        lrn2 = Learner.load(path, dls=dls)
+        assert lrn2.recorder == lrn.recorder
+
     def test_save_load_tbptt_learner(self, tmp_path):
         """save / load preserves TbpttLearner subclass and sub_seq_len."""
         from tsfast.models.rnn import SimpleRNN

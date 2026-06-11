@@ -10,17 +10,17 @@ import os
 import warnings
 from collections.abc import Callable
 from contextlib import contextmanager
+from functools import partial
 from pathlib import Path
 
 import torch
 from torch import Tensor, nn
-from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
 
 from ..models.state import detach_state
 from ..tsdata.pipeline import DataLoaders, get_signal_names
 from . import viz
-from .schedulers import sched_flat_cos
+from .schedulers import flat_cos_scheduler
 
 
 def _auto_device() -> torch.device:
@@ -376,11 +376,7 @@ class Learner:
 
     def fit_flat_cos(self, n_epoch: int, lr: float | None = None, pct_start: float = 0.75):
         """Convenience: flat LR then cosine decay."""
-        self.fit(
-            n_epoch,
-            lr=lr,
-            scheduler_fn=lambda opt, steps: LambdaLR(opt, lambda s: sched_flat_cos(s / steps, pct_start)),
-        )
+        self.fit(n_epoch, lr=lr, scheduler_fn=partial(flat_cos_scheduler, pct_start=pct_start))
 
     # ── logging ───────────────────────────────────────────────────────────
 
