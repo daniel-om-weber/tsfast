@@ -46,8 +46,9 @@ def _dydt_reverse(net: nn.Module, feat: Tensor, t: Tensor, n_state: int, create_
     """
     t = t.detach().requires_grad_(True)
     y = net(torch.cat([feat, t], dim=-1))
-    grads = [torch.autograd.grad(y[..., i].sum(), t, create_graph=create_graph, retain_graph=True)[0]
-             for i in range(n_state)]
+    grads = [
+        torch.autograd.grad(y[..., i].sum(), t, create_graph=create_graph, retain_graph=True)[0] for i in range(n_state)
+    ]
     return y, torch.cat(grads, dim=-1)
 
 
