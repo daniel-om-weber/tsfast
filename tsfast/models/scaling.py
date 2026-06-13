@@ -70,25 +70,40 @@ class StandardScaler(Scaler):
 
 
 class MinMaxScaler(Scaler):
-    """Normalize by ``(x - min) / (max - min)`` to ``[0, 1]``.
+    """Affinely map each feature from ``[min, max]`` onto ``feature_range``.
+
+    With the default ``feature_range=(0, 1)`` this is the standard ``(x - min) / (max - min)``;
+    pass ``feature_range=(-1, 1)`` to target the symmetric box. The bounds may be data extremes
+    (via :meth:`from_stats`) or an explicit modelling range passed to the constructor.
 
     Args:
-        min_val: per-feature minimum, as ndarray or tensor
-        max_val: per-feature maximum, as ndarray or tensor
+        min_val: per-feature lower bound, as ndarray or tensor
+        max_val: per-feature upper bound, as ndarray or tensor
+        feature_range: target interval ``(lo, hi)`` the bounds are mapped onto.
     """
 
     _epsilon = 1e-16
 
-    def __init__(self, min_val, max_val):
+    def __init__(self, min_val, max_val, feature_range: tuple[float, float] = (0.0, 1.0)):
         super().__init__()
+        self.feature_range = feature_range
         self.register_buffer("min_val", _ensure_tensor(min_val))
         self.register_buffer("range_val", _ensure_tensor(max_val) - _ensure_tensor(min_val) + self._epsilon)
 
+    @property
+    def scale(self) -> torch.Tensor:
+        """Per-feature affine slope ``d(normalized)/d(x)`` (sklearn's ``scale_``) — the Jacobian of
+        :meth:`normalize`, for derivative / chain-rule consumers."""
+        lo, hi = self.feature_range
+        return (hi - lo) / self.range_val
+
     def normalize(self, x: torch.Tensor) -> torch.Tensor:
-        return (x - self.min_val) / self.range_val
+        lo, hi = self.feature_range
+        return lo + (hi - lo) * (x - self.min_val) / self.range_val
 
     def denormalize(self, x: torch.Tensor) -> torch.Tensor:
-        return x * self.range_val + self.min_val
+        lo, hi = self.feature_range
+        return (x - lo) / (hi - lo) * self.range_val + self.min_val
 
     @classmethod
     def from_stats(cls, stats) -> "MinMaxScaler":
