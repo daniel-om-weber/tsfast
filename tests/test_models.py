@@ -1,4 +1,5 @@
 """Tests for tsfast.models module."""
+
 import math
 import pytest
 import torch
@@ -8,6 +9,7 @@ import numpy as np
 class TestRNN:
     def test_simple_rnn_gru_shape(self, dls_simulation):
         from tsfast.models.rnn import SimpleRNN
+
         batch = dls_simulation.one_batch()
         device = batch[0].device
         model = SimpleRNN(1, 1, num_layers=2, rnn_type="gru").to(device)
@@ -16,6 +18,7 @@ class TestRNN:
 
     def test_simple_rnn_lstm_shape(self, dls_simulation):
         from tsfast.models.rnn import SimpleRNN
+
         batch = dls_simulation.one_batch()
         device = batch[0].device
         model = SimpleRNN(1, 1, num_layers=1, rnn_type="lstm").to(device)
@@ -24,6 +27,7 @@ class TestRNN:
 
     def test_residual_rnn_shape(self, dls_simulation):
         from tsfast.models.rnn import SimpleResidualRNN
+
         batch = dls_simulation.one_batch()
         device = batch[0].device
         model = SimpleResidualRNN(1, 1, num_blocks=1).to(device)
@@ -32,6 +36,7 @@ class TestRNN:
 
     def test_dense_rnn_shape(self, dls_simulation):
         from tsfast.models.rnn import DenseNet_RNN
+
         batch = dls_simulation.one_batch()
         device = batch[0].device
         model = DenseNet_RNN(1, 1, growth_rate=10, block_config=(1, 1), num_init_features=2).to(device)
@@ -41,16 +46,18 @@ class TestRNN:
     @pytest.mark.slow
     def test_rnn_learner_fit(self, dls_simulation):
         from tsfast.training import RNNLearner
+
         lrn = RNNLearner(dls_simulation, rnn_type="gru")
         lrn.fit(1, 1e-4)
         final_valid_loss = lrn.recorder[-1][1]
         assert not math.isnan(final_valid_loss)
-        assert final_valid_loss < float('inf')
+        assert final_valid_loss < float("inf")
 
 
 class TestCNN:
     def test_tcn_shape(self, dls_simulation):
         from tsfast.models.cnn import TCN
+
         batch = dls_simulation.one_batch()
         device = batch[0].device
         model = TCN(1, 1, hl_depth=2, hl_width=10).to(device)
@@ -60,25 +67,28 @@ class TestCNN:
     @pytest.mark.slow
     def test_tcn_learner_fit(self, dls_simulation):
         from tsfast.training import TCNLearner
+
         lrn = TCNLearner(dls_simulation)
         lrn.fit(1, 1e-4)
         final_valid_loss = lrn.recorder[-1][1]
         assert not math.isnan(final_valid_loss)
-        assert final_valid_loss < float('inf')
+        assert final_valid_loss < float("inf")
 
     @pytest.mark.slow
     def test_crnn_learner_fit(self, dls_simulation):
         from tsfast.training import CRNNLearner
+
         lrn = CRNNLearner(dls_simulation)
         lrn.fit(1, 1e-4)
         final_valid_loss = lrn.recorder[-1][1]
         assert not math.isnan(final_valid_loss)
-        assert final_valid_loss < float('inf')
+        assert final_valid_loss < float("inf")
 
 
 class TestLayers:
     def test_seq_linear_shape(self):
         from tsfast.models.layers import SeqLinear
+
         m = SeqLinear(10, 3, hidden_layer=1)
         x = torch.rand(2, 50, 10)
         assert m(x).shape == (2, 50, 3)
@@ -145,6 +155,7 @@ class TestLayers:
 class TestSeperateModels:
     def test_seperate_rnn_shape(self, dls_simulation):
         from tsfast.models.rnn import SeperateRNN
+
         batch = dls_simulation.one_batch()
         device = batch[0].device
         model = SeperateRNN(input_list=[[0]], output_size=1, hidden_size=20).to(device)
@@ -153,6 +164,7 @@ class TestSeperateModels:
 
     def test_seperate_tcn_shape(self, dls_simulation):
         from tsfast.models.cnn import SeperateTCN
+
         batch = dls_simulation.one_batch()
         device = batch[0].device
         model = SeperateTCN(input_list=[1], output_size=1, hl_depth=2, hl_width=10).to(device)
@@ -161,11 +173,17 @@ class TestSeperateModels:
 
     def test_seperate_crnn_shape(self, dls_simulation):
         from tsfast.models.cnn import SeperateCRNN
+
         batch = dls_simulation.one_batch()
         device = batch[0].device
         model = SeperateCRNN(
-            input_list=[1], output_size=1, num_ft=4,
-            num_cnn_layers=2, num_rnn_layers=1, hs_cnn=4, hs_rnn=4,
+            input_list=[1],
+            output_size=1,
+            num_ft=4,
+            num_cnn_layers=2,
+            num_rnn_layers=1,
+            hs_cnn=4,
+            hs_rnn=4,
         ).to(device)
         out = model(batch[0])
         assert out.shape == batch[1].shape
@@ -173,17 +191,19 @@ class TestSeperateModels:
     @pytest.mark.slow
     def test_ar_tcn_learner_fit(self, dls_simulation):
         from tsfast.training import AR_TCNLearner
+
         lrn = AR_TCNLearner(dls_simulation, hl_depth=2, hl_width=10)
         lrn.fit(1, 1e-4)
         final_valid_loss = lrn.recorder[-1][1]
         assert not math.isnan(final_valid_loss)
-        assert final_valid_loss < float('inf')
+        assert final_valid_loss < float("inf")
 
 
 class TestModelWrappers:
     def test_normalized_model_forward(self, dls_simulation):
         from tsfast.models.rnn import SimpleRNN
         from tsfast.models.scaling import ScaledModel
+
         batch = dls_simulation.one_batch()
         device = batch[0].device
         model = ScaledModel.from_dls(SimpleRNN(1, 1), dls_simulation).to(device)
@@ -193,6 +213,7 @@ class TestModelWrappers:
     def test_ar_model_teacher_forcing(self, dls_simulation):
         from tsfast.models.rnn import SimpleRNN
         from tsfast.models.layers import AR_Model
+
         batch = dls_simulation.one_batch()
         device = batch[0].device
         u = batch[0]  # (batch, seq, 1)
@@ -204,6 +225,7 @@ class TestModelWrappers:
 
     def test_seq_aggregation_last(self):
         from tsfast.models.layers import SeqAggregation
+
         agg = SeqAggregation()
         x = torch.rand(4, 100, 10)
         out = agg(x)
@@ -211,6 +233,7 @@ class TestModelWrappers:
 
     def test_seq_aggregation_mean(self):
         from tsfast.models.layers import SeqAggregation
+
         agg = SeqAggregation(func=lambda x, dim: x.mean(dim=dim))
         x = torch.rand(4, 100, 10)
         out = agg(x)
@@ -221,6 +244,7 @@ class TestScalers:
     @pytest.fixture
     def norm_pair(self):
         from tsfast.tsdata import NormPair
+
         return NormPair(
             mean=np.array([1.0, 2.0], dtype=np.float32),
             std=np.array([0.5, 1.0], dtype=np.float32),
@@ -230,6 +254,7 @@ class TestScalers:
 
     def test_standard_roundtrip(self, norm_pair):
         from tsfast.models.scaling import StandardScaler
+
         scaler = StandardScaler(norm_pair.mean, norm_pair.std)
         x = torch.rand(2, 10, 2)
         out = scaler.denormalize(scaler.normalize(x))
@@ -237,6 +262,7 @@ class TestScalers:
 
     def test_minmax_roundtrip(self, norm_pair):
         from tsfast.models.scaling import MinMaxScaler
+
         scaler = MinMaxScaler(norm_pair.min, norm_pair.max)
         x = torch.rand(2, 10, 2)
         out = scaler.denormalize(scaler.normalize(x))
@@ -244,19 +270,55 @@ class TestScalers:
 
     def test_maxabs_roundtrip(self, norm_pair):
         from tsfast.models.scaling import MaxAbsScaler
+
         scaler = MaxAbsScaler(norm_pair.min, norm_pair.max)
         x = torch.rand(2, 10, 2)
         out = scaler.denormalize(scaler.normalize(x))
         torch.testing.assert_close(out, x, atol=1e-5, rtol=1e-5)
 
+    def test_minmax_feature_range_symmetric(self):
+        from tsfast.models.scaling import MinMaxScaler
+
+        lo = np.array([-2.0, 0.0], dtype=np.float32)
+        hi = np.array([3.0, 10.0], dtype=np.float32)
+        scaler = MinMaxScaler(lo, hi, feature_range=(-1.0, 1.0))
+        bounds = torch.tensor(np.stack([lo, hi]), dtype=torch.float32)[None]  # [1, 2, features]
+        torch.testing.assert_close(
+            scaler.normalize(bounds), torch.tensor([[-1.0, -1.0], [1.0, 1.0]])[None], atol=1e-6, rtol=0
+        )
+        x = torch.rand(2, 10, 2) * 5 - 2
+        torch.testing.assert_close(scaler.denormalize(scaler.normalize(x)), x, atol=1e-5, rtol=1e-5)
+
+    def test_minmax_scale_is_normalize_jacobian(self):
+        from tsfast.models.scaling import MinMaxScaler
+
+        lo = np.array([-2.0, 0.0], dtype=np.float32)
+        hi = np.array([3.0, 10.0], dtype=np.float32)
+        for fr in [(0.0, 1.0), (-1.0, 1.0)]:
+            scaler = MinMaxScaler(lo, hi, feature_range=fr)
+            x = torch.zeros(1, 1, 2)
+            slope = scaler.normalize(x + 1) - scaler.normalize(x)  # finite-difference slope (affine, exact)
+            torch.testing.assert_close(scaler.scale.expand_as(slope), slope, atol=1e-6, rtol=1e-5)
+
+    def test_minmax_empty_features(self):
+        from tsfast.models.scaling import MinMaxScaler
+
+        empty = np.array([], dtype=np.float32)
+        scaler = MinMaxScaler(empty, empty, feature_range=(-1.0, 1.0))
+        x = torch.randn(4, 1, 0)
+        assert scaler.normalize(x).shape == (4, 1, 0)
+        assert scaler.scale.shape == (1, 1, 0)
+
     def test_from_stats_classmethod(self, norm_pair):
         from tsfast.models.scaling import StandardScaler, MinMaxScaler, MaxAbsScaler
+
         assert isinstance(StandardScaler.from_stats(norm_pair), StandardScaler)
         assert isinstance(MinMaxScaler.from_stats(norm_pair), MinMaxScaler)
         assert isinstance(MaxAbsScaler.from_stats(norm_pair), MaxAbsScaler)
 
     def test_unnormalize_alias(self, norm_pair):
         from tsfast.models.scaling import StandardScaler
+
         scaler = StandardScaler(norm_pair.mean, norm_pair.std)
         x = torch.rand(2, 10, 2)
         norm = scaler.normalize(x)
@@ -265,6 +327,7 @@ class TestScalers:
     def test_normalized_model_from_stats(self, dls_simulation):
         from tsfast.models.rnn import SimpleRNN
         from tsfast.models.scaling import ScaledModel, MinMaxScaler
+
         batch = dls_simulation.one_batch()
         device = batch[0].device
         norm_u, norm_y = dls_simulation.norm_stats
@@ -275,12 +338,14 @@ class TestScalers:
     def test_rnn_learner_input_norm_none(self, dls_simulation):
         from tsfast.training import RNNLearner
         from tsfast.models.scaling import ScaledModel
+
         lrn = RNNLearner(dls_simulation, rnn_type="gru", input_norm=None)
         assert not isinstance(lrn.model, ScaledModel)
 
     def test_rnn_learner_input_norm_minmax(self, dls_simulation):
         from tsfast.training import RNNLearner
         from tsfast.models.scaling import ScaledModel, MinMaxScaler
+
         lrn = RNNLearner(dls_simulation, rnn_type="gru", input_norm=MinMaxScaler)
         assert isinstance(lrn.model, ScaledModel)
         assert isinstance(lrn.model.input_norm, MinMaxScaler)
@@ -288,7 +353,7 @@ class TestScalers:
     def test_rnn_learner_output_norm(self, dls_simulation):
         from tsfast.training import RNNLearner
         from tsfast.models.scaling import ScaledModel, StandardScaler
+
         lrn = RNNLearner(dls_simulation, rnn_type="gru", output_norm=StandardScaler)
         assert isinstance(lrn.model, ScaledModel)
         assert isinstance(lrn.model.output_norm, StandardScaler)
-
