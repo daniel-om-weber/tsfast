@@ -1,7 +1,7 @@
 """Pure-PyTorch data pipeline for time series datasets."""
 
-from .readers import Cached, CSVSignals, FilenameScalar, HDF5Attrs, HDF5Signals, Resampled
-from .dataset import FileEntry, WindowedDataset
+from .readers import Cached, CSVSignals, FilenameScalar, HDF5Attrs, HDF5Signals, Resampled, SourceEntry
+from .dataset import WindowedDataset
 from .norm import NormPair, NormStats, compute_stats, compute_stats_from_files
 from .pipeline import DataLoaders, create_dls, create_dls_from_readers, get_file_paths, get_io_size, get_signal_names
 from .prefetch import PrefetchLoader

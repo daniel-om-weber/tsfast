@@ -1,32 +1,18 @@
-"""Pure PyTorch Dataset for windowed time series from HDF5 files."""
-
-from dataclasses import dataclass
+"""Pure PyTorch Dataset for windowed time series from source files."""
 
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from .readers import Resampled
-
-
-@dataclass
-class FileEntry:
-    """A single HDF5 file with optional resampling.
-
-    Args:
-        path: filesystem path to the HDF5 file
-        resampling_factor: scaling factor for the sequence length
-    """
-
-    path: str
-    resampling_factor: float = 1.0
+from .readers import SourceEntry
 
 
 class WindowedDataset(Dataset):
-    """Pure PyTorch Dataset for windowed time series from HDF5 files.
+    """Pure PyTorch Dataset for windowed time series from source files.
 
     Args:
-        entries: list of FileEntry (path + resampling_factor)
+        sources: list of SourceEntry (path + resampling factor); one file at
+            several rates is several entries, one per factor
         inputs: single reader or tuple of readers for input signals
         targets: single reader or tuple of readers for target signals
         win_sz: window size in (resampled) samples, None = full-file mode
@@ -35,13 +21,13 @@ class WindowedDataset(Dataset):
 
     def __init__(
         self,
-        entries: list[FileEntry],
+        sources: list[SourceEntry],
         inputs,
         targets,
         win_sz: int | None = None,
         stp_sz: int = 1,
     ):
-        self.entries = entries
+        self.sources = sources
         self._inputs = (inputs,) if not isinstance(inputs, tuple) else inputs
         self._targets = (targets,) if not isinstance(targets, tuple) else targets
         self._single_input = not isinstance(inputs, tuple)
@@ -50,18 +36,16 @@ class WindowedDataset(Dataset):
         self.stp_sz = stp_sz
         self._ref_block = self._find_temporal(*self._inputs, *self._targets)
 
-        if entries:
-            first_path = entries[0].path
+        if sources:
             for block in (*self._inputs, *self._targets):
                 if hasattr(block, "probe"):
-                    block.probe(first_path)
+                    block.probe(sources[0])
 
         if win_sz is not None:
             ref_block = self._ref_block
             counts = []
-            for e in entries:
-                raw_len = ref_block.file_len(e.path)
-                eff_len = int(raw_len * e.resampling_factor)
+            for e in sources:
+                eff_len = ref_block.file_len(e)  # already in resampled coords
                 n = max(0, (eff_len - win_sz) // stp_sz + 1)
                 counts.append(n)
             self._cumsum = np.cumsum(counts)
@@ -69,17 +53,17 @@ class WindowedDataset(Dataset):
 
     def __len__(self) -> int:
         if self.win_sz is None:
-            return len(self.entries)
+            return len(self.sources)
         return int(self._cumsum[-1]) if len(self._cumsum) > 0 else 0
 
     def __getitem__(self, idx: int) -> tuple:
         if self.win_sz is None:
-            entry = self.entries[idx]
-            eff_len = int(self._ref_block.file_len(entry.path) * entry.resampling_factor)
+            entry = self.sources[idx]
+            eff_len = self._ref_block.file_len(entry)  # already in resampled coords
             l_slc, r_slc = 0, eff_len
         else:
             entry_idx = int(np.searchsorted(self._cumsum, idx, side="right"))
-            entry = self.entries[entry_idx]
+            entry = self.sources[entry_idx]
             offset = idx - (int(self._cumsum[entry_idx - 1]) if entry_idx > 0 else 0)
             l_slc = offset * self.stp_sz
             r_slc = l_slc + self.win_sz
@@ -93,24 +77,20 @@ class WindowedDataset(Dataset):
             tgt = tgt[0]
         return inp, tgt
 
-    def _read_readers(self, readers: tuple, entry: FileEntry, l_slc: int, r_slc: int) -> tuple[torch.Tensor, ...]:
+    def _read_readers(self, readers: tuple, entry: SourceEntry, l_slc: int, r_slc: int) -> tuple[torch.Tensor, ...]:
         results = []
         for block in readers:
-            if isinstance(block, Resampled):
-                arr = block.read(entry.path, l_slc, r_slc, entry.resampling_factor)
-            elif hasattr(block, "file_len"):
-                arr = block.read(entry.path, l_slc, r_slc)
+            if hasattr(block, "file_len"):  # temporal reader (incl. Resampled views)
+                arr = block.read(entry, l_slc, r_slc)
             else:
-                arr = block.read(entry.path)
+                arr = block.read(entry)  # scalar reader
             results.append(torch.from_numpy(arr.astype(np.float32)))
         return tuple(results)
 
     @staticmethod
     def _find_temporal(*readers):
-        """Find first temporal reader (has file_len method)."""
+        """Find the first temporal reader (one with a file_len method)."""
         for b in readers:
-            if isinstance(b, Resampled):
-                return b
             if hasattr(b, "file_len"):
                 return b
         raise ValueError("At least one temporal reader required")
