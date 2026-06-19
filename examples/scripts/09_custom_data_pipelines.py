@@ -38,7 +38,7 @@ from pathlib import Path
 from torch.utils.data import DataLoader
 
 from tsfast.tsdata import (
-    WindowedDataset, HDF5Signals, FileEntry, DataLoaders,
+    WindowedDataset, HDF5Signals, SourceEntry, DataLoaders,
     create_dls, create_dls_from_readers, get_hdf_files, split_by_parent,
 )
 from tsfast.training import RNNLearner, fun_rmse
@@ -170,7 +170,7 @@ targets = HDF5Signals(['y'])
 # %% [markdown]
 # ### Step 3: Create WindowedDatasets
 #
-# `WindowedDataset` takes a list of `FileEntry` objects and the signal readers,
+# `WindowedDataset` takes a list of `SourceEntry` objects and the signal readers,
 # then creates overlapping windows of the specified size. Each sample is a
 # `(input_tensor, target_tensor)` tuple.
 #
@@ -178,8 +178,8 @@ targets = HDF5Signals(['y'])
 # - **`stp_sz=50`** -- windows overlap with a stride of 50 timesteps
 
 # %%
-train_entries = [FileEntry(path=str(f)) for f in train_files]
-valid_entries = [FileEntry(path=str(f)) for f in valid_files]
+train_entries = [SourceEntry(path=str(f)) for f in train_files]
+valid_entries = [SourceEntry(path=str(f)) for f in valid_files]
 
 train_ds = WindowedDataset(train_entries, inputs=inputs, targets=targets, win_sz=200, stp_sz=50)
 valid_ds = WindowedDataset(valid_entries, inputs=inputs, targets=targets, win_sz=200, stp_sz=50)
@@ -273,7 +273,7 @@ lrn.show_results(max_n=3)
 # - **`HDF5Signals`** defines which datasets to extract from HDF5 files.
 # - **`WindowedDataset`** creates overlapping windows from HDF5 files, with
 #   configurable window size and step size.
-# - **`FileEntry`** wraps a file path with optional resampling metadata.
+# - **`SourceEntry`** wraps a file path with optional resampling metadata.
 # - **`DataLoaders`** bundles train/valid DataLoaders for the Learner.
 # - **`create_dls_from_readers`** handles dataset + DataLoader construction
 #   from readers and file lists, including `n_batches_train` for fixed batch

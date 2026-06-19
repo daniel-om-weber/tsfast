@@ -6,8 +6,8 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 
-from .readers import Cached, HDF5Signals, Resampled
-from .dataset import FileEntry, WindowedDataset
+from .readers import Cached, HDF5Signals, Resampled, SourceEntry
+from .dataset import WindowedDataset
 from .norm import (
     NormStats,
     _load_norm_stats,
@@ -121,7 +121,7 @@ def _get_reader_names(readers: tuple) -> list[str] | None:
 
 def get_file_paths(dl) -> list[str]:
     """Extract unique file paths from a DataLoader's dataset entries."""
-    return list(dict.fromkeys(e.path for e in dl.dataset.entries))
+    return list(dict.fromkeys(s.path for s in dl.dataset.sources))
 
 
 def get_signal_names(dl) -> tuple[list[str], list[str]] | None:
@@ -139,53 +139,38 @@ def get_signal_names(dl) -> tuple[list[str], list[str]] | None:
     return (u, y)
 
 
-def _compute_resampling_factors(
-    files: list[Path],
-    targ_fs: float | list[float],
-    src_fs: float | str | Callable | None,
-) -> dict[str, list[tuple[float, float]]]:
-    """Compute per-file resampling factors from source/target sampling rates.
+def _resolve_src_fs(path: str, src_fs: float | str | Callable | None) -> float:
+    """Resolve a file's source sampling rate (number, HDF5 attribute name, or callable)."""
+    if callable(src_fs):
+        return float(src_fs(path))
+    if isinstance(src_fs, str):
+        # src_fs is an HDF5 attribute name — read from file
+        import h5py
 
-    Returns dict mapping path -> list of (resampling_factor, targ_fs) pairs.
-    When targ_fs is a list, each file is expanded into multiple entries.
+        with h5py.File(path, "r") as hf:
+            return float(hf.attrs[src_fs])
+    if src_fs is not None:
+        return float(src_fs)
+    return 1.0
+
+
+def _wrap_resampled(blocks, cache: bool):
+    """Wrap each temporal reader in a Resampled view (and Cached unless disabled).
+
+    Scalar readers (no file_len) carry no time axis and pass through untouched.
+    The factor is read per window from each SourceEntry, so one Resampled (and one
+    Cached) serves every file at every rate.
     """
-    if isinstance(targ_fs, (int, float)):
-        targ_fs = [targ_fs]
 
-    result = {}
-    for f in files:
-        path = str(f)
-        if callable(src_fs):
-            file_fs = float(src_fs(path))
-        elif isinstance(src_fs, str):
-            # src_fs is an HDF5 attribute name — read from file
-            import h5py
+    def wrap(b):
+        if not hasattr(b, "file_len"):
+            return b
+        view = Resampled(b)
+        return Cached(view) if cache else view
 
-            with h5py.File(path, "r") as hf:
-                file_fs = float(hf.attrs[src_fs])
-        elif src_fs is not None:
-            file_fs = float(src_fs)
-        else:
-            file_fs = 1.0
-
-        result[path] = [(tf / file_fs, tf) for tf in targ_fs]
-    return result
-
-
-def _wrap_one(block):
-    """Wrap a single temporal reader in Resampled if needed."""
-    if isinstance(block, Resampled):
-        return block
-    if hasattr(block, "file_len"):
-        return Resampled(block)
-    return block
-
-
-def _wrap_resampled(blocks):
-    """Wrap temporal readers in Resampled, leave scalar/already-wrapped readers untouched."""
-    if not isinstance(blocks, tuple):
-        return _wrap_one(blocks)
-    return tuple(_wrap_one(b) for b in blocks)
+    if isinstance(blocks, tuple):
+        return tuple(wrap(b) for b in blocks)
+    return wrap(blocks)
 
 
 def _wrap_cached(blocks):
@@ -211,6 +196,8 @@ def create_dls_from_readers(
     targ_fs: list[float] | float | None = None,
     src_fs: float | str | Callable | None = None,
     cache: bool = False,
+    cache_resampled: bool = True,
+    persistent_workers: bool | None = None,
     dls_id: str | None = None,
 ) -> DataLoaders:
     """Create DataLoaders from user-provided readers and file lists.
@@ -230,47 +217,59 @@ def create_dls_from_readers(
         n_batches_valid: exact number of validation batches per epoch, None for all
         targ_fs: target sampling frequency/frequencies for resampling
         src_fs: source sampling frequency (number or HDF5 attribute name)
-        cache: cache file data in memory on first read for faster subsequent access
+        cache: cache raw file data in memory on first read for faster subsequent access
+        cache_resampled: cache the whole resampled file per (path, factor) so each
+            window is a slice instead of an independent resample (much faster, and
+            grid-consistent). Only affects files that are actually resampled.
+        persistent_workers: keep DataLoader workers (and their resampled caches)
+            alive across epochs. Defaults to True whenever num_workers > 0.
         dls_id: cache id for exact file-based normalization stats
     """
     if valid_stp_sz is None:
         valid_stp_sz = win_sz
     if test_files is None:
         test_files = []
+    if persistent_workers is None:
+        persistent_workers = num_workers > 0
 
-    if cache:
-        inputs = _wrap_cached(inputs)
-        targets = _wrap_cached(targets)
-
-    # Handle resampling
+    # --- Build source entries: one file becomes one entry per target rate. The
+    # resampling factor lives on the entry (and is its cache key), so several rates
+    # are several entries in one dataset — no ConcatDataset. Without targ_fs every
+    # file is a single entry at factor 1.0. ---
     if targ_fs is not None:
-        rs_map = _compute_resampling_factors(train_files + valid_files + test_files, targ_fs, src_fs)
-        input_block = _wrap_resampled(inputs)
-        target_block = _wrap_resampled(targets)
+        targ_fs_list = [targ_fs] if isinstance(targ_fs, (int, float)) else list(targ_fs)
+        all_files = [str(f) for f in train_files + valid_files + test_files]
+        factors_for = {p: [tf / _resolve_src_fs(p, src_fs) for tf in targ_fs_list] for p in all_files}
     else:
-        rs_map = None
-        input_block = inputs
-        target_block = targets
+        factors_for = {}
 
-    # --- Build entries (expand for multi-frequency resampling) ---
-    def _make_entries(files):
-        entries = []
+    def _entries(files):
+        out = []
         for f in files:
-            path = str(f)
-            if rs_map is not None and path in rs_map:
-                for factor, _ in rs_map[path]:
-                    entries.append(FileEntry(path=path, resampling_factor=factor))
-            else:
-                entries.append(FileEntry(path=path))
-        return entries
+            p = str(f)
+            for factor in factors_for.get(p, [1.0]):
+                out.append(SourceEntry(p, factor=factor))
+        return out
 
-    train_entries = _make_entries(train_files)
-    valid_entries = _make_entries(valid_files)
-    test_entries = _make_entries(test_files)
+    train_entries = _entries(train_files)
+    valid_entries = _entries(valid_files)
+    test_entries = _entries(test_files)
 
-    # --- Build datasets ---
-    train_ds = WindowedDataset(train_entries, input_block, target_block, win_sz=win_sz, stp_sz=stp_sz)
-    valid_ds = WindowedDataset(valid_entries, input_block, target_block, win_sz=win_sz, stp_sz=valid_stp_sz)
+    # --- Wrap readers: resample (and cache the resampled signal) when resampling,
+    # else cache the raw signal if requested. Cached is the single caching layer. ---
+    if targ_fs is not None:
+        inp = _wrap_resampled(inputs, cache_resampled)
+        tgt = _wrap_resampled(targets, cache_resampled)
+    elif cache:
+        inp = _wrap_cached(inputs)
+        tgt = _wrap_cached(targets)
+    else:
+        inp, tgt = inputs, targets
+
+    # --- Build one WindowedDataset per split ---
+    train_ds = WindowedDataset(train_entries, inp, tgt, win_sz=win_sz, stp_sz=stp_sz)
+    valid_ds = WindowedDataset(valid_entries, inp, tgt, win_sz=win_sz, stp_sz=valid_stp_sz)
+    test_ds = WindowedDataset(test_entries, inp, tgt, win_sz=None) if test_entries else None
 
     # --- Build samplers ---
     if n_batches_train is not None:
@@ -293,6 +292,7 @@ def create_dls_from_readers(
         num_workers=num_workers,
         drop_last=True,
         pin_memory=torch.cuda.is_available(),
+        persistent_workers=persistent_workers and num_workers > 0,
     )
     valid_dl = DataLoader(
         valid_ds,
@@ -301,12 +301,12 @@ def create_dls_from_readers(
         num_workers=num_workers,
         drop_last=False,
         pin_memory=torch.cuda.is_available(),
+        persistent_workers=persistent_workers and num_workers > 0,
     )
 
     # Test DataLoader: full-file mode, sequential, bs=1
     test_dl = None
-    if test_entries:
-        test_ds = WindowedDataset(test_entries, input_block, target_block, win_sz=None)
+    if test_ds is not None:
         test_dl = DataLoader(
             test_ds,
             batch_size=1,
@@ -333,6 +333,8 @@ def create_dls(
     targ_fs: list[float] | float | None = None,
     src_fs: float | str | Callable | None = None,
     cache: bool = False,
+    cache_resampled: bool = True,
+    persistent_workers: bool | None = None,
 ) -> DataLoaders:
     """Create DataLoaders from HDF5 time-series files.
 
@@ -350,7 +352,11 @@ def create_dls(
         dls_id: cache id: when provided, computes exact stats from full training set and caches to disk
         targ_fs: target sampling frequency/frequencies for resampling
         src_fs: source sampling frequency (number or HDF5 attribute name)
-        cache: cache file data in memory on first read for faster subsequent access
+        cache: cache raw file data in memory on first read for faster subsequent access
+        cache_resampled: cache the whole resampled file per (path, factor) so each
+            window is a slice instead of an independent resample (default True)
+        persistent_workers: keep DataLoader workers and their caches alive across
+            epochs; defaults to True when num_workers > 0
     """
     # --- Resolve files ---
     if isinstance(dataset, dict):
@@ -400,5 +406,7 @@ def create_dls(
         targ_fs=targ_fs,
         src_fs=src_fs,
         cache=cache,
+        cache_resampled=cache_resampled,
+        persistent_workers=persistent_workers,
         dls_id=dls_id,
     )

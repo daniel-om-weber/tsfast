@@ -3,6 +3,7 @@
 import math
 import re
 import warnings
+from dataclasses import dataclass
 from pathlib import Path
 
 import h5py
@@ -11,6 +12,24 @@ import numpy as np
 from scipy.signal import resample as fft_resample
 
 from .signal import resample_interp
+
+
+@dataclass(frozen=True)
+class SourceEntry:
+    """A source signal to read: a file path plus the rate it is sampled at.
+
+    This is the unit a :class:`~tsfast.tsdata.dataset.WindowedDataset` enumerates
+    and the key :class:`Cached` stores under. Because it is frozen (hashable), one
+    file resampled to several rates is several entries — one per ``factor`` — that
+    never collide in the cache.
+
+    Args:
+        path: filesystem path to the source file
+        factor: resampling factor in resampled coordinates (1.0 = no resampling)
+    """
+
+    path: str
+    factor: float = 1.0
 
 
 class HDF5Signals:
@@ -41,8 +60,9 @@ class HDF5Signals:
         self._dtype: np.dtype | None = None
         self._widths: dict[str, int] = {}
 
-    def probe(self, path: str) -> None:
+    def probe(self, entry: SourceEntry) -> None:
         """Probe HDF5 datasets and cache access info for contiguous ones."""
+        path = entry.path
         if path in self._probe_cache:
             return
         entries = {}
@@ -75,9 +95,10 @@ class HDF5Signals:
                 self._len_cache[path] = ds[self.names[0]].shape[0]
         self._probe_cache[path] = entries
 
-    def read(self, path: str, l_slc: int, r_slc: int) -> np.ndarray:
+    def read(self, entry: SourceEntry, l_slc: int, r_slc: int) -> np.ndarray:
         """Read columns into pre-allocated array -> [seq_len, n_features]."""
-        self.probe(path)
+        path = entry.path
+        self.probe(entry)
         entries = self._probe_cache[path]
         count = r_slc - l_slc
         out = np.empty((count, self.n_features), dtype=self._dtype)
@@ -122,10 +143,11 @@ class HDF5Signals:
                         out[:, c : c + w] = data
         return out
 
-    def file_len(self, path: str) -> int:
+    def file_len(self, entry: SourceEntry) -> int:
         """Length of first named dataset. Cached per path."""
+        path = entry.path
         if path not in self._len_cache:
-            self.probe(path)
+            self.probe(entry)
         return self._len_cache[path]
 
     @property
@@ -167,11 +189,11 @@ class HDF5Attrs:
         self.dtype = dtype
         self._n_features: int | None = None
 
-    def probe(self, path: str) -> None:
+    def probe(self, entry: SourceEntry) -> None:
         """Probe attribute sizes from a file."""
         if self._n_features is not None:
             return
-        with h5py.File(path, "r") as f:
+        with h5py.File(entry.path, "r") as f:
             ds = f if self.dataset is None else f[self.dataset]
             total = 0
             for n in self.names:
@@ -179,8 +201,8 @@ class HDF5Attrs:
                 total += val.size
         self._n_features = total
 
-    def read(self, path: str) -> np.ndarray:
-        with h5py.File(path, "r") as f:
+    def read(self, entry: SourceEntry) -> np.ndarray:
+        with h5py.File(entry.path, "r") as f:
             ds = f if self.dataset is None else f[self.dataset]
             parts = []
             for n in self.names:
@@ -207,10 +229,26 @@ class HDF5Attrs:
 
 
 class Resampled:
-    """Wraps a temporal reader, reading in original space and resampling to target rate.
+    """Wraps a temporal reader, reading in original space and resampling to a target rate.
+
+    A pure resampling view over an inner reader. The factor is read per call from
+    the :class:`SourceEntry` (``entry.factor``), so ``read``/``file_len`` keep the
+    *same signature* as every other temporal reader — there is no factor to store
+    and no marker to dispatch on, and a single ``Resampled`` instance serves every
+    file at every rate. ``file_len`` is reported in *resampled* coordinates, which
+    makes ``read(entry, 0, file_len)`` the whole-file resample; wrapping the view in
+    :class:`Cached` therefore caches one resampled copy per ``(path, factor)`` and
+    serves windows as slices (``create_dls(..., cache_resampled=True)`` does this).
+
+    Reading the whole file once and slicing is also more correct than resampling
+    each window independently: per-window resampling rebuilds the interpolation
+    grid and lowpass-filter state from each window's own length, drifting the
+    sample grid and leaving filter transients at window boundaries.  One resample
+    of the whole signal yields a single, consistent grid — matching the legacy
+    fastai pipeline.
 
     Args:
-        block: temporal reader with read(path, l_slc, r_slc) and file_len(path)
+        block: temporal reader with read(entry, l_slc, r_slc) and file_len(entry)
         fs_idx: column index of sampling rate, scaled by resampling factor
         dt_idx: column index of time step, scaled by resampling factor
         fast_resample: use linear interpolation (True) or FFT resampling (False)
@@ -228,34 +266,41 @@ class Resampled:
         self.dt_idx = dt_idx
         self.fast_resample = fast_resample
 
-    def probe(self, path: str) -> None:
-        self.block.probe(path)
+    def probe(self, entry: SourceEntry) -> None:
+        self.block.probe(entry)
 
-    def read(self, path: str, l_slc: int, r_slc: int, factor: float) -> np.ndarray:
-        """Read and resample a window. l_slc/r_slc are in resampled coordinates."""
+    def read(self, entry: SourceEntry, l_slc: int, r_slc: int) -> np.ndarray:
+        """Read a window in resampled coordinates.
+
+        Reads only the raw span covering ``[l_slc, r_slc]`` and resamples it.
+        Called with the whole resampled range (by :class:`Cached`) it reads and
+        resamples the whole file; called per-window (cache disabled) it resamples
+        just that span.
+        """
+        factor = entry.factor
         if factor == 1.0:
-            return self.block.read(path, l_slc, r_slc)
-
+            return self.block.read(entry, l_slc, r_slc)
         target_len = r_slc - l_slc
         l_orig = math.floor(l_slc / factor)
-        r_orig = min(math.ceil(r_slc / factor) + 2, self.file_len(path))
-        raw = self.block.read(path, l_orig, r_orig)
+        r_orig = min(math.ceil(r_slc / factor) + 2, self.block.file_len(entry))
+        raw = self.block.read(entry, l_orig, r_orig)
+        return self._resample(raw, factor)[:target_len]
 
+    def _resample(self, raw: np.ndarray, factor: float) -> np.ndarray:
         if self.fast_resample:
             resampled = resample_interp(raw, factor)
         else:
             resampled = fft_resample(raw, int(raw.shape[0] * factor), window=("kaiser", 14.0))
-
         if self.fs_idx is not None:
             resampled[:, self.fs_idx] = raw[0, self.fs_idx] * factor
         if self.dt_idx is not None:
             resampled[:, self.dt_idx] = raw[0, self.dt_idx] / factor
+        # float32 (the dtype the dataset casts to) to halve cache memory.
+        return resampled.astype(np.float32, copy=False)
 
-        return resampled[:target_len]
-
-    def file_len(self, path: str) -> int:
-        """Length in original (un-resampled) coordinates."""
-        return self.block.file_len(path)
+    def file_len(self, entry: SourceEntry) -> int:
+        """Length in *resampled* coordinates (``int(orig_len * factor)``)."""
+        return int(self.block.file_len(entry) * entry.factor)
 
     @property
     def signal_names(self) -> list[str]:
@@ -291,12 +336,13 @@ class CSVSignals:
             self._len_cache[path] = arr.shape[0]
         return self._data_cache[path]
 
-    def read(self, path: str, l_slc: int, r_slc: int) -> np.ndarray:
+    def read(self, entry: SourceEntry, l_slc: int, r_slc: int) -> np.ndarray:
         """Read columns and slice -> [seq_len, n_features]."""
-        return self._load(path)[l_slc:r_slc]
+        return self._load(entry.path)[l_slc:r_slc]
 
-    def file_len(self, path: str) -> int:
+    def file_len(self, entry: SourceEntry) -> int:
         """Row count excluding header. Cached per path."""
+        path = entry.path
         if path not in self._len_cache:
             self._load(path)
         return self._len_cache[path]
@@ -311,7 +357,17 @@ class CSVSignals:
 
 
 class Cached:
-    """Wrapper that caches full file data in memory on first read.
+    """Wrapper that caches a reader's whole-file output in memory on first read.
+
+    The single caching mechanism in the pipeline, keyed by :class:`SourceEntry`.
+    It is reader-agnostic: it asks the inner reader for its whole-file output once
+    and serves windows as slices. Wrapping a :class:`Resampled` view therefore
+    caches the resampled signal — ``Cached`` does the caching, ``Resampled`` only
+    the resampling — and because the entry carries the factor, one file at several
+    rates is several keys in the same cache that never collide.
+
+    The inner reader supplies its whole-file output via ``read(entry, 0, file_len)``
+    when it is temporal (has ``file_len``), else ``read(entry)`` (scalars).
 
     Args:
         block: any signal reader to wrap
@@ -319,19 +375,33 @@ class Cached:
 
     def __init__(self, block):
         self.block = block
-        self._data_cache: dict[str, np.ndarray] = {}
+        self._data_cache: dict[SourceEntry, np.ndarray] = {}
 
-    def read(self, path: str, l_slc: int | None = None, r_slc: int | None = None) -> np.ndarray:
-        if path not in self._data_cache:
-            if hasattr(self.block, "file_len"):
-                self._data_cache[path] = self.block.read(path, 0, self.block.file_len(path))
-            else:
-                self._data_cache[path] = self.block.read(path)
+    def read(self, entry: SourceEntry, l_slc: int | None = None, r_slc: int | None = None) -> np.ndarray:
+        full = self._data_cache.get(entry)
+        if full is None:
+            full = self._read_full(entry)
+            self._data_cache[entry] = full
         if l_slc is not None:
-            return self._data_cache[path][l_slc:r_slc]
-        return self._data_cache[path]
+            return full[l_slc:r_slc]
+        return full
+
+    def _read_full(self, entry: SourceEntry) -> np.ndarray:
+        if hasattr(self.block, "file_len"):
+            return self.block.read(entry, 0, self.block.file_len(entry))
+        return self.block.read(entry)
+
+    def __getstate__(self):
+        # Don't ship the (potentially large) cache to DataLoader workers on spawn;
+        # they rebuild it lazily. On fork it is shared copy-on-write regardless.
+        state = self.__dict__.copy()
+        state["_data_cache"] = {}
+        return state
 
     def __getattr__(self, name):
+        # During unpickling __dict__ is empty; raise instead of recursing on self.block.
+        if name == "block":
+            raise AttributeError(name)
         return getattr(self.block, name)
 
 
@@ -349,9 +419,9 @@ class FilenameScalar:
         idx_to_name = {v: k for k, v in self._pattern.groupindex.items()}
         self._signal_names = [idx_to_name.get(i + 1, f"scalar_{i}") for i in range(self._n_features)]
 
-    def read(self, path: str) -> np.ndarray:
+    def read(self, entry: SourceEntry) -> np.ndarray:
         """Search filename stem and return captured groups as float32 array."""
-        stem = Path(path).stem
+        stem = Path(entry.path).stem
         m = self._pattern.search(stem)
         if m is None:
             raise ValueError(f"Pattern {self._pattern.pattern!r} did not match filename {stem!r}")

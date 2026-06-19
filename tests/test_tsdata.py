@@ -7,6 +7,8 @@ import numpy as np
 import pytest
 import torch
 
+from tsfast.tsdata.readers import SourceEntry
+
 PROJECT_ROOT = Path(__file__).parent.parent
 WH_PATH = PROJECT_ROOT / "test_data" / "WienerHammerstein"
 PINN_PATH = PROJECT_ROOT / "test_data" / "pinn"
@@ -74,7 +76,7 @@ class TestReaders:
 
         block = HDF5Signals(["u", "y"])
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
-        arr = block.read(path, 0, 100)
+        arr = block.read(SourceEntry(path), 0, 100)
         assert arr.shape == (100, 2)
 
     def test_hdf5signals_file_len(self):
@@ -82,7 +84,7 @@ class TestReaders:
 
         block = HDF5Signals(["u"])
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
-        length = block.file_len(path)
+        length = block.file_len(SourceEntry(path))
         assert length == 80000
 
     def test_hdf5signals_len_cache(self):
@@ -90,17 +92,17 @@ class TestReaders:
 
         block = HDF5Signals(["u"])
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
-        block.file_len(path)
+        block.file_len(SourceEntry(path))
         assert path in block._len_cache
         # Second call should use cache
-        assert block.file_len(path) == 80000
+        assert block.file_len(SourceEntry(path)) == 80000
 
     def test_hdf5attrs_read(self):
         from tsfast.tsdata.readers import HDF5Attrs
 
         block = HDF5Attrs(["mass", "spring_constant"])
         path = str(PINN_PATH / "train" / "trajectory_sine_1hz.h5")
-        arr = block.read(path)
+        arr = block.read(SourceEntry(path))
         assert arr.shape == (2,)
         np.testing.assert_allclose(arr, [1.0, 1.0], rtol=1e-5)
 
@@ -114,7 +116,7 @@ class TestReaders:
             f.attrs["ja_rsaddle"] = np.array([4.0, 5.0, 6.0, 7.0, 8.0, 9.0], dtype=np.float32)
 
         block = HDF5Attrs(["dt", "ja_rr", "ja_rsaddle"])
-        arr = block.read(path)
+        arr = block.read(SourceEntry(path))
         assert arr.shape == (10,)
         assert block.n_features == 10
         np.testing.assert_allclose(arr, [0.01, 1, 2, 3, 4, 5, 6, 7, 8, 9], rtol=1e-5)
@@ -130,7 +132,7 @@ class TestReaders:
         block = HDF5Attrs(["dt", "ja_rr"])
         with pytest.warns(UserWarning, match="n_features accessed before probing"):
             assert block.n_features == 2  # fallback before probe
-        block.probe(path)
+        block.probe(SourceEntry(path))
         assert block.n_features == 4  # 1 scalar + 3 array elements
 
     def test_hdf5signals_2d(self, tmp_path):
@@ -146,7 +148,7 @@ class TestReaders:
             )
 
         block = HDF5Signals(["scalar_sig", "vector_sig"])
-        arr = block.read(path, 0, T)
+        arr = block.read(SourceEntry(path), 0, T)
         assert arr.shape == (T, 4)
         assert block.n_features == 4
         np.testing.assert_array_equal(arr[:, 0], np.arange(T, dtype=np.float32))
@@ -167,7 +169,7 @@ class TestReaders:
             )
 
         block = HDF5Signals(["scalar_sig", "vector_sig"], use_mmap=False)
-        arr = block.read(path, 0, T)
+        arr = block.read(SourceEntry(path), 0, T)
         assert arr.shape == (T, 4)
         assert block.n_features == 4
         np.testing.assert_array_equal(arr[:, 0], np.arange(T, dtype=np.float32))
@@ -197,7 +199,7 @@ class TestReaders:
             )
 
         block = HDF5Signals(["scalar_sig", "vector_sig"])
-        arr = block.read(path, 0, T)
+        arr = block.read(SourceEntry(path), 0, T)
         assert arr.shape == (T, 4)
         assert block.n_features == 4
         np.testing.assert_array_equal(arr[:, 0], np.arange(T, dtype=np.float32))
@@ -212,20 +214,99 @@ class TestReaders:
         from tsfast.tsdata.readers import HDF5Signals, Resampled
 
         block = HDF5Signals(["u"])
-        resampled = Resampled(block)
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
-        arr = resampled.read(path, 0, 100, factor=1.0)
-        arr_direct = block.read(path, 0, 100)
+        entry = SourceEntry(path)
+        resampled = Resampled(block)
+        arr = resampled.read(entry, 0, 100)
+        arr_direct = block.read(entry, 0, 100)
         np.testing.assert_array_equal(arr, arr_direct)
 
     def test_resampled_upsample(self):
         from tsfast.tsdata.readers import HDF5Signals, Resampled
 
         block = HDF5Signals(["u"])
-        resampled = Resampled(block)
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
-        arr = resampled.read(path, 0, 200, factor=2.0)
+        entry = SourceEntry(path, factor=2.0)
+        resampled = Resampled(block)
+        arr = resampled.read(entry, 0, 200)
         assert arr.shape == (200, 1)
+
+    def test_resampled_file_len_is_resampled(self):
+        """file_len is reported in resampled coords -> read(path, 0, file_len) is the whole file."""
+        from tsfast.tsdata.readers import HDF5Signals, Resampled
+
+        block = HDF5Signals(["u"])
+        path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
+        entry = SourceEntry(path, factor=2.0)
+        resampled = Resampled(block)
+        assert resampled.file_len(entry) == int(block.file_len(entry) * 2.0)
+        full = resampled.read(entry, 0, resampled.file_len(entry))
+        assert len(full) == int(block.file_len(entry) * 2.0)
+
+    def test_resampled_has_no_cache(self):
+        """Resampled is a pure resampling view — caching lives in Cached, and there
+        is no dispatch marker (its read/file_len match every other reader)."""
+        from tsfast.tsdata.readers import HDF5Signals, Resampled
+
+        r = Resampled(HDF5Signals(["u"]))
+        assert not hasattr(r, "_cache")
+        assert not hasattr(r, "_data_cache")
+        assert not hasattr(r, "resampling")
+        assert not hasattr(r, "path_factors")
+
+    def test_cached_resampled_caches_whole_file(self):
+        """Cached(Resampled) caches one whole resampled copy, keyed by path."""
+        from tsfast.tsdata.readers import Cached, HDF5Signals, Resampled
+
+        path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
+        entry = SourceEntry(path, factor=2.0)
+        cached = Cached(Resampled(HDF5Signals(["u"])))
+        cached.read(entry, 0, 200)
+        cached.read(entry, 100, 300)  # second window -> cache hit
+        assert entry in cached._data_cache
+        assert len(cached._data_cache[entry]) == int(cached.file_len(entry))
+
+    def test_cached_resampled_two_rates_share_one_cache(self):
+        """One file at two rates = two SourceEntry keys in a single Cached: no collision."""
+        from tsfast.tsdata.readers import Cached, HDF5Signals, Resampled
+
+        path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
+        cached = Cached(Resampled(HDF5Signals(["u"])))  # one cache serves every rate
+        e_a = SourceEntry(path, factor=2.0)
+        e_b = SourceEntry(path, factor=4.0)
+        ref = Resampled(HDF5Signals(["u"]))
+        got_a = np.asarray(cached.read(e_a, 0, 50))
+        got_b = np.asarray(cached.read(e_b, 0, 50))
+        np.testing.assert_array_equal(got_a, np.asarray(ref.read(e_a, 0, ref.file_len(e_a)))[0:50])
+        np.testing.assert_array_equal(got_b, np.asarray(ref.read(e_b, 0, ref.file_len(e_b)))[0:50])
+        assert set(cached._data_cache) == {e_a, e_b}  # both rates cached, no collision
+
+    def test_cached_resampled_matches_whole_file(self):
+        """Cached(Resampled) window == slice of one whole-file resample (grid-consistent)."""
+        from tsfast.tsdata.readers import Cached, HDF5Signals, Resampled
+
+        path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
+        entry = SourceEntry(path, factor=0.5)
+        cached = Cached(Resampled(HDF5Signals(["u"])))
+        ref = Resampled(HDF5Signals(["u"]))
+        whole = np.asarray(ref.read(entry, 0, ref.file_len(entry)))
+        win = np.asarray(cached.read(entry, 100, 300))
+        np.testing.assert_array_equal(win, whole[100:300])
+
+    def test_cached_pickle_drops_cache(self):
+        """Pickling (worker spawn) ships an empty cache; reads still work."""
+        import pickle
+
+        from tsfast.tsdata.readers import Cached, HDF5Signals, Resampled
+
+        path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
+        entry = SourceEntry(path, factor=2.0)
+        c = Cached(Resampled(HDF5Signals(["u"])))
+        c.read(entry, 0, 100)
+        assert c._data_cache  # populated
+        c2 = pickle.loads(pickle.dumps(c))
+        assert c2._data_cache == {}  # not shipped to workers
+        np.testing.assert_array_equal(c2.read(entry, 0, 100), c.read(entry, 0, 100))
 
     def test_hdf5signals_mmap_contiguous(self):
         """Contiguous datasets use mmap path and produce correct results."""
@@ -235,7 +316,7 @@ class TestReaders:
 
         block = HDF5Signals(["u", "x", "v"])
         path = str(PINN_PATH / "train" / "trajectory_sine_1hz.h5")
-        arr = block.read(path, 0, 100)
+        arr = block.read(SourceEntry(path), 0, 100)
         assert arr.shape == (100, 3)
         # Verify probe cache was populated with memmap views
         assert path in block._probe_cache
@@ -254,7 +335,7 @@ class TestReaders:
 
         block = HDF5Signals(["u", "y"])
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
-        arr = block.read(path, 0, 100)
+        arr = block.read(SourceEntry(path), 0, 100)
         assert arr.shape == (100, 2)
         # Chunked datasets should have None in probe cache
         assert path in block._probe_cache
@@ -273,7 +354,7 @@ class TestReaders:
 
         block = HDF5Signals(["u", "x", "v"], use_mmap=False)
         path = str(PINN_PATH / "train" / "trajectory_sine_1hz.h5")
-        arr = block.read(path, 0, 100)
+        arr = block.read(SourceEntry(path), 0, 100)
         assert arr.shape == (100, 3)
         # Verify probe cache stores int offsets, not memmap objects
         assert path in block._probe_cache
@@ -291,8 +372,8 @@ class TestReaders:
         path = str(PINN_PATH / "train" / "trajectory_sine_1hz.h5")
         block_mmap = HDF5Signals(["u", "x", "v"], use_mmap=True)
         block_direct = HDF5Signals(["u", "x", "v"], use_mmap=False)
-        arr_mmap = block_mmap.read(path, 10, 200)
-        arr_direct = block_direct.read(path, 10, 200)
+        arr_mmap = block_mmap.read(SourceEntry(path), 10, 200)
+        arr_direct = block_direct.read(SourceEntry(path), 10, 200)
         np.testing.assert_array_equal(arr_mmap, arr_direct)
 
     def test_hdf5signals_pickle_roundtrip(self):
@@ -303,9 +384,9 @@ class TestReaders:
 
         block = HDF5Signals(["u", "x"])
         path = str(PINN_PATH / "train" / "trajectory_sine_1hz.h5")
-        arr1 = block.read(path, 0, 50)
+        arr1 = block.read(SourceEntry(path), 0, 50)
         block2 = pickle.loads(pickle.dumps(block))
-        arr2 = block2.read(path, 0, 50)
+        arr2 = block2.read(SourceEntry(path), 0, 50)
         np.testing.assert_array_equal(arr1, arr2)
 
 
@@ -321,8 +402,8 @@ class TestCached:
         block = HDF5Signals(["u", "y"])
         cached = Cached(HDF5Signals(["u", "y"]))
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
-        arr = block.read(path, 10, 110)
-        arr_cached = cached.read(path, 10, 110)
+        arr = block.read(SourceEntry(path), 10, 110)
+        arr_cached = cached.read(SourceEntry(path), 10, 110)
         np.testing.assert_array_equal(arr, arr_cached)
 
     def test_cached_populates_data_cache(self):
@@ -330,16 +411,17 @@ class TestCached:
 
         cached = Cached(HDF5Signals(["u"]))
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
-        cached.read(path, 0, 100)
-        assert path in cached._data_cache
-        assert cached._data_cache[path].shape == (80000, 1)
+        entry = SourceEntry(path)
+        cached.read(entry, 0, 100)
+        assert entry in cached._data_cache
+        assert cached._data_cache[entry].shape == (80000, 1)
 
     def test_cached_delegates_n_features(self):
         from tsfast.tsdata.readers import Cached, HDF5Signals
 
         cached = Cached(HDF5Signals(["u", "y"]))
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
-        cached.read(path, 0, 10)  # probe before accessing n_features
+        cached.read(SourceEntry(path), 0, 10)  # probe before accessing n_features
         assert cached.n_features == 2
 
     def test_cached_delegates_file_len(self):
@@ -347,17 +429,18 @@ class TestCached:
 
         cached = Cached(HDF5Signals(["u"]))
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
-        assert cached.file_len(path) == 80000
+        assert cached.file_len(SourceEntry(path)) == 80000
 
     def test_cached_hdf5attrs(self):
         from tsfast.tsdata.readers import Cached, HDF5Attrs
 
         cached = Cached(HDF5Attrs(["mass", "spring_constant"]))
         path = str(PINN_PATH / "train" / "trajectory_sine_1hz.h5")
-        arr = cached.read(path)
+        entry = SourceEntry(path)
+        arr = cached.read(entry)
         assert arr.shape == (2,)
         np.testing.assert_allclose(arr, [1.0, 1.0], rtol=1e-5)
-        assert path in cached._data_cache
+        assert entry in cached._data_cache
 
     def test_cached_scalar_no_file_len(self):
         from tsfast.tsdata.readers import Cached, HDF5Attrs
@@ -369,28 +452,29 @@ class TestCached:
         from tsfast.tsdata.readers import Cached, HDF5Signals, Resampled
 
         cached = Cached(HDF5Signals(["u"]))
-        resampled = Resampled(cached)
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
-        arr = resampled.read(path, 0, 100, factor=1.0)
+        entry = SourceEntry(path)
+        resampled = Resampled(cached)
+        arr = resampled.read(entry, 0, 100)
         assert arr.shape == (100, 1)
         # Inner block should be cached
-        assert path in cached._data_cache
+        assert entry in cached._data_cache
 
     def test_cached_with_windowed_dataset(self):
         from tsfast.tsdata.readers import Cached, HDF5Signals
-        from tsfast.tsdata.dataset import FileEntry, WindowedDataset
+        from tsfast.tsdata.dataset import SourceEntry, WindowedDataset
 
         cached_u = Cached(HDF5Signals(["u"]))
         cached_y = Cached(HDF5Signals(["y"]))
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
-        entries = [FileEntry(path=path)]
+        entries = [SourceEntry(path=path)]
         ds = WindowedDataset(entries, cached_u, cached_y, win_sz=100, stp_sz=100)
         xb, yb = ds[0]
         assert xb.shape == (100, 1)
         assert yb.shape == (100, 1)
         # Both blocks should be cached after first access
-        assert path in cached_u._data_cache
-        assert path in cached_y._data_cache
+        assert SourceEntry(path) in cached_u._data_cache
+        assert SourceEntry(path) in cached_y._data_cache
 
     def test_create_dls_with_cache(self):
         from tsfast.tsdata import create_dls
@@ -422,7 +506,7 @@ class TestAltReaders:
         csv_file = tmp_path / "data.csv"
         csv_file.write_text("voltage,current\n1.0,2.0\n3.0,4.0\n5.0,6.0\n")
         block = CSVSignals(["voltage", "current"])
-        arr = block.read(str(csv_file), 0, 2)
+        arr = block.read(SourceEntry(str(csv_file)), 0, 2)
         assert arr.shape == (2, 2)
         np.testing.assert_allclose(arr, [[1.0, 2.0], [3.0, 4.0]])
 
@@ -432,10 +516,10 @@ class TestAltReaders:
         csv_file = tmp_path / "data.csv"
         csv_file.write_text("a,b\n1,2\n3,4\n5,6\n7,8\n")
         block = CSVSignals(["a", "b"])
-        assert block.file_len(str(csv_file)) == 4
+        assert block.file_len(SourceEntry(str(csv_file))) == 4
         # Second call uses cache
         assert str(csv_file) in block._len_cache
-        assert block.file_len(str(csv_file)) == 4
+        assert block.file_len(SourceEntry(str(csv_file))) == 4
 
     def test_csv_signals_n_features(self):
         from tsfast.tsdata.readers import CSVSignals
@@ -445,7 +529,7 @@ class TestAltReaders:
 
     def test_csv_signals_with_dataset(self, tmp_path):
         from tsfast.tsdata.readers import CSVSignals
-        from tsfast.tsdata.dataset import FileEntry, WindowedDataset
+        from tsfast.tsdata.dataset import SourceEntry, WindowedDataset
 
         csv_file = tmp_path / "signals.csv"
         lines = ["u,y"] + [f"{i * 0.1},{i * 0.2}" for i in range(100)]
@@ -453,7 +537,7 @@ class TestAltReaders:
 
         block_u = CSVSignals(["u"])
         block_y = CSVSignals(["y"])
-        entries = [FileEntry(path=str(csv_file))]
+        entries = [SourceEntry(path=str(csv_file))]
         ds = WindowedDataset(entries, block_u, block_y, win_sz=10, stp_sz=10)
         assert len(ds) == 10  # (100 - 10) // 10 + 1
         xb, yb = ds[0]
@@ -467,7 +551,7 @@ class TestAltReaders:
         csv_file = tmp_path / "data.csv"
         csv_file.write_text("a;b\n1.5;2.5\n3.5;4.5\n")
         block = CSVSignals(["a", "b"], delimiter=";")
-        arr = block.read(str(csv_file), 0, 2)
+        arr = block.read(SourceEntry(str(csv_file)), 0, 2)
         assert arr.shape == (2, 2)
         np.testing.assert_allclose(arr, [[1.5, 2.5], [3.5, 4.5]])
 
@@ -477,7 +561,7 @@ class TestAltReaders:
         f = tmp_path / "test_25C.csv"
         f.touch()
         block = FilenameScalar(r"(\d+)C")
-        arr = block.read(str(f))
+        arr = block.read(SourceEntry(str(f)))
         assert arr.shape == (1,)
         assert arr[0] == 25.0
 
@@ -487,7 +571,7 @@ class TestAltReaders:
         f = tmp_path / "test_25C_100Hz.csv"
         f.touch()
         block = FilenameScalar(r"(\d+)C_(\d+)Hz")
-        arr = block.read(str(f))
+        arr = block.read(SourceEntry(str(f)))
         assert arr.shape == (2,)
         np.testing.assert_allclose(arr, [25.0, 100.0])
 
@@ -498,7 +582,7 @@ class TestAltReaders:
         f.touch()
         block = FilenameScalar(r"(\d+)C")
         with pytest.raises(ValueError, match="did not match"):
-            block.read(str(f))
+            block.read(SourceEntry(str(f)))
 
     def test_filename_scalar_n_features(self):
         from tsfast.tsdata.readers import FilenameScalar
@@ -509,7 +593,7 @@ class TestAltReaders:
 
     def test_mixed_csv_filename_dataset(self, tmp_path):
         from tsfast.tsdata.readers import CSVSignals, FilenameScalar
-        from tsfast.tsdata.dataset import FileEntry, WindowedDataset
+        from tsfast.tsdata.dataset import SourceEntry, WindowedDataset
 
         csv_file = tmp_path / "trial_25C.csv"
         lines = ["u,y"] + [f"{i * 0.1},{i * 0.2}" for i in range(50)]
@@ -518,7 +602,7 @@ class TestAltReaders:
         block_u = CSVSignals(["u"])
         block_y = CSVSignals(["y"])
         block_temp = FilenameScalar(r"(\d+)C")
-        entries = [FileEntry(path=str(csv_file))]
+        entries = [SourceEntry(path=str(csv_file))]
         ds = WindowedDataset(entries, block_u, (block_y, block_temp), win_sz=10, stp_sz=10)
         assert len(ds) == 5  # (50 - 10) // 10 + 1
         xb, (yb, temp) = ds[0]
@@ -536,24 +620,24 @@ class TestAltReaders:
 class TestDataset:
     def test_windowed_dataset_window_count(self):
         from tsfast.tsdata.readers import HDF5Signals
-        from tsfast.tsdata.dataset import FileEntry, WindowedDataset
+        from tsfast.tsdata.dataset import SourceEntry, WindowedDataset
 
         block_u = HDF5Signals(["u"])
         block_y = HDF5Signals(["y"])
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
-        entries = [FileEntry(path=path)]
+        entries = [SourceEntry(path=path)]
         ds = WindowedDataset(entries, block_u, block_y, win_sz=100, stp_sz=100)
         # 80000 samples, win_sz=100, stp_sz=100 → (80000 - 100) // 100 + 1 = 800
         assert len(ds) == 800
 
     def test_windowed_dataset_getitem(self):
         from tsfast.tsdata.readers import HDF5Signals
-        from tsfast.tsdata.dataset import FileEntry, WindowedDataset
+        from tsfast.tsdata.dataset import SourceEntry, WindowedDataset
 
         block_u = HDF5Signals(["u"])
         block_y = HDF5Signals(["y"])
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
-        entries = [FileEntry(path=path)]
+        entries = [SourceEntry(path=path)]
         ds = WindowedDataset(entries, block_u, block_y, win_sz=100, stp_sz=100)
         xb, yb = ds[0]
         assert xb.shape == (100, 1)
@@ -563,12 +647,12 @@ class TestDataset:
 
     def test_windowed_dataset_fullfile(self):
         from tsfast.tsdata.readers import HDF5Signals
-        from tsfast.tsdata.dataset import FileEntry, WindowedDataset
+        from tsfast.tsdata.dataset import SourceEntry, WindowedDataset
 
         block_u = HDF5Signals(["u"])
         block_y = HDF5Signals(["y"])
         path = str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")
-        entries = [FileEntry(path=path)]
+        entries = [SourceEntry(path=path)]
         ds = WindowedDataset(entries, block_u, block_y, win_sz=None)
         assert len(ds) == 1
         xb, yb = ds[0]
@@ -577,13 +661,13 @@ class TestDataset:
 
     def test_windowed_dataset_multi_file(self):
         from tsfast.tsdata.readers import HDF5Signals
-        from tsfast.tsdata.dataset import FileEntry, WindowedDataset
+        from tsfast.tsdata.dataset import SourceEntry, WindowedDataset
 
         block_u = HDF5Signals(["u"])
         block_y = HDF5Signals(["y"])
         entries = [
-            FileEntry(path=str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")),
-            FileEntry(path=str(WH_PATH / "valid" / "WienerHammerstein_valid.hdf5")),
+            SourceEntry(path=str(WH_PATH / "train" / "WienerHammerstein_train.hdf5")),
+            SourceEntry(path=str(WH_PATH / "valid" / "WienerHammerstein_valid.hdf5")),
         ]
         ds = WindowedDataset(entries, block_u, block_y, win_sz=100, stp_sz=100)
         # Both files accessible
@@ -591,7 +675,7 @@ class TestDataset:
 
     def test_windowed_dataset_probes_attrs(self, tmp_path):
         from tsfast.tsdata.readers import HDF5Signals, HDF5Attrs
-        from tsfast.tsdata.dataset import FileEntry, WindowedDataset
+        from tsfast.tsdata.dataset import SourceEntry, WindowedDataset
 
         T = 200
         path = str(tmp_path / "test.h5")
@@ -604,20 +688,20 @@ class TestDataset:
         block_u = HDF5Signals(["u"])
         block_y = HDF5Signals(["y"])
         block_attrs = HDF5Attrs(["dt", "ja_rr"])
-        entries = [FileEntry(path=path)]
+        entries = [SourceEntry(path=path)]
         WindowedDataset(entries, block_u, (block_y, block_attrs), win_sz=10, stp_sz=10)
         # n_features should be correct immediately after construction
         assert block_attrs.n_features == 4
 
     def test_windowed_dataset_multi_block_tuple(self):
         from tsfast.tsdata.readers import HDF5Signals
-        from tsfast.tsdata.dataset import FileEntry, WindowedDataset
+        from tsfast.tsdata.dataset import SourceEntry, WindowedDataset
 
         block_u = HDF5Signals(["u"])
         block_x = HDF5Signals(["x"])
         block_v = HDF5Signals(["v"])
         path = str(PINN_PATH / "train" / "trajectory_sine_1hz.h5")
-        entries = [FileEntry(path=path)]
+        entries = [SourceEntry(path=path)]
         ds = WindowedDataset(entries, block_u, (block_x, block_v), win_sz=100, stp_sz=100)
         xb, (yb_x, yb_v) = ds[0]
         assert xb.shape == (100, 1)
@@ -763,6 +847,44 @@ class TestPipeline:
         assert list(batch[0].shape) == [64, 100, 1]
         assert list(batch[1].shape) == [64, 100, 1]
         assert len(dls.train) == 2
+
+    def test_create_dls_single_rate_is_plain_dataset(self):
+        # A single target rate must not pay the ConcatDataset machinery.
+        from torch.utils.data import ConcatDataset
+
+        from tsfast.tsdata import create_dls
+        from tsfast.tsdata.dataset import WindowedDataset
+
+        dls = create_dls(
+            u=["u"], y=["y"], dataset=WH_PATH, win_sz=100, stp_sz=100,
+            num_workers=0, n_batches_train=2, targ_fs=1.0, src_fs=2.0,
+        )
+        assert isinstance(dls.train.dataset, WindowedDataset)
+        assert not isinstance(dls.train.dataset, ConcatDataset)
+
+    def test_create_dls_multi_rate_single_dataset(self):
+        # One file resampled to several rates -> one WindowedDataset with one entry
+        # per (file, rate). No ConcatDataset: the factor lives on the SourceEntry.
+        from tsfast.tsdata import create_dls
+        from tsfast.tsdata.dataset import WindowedDataset
+
+        dls = create_dls(
+            u=["u"], y=["y"], dataset=WH_PATH, win_sz=100, stp_sz=100,
+            num_workers=0, n_batches_train=4, targ_fs=[1.0, 0.5], src_fs=2.0,
+        )
+        ds = dls.train.dataset
+        assert isinstance(ds, WindowedDataset)
+        # one train file at two rates -> two entries, same path, factors 0.5 and 0.25
+        assert len(ds.sources) == 2
+        assert len({s.path for s in ds.sources}) == 1
+        assert sorted(s.factor for s in ds.sources) == [0.25, 0.5]
+        # 80000 samples: factor 0.5 -> 40000 -> 400 windows; factor 0.25 -> 20000 -> 200
+        assert len(ds) == 600
+        # one shared Resampled/Cached reader pair serves every rate and split
+        assert ds._inputs[0] is dls.valid.dataset._inputs[0]
+        batch = dls.one_batch()
+        assert list(batch[0].shape) == [64, 100, 1]
+        assert dls.norm_stats is not None
 
     def test_create_dls_pinn_simulation(self):
         from tsfast.tsdata import create_dls

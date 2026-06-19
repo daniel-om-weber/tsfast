@@ -42,7 +42,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from tsfast.tsdata import (
-    WindowedDataset, HDF5Signals, HDF5Attrs, FileEntry,
+    WindowedDataset, HDF5Signals, HDF5Attrs, SourceEntry,
     DataLoaders, get_hdf_files, split_by_parent,
 )
 from tsfast.models.rnn import SimpleRNN
@@ -107,11 +107,11 @@ inputs_block = HDF5Signals(['u', 'x', 'v'])
 targets_block = HDF5Attrs(['x0', 'v0'])
 
 # %% [markdown]
-# Create `FileEntry` objects from the discovered files. Each entry points to
+# Create `SourceEntry` objects from the discovered files. Each entry points to
 # an HDF5 file with a default resampling factor of 1.0.
 
 # %%
-entries = [FileEntry(path=str(f)) for f in files]
+entries = [SourceEntry(path=str(f)) for f in files]
 train_idx, valid_idx = split_by_parent(files)
 
 train_entries = [entries[i] for i in train_idx]
