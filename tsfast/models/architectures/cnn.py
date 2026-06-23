@@ -176,18 +176,20 @@ class TCN_Block(nn.Module):
         activation: type[nn.Module] | None = Mish,
         wn: bool = True,
         bn: bool = False,
+        dropout: float = 0,
         **kwargs,
     ):
         super().__init__()
 
         layers = []
-        for _ in range(num_layers):
-            conv = CausalConv1d(input_size, output_size, 2, **kwargs)
+        for i in range(num_layers):
+            conv = CausalConv1d(input_size if i == 0 else output_size, output_size, 2, **kwargs)
             if wn:
                 conv = weight_norm(conv)
+            bn = nn.BatchNorm1d(output_size) if bn else None
             act = activation() if activation is not None else None
-            bn = nn.BatchNorm1d(input_size) if bn else None
-            layers += [m for m in [bn, conv, act] if m is not None]
+            drop = nn.Dropout(dropout) if dropout > 0 else None
+            layers += [m for m in [conv, bn, act, drop] if m is not None]
 
         self.layers = nn.Sequential(*layers)
 
