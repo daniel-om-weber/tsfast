@@ -60,11 +60,24 @@ def report_metrics(lrn, checkpoint_every: int | None = 1):
 
 
 def ray_device() -> torch.device:
-    """Detect the device assigned to this Ray worker."""
+    """Detect the device assigned to this Ray worker.
+
+    Ray scopes each worker's ``CUDA_VISIBLE_DEVICES`` to the GPUs it assigned, so an
+    accelerator id names an entry in that list rather than a torch ordinal and has to be
+    resolved to its position. Ids are UUID strings when ``CUDA_VISIBLE_DEVICES`` was set
+    in UUID form before ``ray.init``.
+    """
     gpu_ids = ray.get_runtime_context().get_accelerator_ids().get("GPU", [])
-    if gpu_ids and torch.cuda.is_available():
+    if not (gpu_ids and torch.cuda.is_available()):
+        return torch.device("cpu")
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if visible is None:
         return torch.device("cuda", int(gpu_ids[0]))
-    return torch.device("cpu")
+    # Under RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES the list is inherited rather than
+    # set by Ray, so it can name more GPUs than this worker owns and the position is not
+    # necessarily 0.
+    entries = visible.split(",")
+    return torch.device("cuda", entries.index(gpu_ids[0]) if gpu_ids[0] in entries else 0)
 
 
 def resume_checkpoint(lrn) -> None:
