@@ -53,10 +53,18 @@ def report_metrics(lrn, checkpoint_every: int | None = 1):
 
 
 def ray_device() -> torch.device:
-    """Detect the device assigned to this Ray worker."""
+    """Detect the device assigned to this Ray worker.
+
+    Ray scopes each worker's ``CUDA_VISIBLE_DEVICES`` to just the GPU(s) it
+    was assigned, so the assigned GPU is always ordinal 0 *within the
+    worker process* — the global id from ``get_accelerator_ids()`` is not a
+    valid torch device ordinal and must not be used directly (this breaks
+    with fractional GPU allocations, which more often land on non-zero
+    global ids).
+    """
     gpu_ids = ray.get_runtime_context().get_accelerator_ids().get("GPU", [])
     if gpu_ids and torch.cuda.is_available():
-        return torch.device("cuda", int(gpu_ids[0]))
+        return torch.device("cuda", 0)
     return torch.device("cpu")
 
 
