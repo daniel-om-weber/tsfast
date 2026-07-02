@@ -62,6 +62,12 @@ class NeuralStateSpace(nn.Module):
     the ``backend`` attribute. The fused backends are loss-agnostic ``autograd.Function``s:
     ``loss.backward()`` and every ``Learner`` feature work unchanged.
 
+    With ``return_state=True`` the model follows the stateful-model protocol
+    (``forward(u, state=...) -> (out, {"x": x_last})``), so ``TbpttLearner`` state carrying
+    and ``GraphedStatefulModel`` CUDA-graph capture work like for the RNNs. The carried
+    state is the physical state itself, so chunked rollouts are exactly equivalent to the
+    full sequence.
+
     Args:
         n_state: state dimension (model output size).
         n_input: exogenous input dimension.
@@ -69,6 +75,7 @@ class NeuralStateSpace(nn.Module):
         num_layers: number of hidden layers (ignored when ``hidden_size`` is a list).
         act: activation name, one of ``tanh``, ``sigmoid``, ``relu``.
         backend: execution backend, see above.
+        return_state: if ``True``, return ``(output, state)`` tuple.
     """
 
     def __init__(
@@ -79,6 +86,7 @@ class NeuralStateSpace(nn.Module):
         num_layers: int = 2,
         act: str = "tanh",
         backend: str = "auto",
+        return_state: bool = False,
     ):
         super().__init__()
         if act not in _ACTS:
@@ -86,6 +94,7 @@ class NeuralStateSpace(nn.Module):
         hidden = tuple(hidden_size) if isinstance(hidden_size, (list, tuple)) else (hidden_size,) * num_layers
         self.spec = SSMSpec(n_state, n_input, hidden, act)
         self.backend = backend
+        self.return_state = return_state
 
         layers: list[nn.Module] = []
         dims = self.spec.dims
@@ -103,35 +112,47 @@ class NeuralStateSpace(nn.Module):
     def _params_flat(self) -> list[torch.Tensor]:
         return [t for lin in self.linears for t in (lin.weight, lin.bias)]
 
-    def forward(self, u: torch.Tensor, x0: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(self, u: torch.Tensor, x0: torch.Tensor | None = None, state: dict | None = None):
         """Roll the transition MLP over the input sequence.
 
         Args:
             u: input sequence ``[batch, seq, n_input]``.
             x0: initial state ``[batch, n_state]`` (or ``[batch, 1, n_state]``); zeros if None.
+            state: carried state ``{"x": x_last}`` from a previous chunk; overrides ``x0``.
 
         Returns:
-            State sequence ``[batch, seq, n_state]`` containing ``x_1 .. x_L``.
+            State sequence ``[batch, seq, n_state]`` containing ``x_1 .. x_L``, or
+            ``(sequence, {"x": x_L})`` when ``return_state`` is set.
         """
+        match state:
+            case {"x": x_carry}:
+                x0 = x_carry
+            case None:
+                pass
+            case _:
+                raise TypeError(f"expected state dict {{'x': tensor}}, got {type(state)}")
         if x0 is None:
             x0 = u.new_zeros(u.shape[0], self.spec.n_state)
         elif x0.dim() == 3:
             x0 = x0.squeeze(1)
         match self._resolve_backend(u):
             case "eager":
-                return self._rollout_eager(u, x0)
+                out = self._rollout_eager(u, x0)
             case "compiled":
-                return self._rollout_compiled(u, x0)
+                out = self._rollout_compiled(u, x0)
             case "c":
                 from .backend_c import c_rollout
 
-                return c_rollout(self.spec, u, x0, self._params_flat())
+                out = c_rollout(self.spec, u, x0, self._params_flat())
             case "triton":
                 from .backend_triton import triton_rollout
 
-                return triton_rollout(self.spec, u, x0, self._params_flat())
+                out = triton_rollout(self.spec, u, x0, self._params_flat())
             case unknown:
                 raise ValueError(f"unknown backend {unknown!r}")
+        if self.return_state:
+            return out, {"x": out[:, -1]}
+        return out
 
     def _resolve_backend(self, u: torch.Tensor) -> str:
         if self.backend != "auto":

@@ -64,36 +64,53 @@ def backends_for(device: torch.device, include_compiled: bool) -> list[str]:
     return names
 
 
+def make_train_step(name, device, hidden, B, seq_len):
+    """Build a training-step closure for a backend name ('<backend>' or '<backend>+graph')."""
+    backend, _, graphed = name.partition("+")
+    m = NeuralStateSpace(N_STATE, N_INPUT, hidden, backend=backend, return_state=bool(graphed)).to(device)
+    model = m
+    if graphed:
+        from tsfast.models.cudagraph import GraphedStatefulModel
+
+        model = GraphedStatefulModel(m)
+    u = torch.randn(B, seq_len, N_INPUT, device=device)
+    x0 = torch.zeros(B, N_STATE, device=device)
+    tgt = torch.randn(B, seq_len, N_STATE, device=device)
+    opt = torch.optim.Adam(m.parameters(), lr=1e-3)
+
+    def step():
+        opt.zero_grad(set_to_none=True)
+        pred = model(u) if graphed else model(u, x0)
+        if graphed:
+            pred = pred[0]
+        loss = F.mse_loss(pred, tgt)
+        loss.backward()
+        opt.step()
+
+    return step
+
+
 def run(args):
     device = torch.device(args.device) if args.device else detect_device()
     torch.manual_seed(SEED)
     hidden = list(args.hidden)
     names = backends_for(device, args.compiled)
+    if args.graphed and device.type == "cuda":
+        names += [f"{n}+graph" for n in names if n != "compiled"]
     print(f"device={device.type}  hidden={hidden}  L={args.seq_len}  (us per trajectory)")
-    header = f"{'train step':>12s}" + "".join(f"{'B=' + str(b):>12s}" for b in args.batch_sizes)
+    header = f"{'train step':>14s}" + "".join(f"{'B=' + str(b):>12s}" for b in args.batch_sizes)
     print(header)
     print("-" * len(header))
     for name in names:
         cells = []
         for B in args.batch_sizes:
-            m = NeuralStateSpace(N_STATE, N_INPUT, hidden, backend=name).to(device)
-            u = torch.randn(B, args.seq_len, N_INPUT, device=device)
-            x0 = torch.zeros(B, N_STATE, device=device)
-            tgt = torch.randn(B, args.seq_len, N_STATE, device=device)
-            opt = torch.optim.Adam(m.parameters(), lr=1e-3)
-
-            def step():
-                opt.zero_grad(set_to_none=True)
-                loss = F.mse_loss(m(u, x0), tgt)
-                loss.backward()
-                opt.step()
-
+            step = make_train_step(name, device, hidden, B, args.seq_len)
             cells.append(bench(step, device) / B * 1e3)
-        print(f"{name:>12s}" + "".join(f"{c:>12.2f}" for c in cells))
+        print(f"{name:>14s}" + "".join(f"{c:>12.2f}" for c in cells))
 
-    print(f"\n{'inference':>12s}" + "".join(f"{'B=' + str(b):>12s}" for b in args.batch_sizes))
+    print(f"\n{'inference':>14s}" + "".join(f"{'B=' + str(b):>12s}" for b in args.batch_sizes))
     print("-" * len(header))
-    for name in names:
+    for name in [n for n in names if "+" not in n]:  # graph capture only pays off in training
         cells = []
         for B in args.batch_sizes:
             m = NeuralStateSpace(N_STATE, N_INPUT, hidden, backend=name).to(device).eval()
@@ -101,7 +118,7 @@ def run(args):
             x0 = torch.zeros(B, N_STATE, device=device)
             with torch.no_grad():
                 cells.append(bench(lambda: m(u, x0), device) / B * 1e3)
-        print(f"{name:>12s}" + "".join(f"{c:>12.2f}" for c in cells))
+        print(f"{name:>14s}" + "".join(f"{c:>12.2f}" for c in cells))
 
 
 def main():
@@ -111,6 +128,7 @@ def main():
     p.add_argument("--seq-len", type=int, default=300)
     p.add_argument("--hidden", type=int, nargs="+", default=[64, 64])
     p.add_argument("--compiled", action="store_true", help="include the torch.compile backend (slow first call)")
+    p.add_argument("--graphed", action="store_true", help="also wrap CUDA backends in GraphedStatefulModel")
     run(p.parse_args())
 
 

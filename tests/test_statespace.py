@@ -106,11 +106,57 @@ class TestNeuralStateSpace:
         assert not fits(SSMSpec(10, 10, (256,), "tanh"))
         assert not fits(SSMSpec(200, 10, (64,), "tanh"))
 
+    def test_stateful_chunked_equivalence(self):
+        from tsfast.models.ssm import NeuralStateSpace
+
+        torch.manual_seed(0)
+        m = NeuralStateSpace(3, 2, hidden_size=16, num_layers=1, backend="eager", return_state=True)
+        u = torch.randn(4, 30, 2)
+        full, _ = m(u)
+        out1, state = m(u[:, :10])
+        out2, state = m(u[:, 10:25], state=state)
+        out3, _ = m(u[:, 25:], state=state)
+        chunked = torch.cat((out1, out2, out3), dim=1)
+        assert _rel(chunked, full) < 1e-6  # the physical state fully captures the dynamics
+
+    def test_graphed_stateful_model(self):
+        from tsfast.models.cudagraph import GraphedStatefulModel
+        from tsfast.models.ssm import NeuralStateSpace
+
+        if not torch.cuda.is_available():
+            pytest.skip("no CUDA")
+        torch.manual_seed(0)
+        m = NeuralStateSpace(4, 3, hidden_size=32, num_layers=2, backend="triton", return_state=True).to("cuda")
+        graphed = GraphedStatefulModel(m, num_warmup_iters=3)
+        u = torch.randn(8, 40, 3, device="cuda")
+        out_g, state_g = graphed(u)
+        out_e, state_e = m(u)
+        assert _rel(out_g, out_e) < 5e-4
+        assert _rel(state_g["x"], state_e["x"]) < 5e-4
+        # captured backward produces usable gradients
+        (out_g**2).mean().backward()
+        assert all(p.grad is not None for p in m.parameters())
+        # carried state replays through the same graph
+        out2_g, _ = graphed(u, state=state_g)
+        out2_e, _ = m(u, state=state_e)
+        assert _rel(out2_g, out2_e) < 5e-4
+
     @pytest.mark.slow
     def test_ssm_learner_fit(self, dls_simulation):
         from tsfast.training import SSMLearner
 
         lrn = SSMLearner(dls_simulation, hidden_size=16, num_layers=1, backend="eager", n_skip=5)
+        lrn.fit(1, 1e-3)
+        final_valid_loss = lrn.recorder[-1][1]
+        assert not torch.isnan(torch.tensor(final_valid_loss))
+
+    @pytest.mark.slow
+    def test_ssm_learner_tbptt_cuda_graph(self, dls_simulation):
+        from tsfast.training import SSMLearner
+
+        if not torch.cuda.is_available():
+            pytest.skip("no CUDA")
+        lrn = SSMLearner(dls_simulation, hidden_size=16, num_layers=1, sub_seq_len=50, cuda_graph=True, n_skip=5)
         lrn.fit(1, 1e-3)
         final_valid_loss = lrn.recorder[-1][1]
         assert not torch.isnan(torch.tensor(final_valid_loss))

@@ -188,6 +188,7 @@ def SSMLearner(
     metrics: list | None = None,
     lr: float = 3e-3,
     n_skip: int = 0,
+    sub_seq_len: int | None = None,
     opt_func=torch.optim.Adam,
     input_norm: type | None = StandardScaler,
     output_norm: type | None = StandardScaler,
@@ -196,6 +197,7 @@ def SSMLearner(
     aux_losses: list | None = None,
     grad_clip: float | None = None,
     plot_fn=None,
+    cuda_graph: bool = False,
     device: torch.device | None = None,
     show_bar: bool = True,
     **kwargs,
@@ -204,8 +206,10 @@ def SSMLearner(
 
     The model rolls out from a zero initial state (in normalized coordinates), so use
     ``n_skip`` to exclude the initial transient from the loss when the true initial state
-    is unknown. The fused ``c``/``triton`` backends make the sequential rollout 1–2 orders
-    of magnitude faster to train than the naive loop; see ``NeuralStateSpace``.
+    is unknown. With ``sub_seq_len`` the physical state is carried across chunks (TBPTT),
+    which limits the cold start to the first chunk of each batch. The fused ``c``/``triton``
+    backends make the sequential rollout 1–2 orders of magnitude faster to train than the
+    naive loop; see ``NeuralStateSpace``.
 
     Args:
         dls: DataLoaders providing training and validation data.
@@ -216,6 +220,7 @@ def SSMLearner(
         loss_func: loss function for training.
         metrics: metric functions for validation, or None for default RMSE.
         n_skip: number of initial timesteps to skip in loss and metric computation.
+        sub_seq_len: sub-sequence length for TBPTT; enables stateful training when set.
         opt_func: optimizer constructor.
         input_norm: scaler class for input normalization, or None to disable.
         output_norm: scaler class for output denormalization, or None to disable.
@@ -224,6 +229,8 @@ def SSMLearner(
         aux_losses: list of auxiliary loss functions.
         grad_clip: max gradient norm for clipping, or None to disable.
         plot_fn: plotting function for show_batch/show_results.
+        cuda_graph: if True and sub_seq_len is set, wrap the model in GraphedStatefulModel
+            (captures the model forward+backward; requires fixed batch/chunk shapes).
         device: target device (auto-detected if None).
         show_bar: whether to show tqdm progress bars.
         **kwargs: additional keyword arguments forwarded to ``NeuralStateSpace``.
@@ -232,10 +239,16 @@ def SSMLearner(
         metrics = [fun_rmse]
 
     inp, out = get_io_size(dls)
+    if sub_seq_len:
+        kwargs.setdefault("return_state", True)
     model = NeuralStateSpace(out, inp, hidden_size, num_layers, act=act, backend=backend, **kwargs)
     model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
 
-    return Learner(
+    if sub_seq_len and cuda_graph:
+        model = GraphedStatefulModel(model)
+    cls = TbpttLearner if sub_seq_len else Learner
+    extra = {"sub_seq_len": sub_seq_len} if sub_seq_len else {}
+    return cls(
         model,
         dls,
         loss_func=loss_func,
@@ -250,6 +263,7 @@ def SSMLearner(
         plot_fn=plot_fn,
         device=device,
         show_bar=show_bar,
+        **extra,
     )
 
 
