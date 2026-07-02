@@ -50,7 +50,7 @@ class PhysicsLoss:
         else:
             u = xb
 
-        # Get predictions and ground truth (already in raw physical space)
+        # Predictions and targets are already in raw physical space
         y_pred = pred
         y_ref = yb
 
@@ -60,10 +60,8 @@ class PhysicsLoss:
             y_pred = y_pred[:, self.n_skip :]
             y_ref = y_ref[:, self.n_skip :]
 
-        # Compute physics losses (system-specific)
         loss_dict = self.physics_loss_func(u, y_pred, y_ref)
 
-        # Handle both dict and single tensor returns
         if isinstance(loss_dict, dict):
             physics_total = sum(self.loss_weights.get(k, 1.0) * v for k, v in loss_dict.items())
         else:

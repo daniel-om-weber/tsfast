@@ -48,7 +48,7 @@ BENCHMARK_DL_KWARGS = {
     "BenchmarkShip_Simulation": {"win_sz": 100},
     "BenchmarkQuadPelican_Simulation": {"win_sz": 300, "valid_stp_sz": 40},
     "BenchmarkQuadPi_Simulation": {"win_sz": 200, "valid_stp_sz": 20},
-    # Prediction Benchmarks (Phase 1: simulation-only, prediction deferred to Phase 3)
+    # Prediction Benchmarks
     "BenchmarkWH_Prediction": {},
     "BenchmarkSilverbox_Prediction": {},
     "BenchmarkCascadedTanks_Prediction": {"bs": 16},
@@ -107,8 +107,8 @@ def create_dls_from_spec(
         "dataset": dataset,
     }
 
-    # Prediction specs: in Phase 1 we only handle the window sizing, not the
-    # actual prediction input concatenation (deferred to Phase 3).
+    # Prediction specs only contribute window sizing here; the prediction input
+    # concatenation is left to the learner factories (prediction_concat transform).
     if isinstance(spec.task, idb.Prediction):
         spec_kwargs.update(
             {
@@ -137,7 +137,7 @@ create_dls_ship = partial(create_dls_from_spec, spec=idb.BenchmarkShip_Simulatio
 create_dls_quad_pelican = partial(create_dls_from_spec, spec=idb.BenchmarkQuadPelican_Simulation)
 create_dls_quad_pi = partial(create_dls_from_spec, spec=idb.BenchmarkQuadPi_Simulation)
 
-# --- Prediction benchmarks (Phase 1: no prediction transforms) ---
+# --- Prediction benchmarks (no prediction transforms) ---
 create_dls_wh_prediction = partial(create_dls_from_spec, spec=idb.BenchmarkWH_Prediction)
 create_dls_silverbox_prediction = partial(create_dls_from_spec, spec=idb.BenchmarkSilverbox_Prediction)
 create_dls_cascaded_tanks_prediction = partial(create_dls_from_spec, spec=idb.BenchmarkCascadedTanks_Prediction)

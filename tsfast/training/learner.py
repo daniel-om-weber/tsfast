@@ -219,10 +219,10 @@ class Learner:
     def prepare_batch(self, batch, training: bool = True) -> tuple[Tensor, Tensor]:
         """Device transfer + transforms + augmentations (if training)."""
         xb, yb = (t.to(self.device) for t in batch)
-        for t in self.transforms:  # feature: transforms
+        for t in self.transforms:
             xb, yb = t(xb, yb)
         if training:
-            for a in self.augmentations:  # feature: augmentations
+            for a in self.augmentations:
                 xb, yb = a(xb, yb)
         return xb, yb
 
@@ -233,11 +233,11 @@ class Learner:
         if n_skip is None:
             n_skip = self.n_skip
 
-        pred_skip = pred[:, n_skip:] if n_skip > 0 else pred  # feature: n_skip
-        yb_skip = yb[:, n_skip:] if n_skip > 0 else yb  # feature: n_skip
+        pred_skip = pred[:, n_skip:] if n_skip > 0 else pred
+        yb_skip = yb[:, n_skip:] if n_skip > 0 else yb
         loss = self.loss_func(pred_skip, yb_skip)
 
-        for aux in self.aux_losses:  # feature: auxiliary losses
+        for aux in self.aux_losses:
             loss = loss + aux(pred, yb, xb)
 
         return loss
@@ -247,7 +247,7 @@ class Learner:
     def backward_step(self, loss: Tensor):
         """Backward + grad_clip + optimizer step + zero_grad."""
         loss.backward()
-        if self.grad_clip is not None:  # feature: gradient clipping
+        if self.grad_clip is not None:
             nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
         self.opt.step()
         self.opt.zero_grad()
@@ -268,7 +268,7 @@ class Learner:
 
         loss = self.compute_loss(pred, yb, xb)
 
-        if torch.isnan(loss):  # feature: NaN guard
+        if torch.isnan(loss):
             self.opt.zero_grad()
             return float("nan")
 
@@ -295,13 +295,13 @@ class Learner:
 
         for batch_idx, batch in enumerate(self.dls.train):
             xb, yb = self.prepare_batch(batch, training=True)
-            self.pct_train = (epoch * n_batches + batch_idx) / total_steps  # feature: training progress
+            self.pct_train = (epoch * n_batches + batch_idx) / total_steps
 
             loss_val = self.training_step(xb, yb)
             if not math.isnan(loss_val):
                 train_losses.append(loss_val)
 
-            if self.sched is not None:  # feature: LR scheduling
+            if self.sched is not None:
                 self.sched.step()
             if pbar is not None:
                 pbar.update(1)
@@ -364,10 +364,8 @@ class Learner:
                 ) as pbar:
                     train_loss = self.train_one_epoch(pbar=pbar, epoch=epoch, n_epoch=n_epoch)
 
-                    # Validate
                     val_loss, metrics_dict = self.validate()
 
-                    # Record
                     row = [train_loss, val_loss] + [metrics_dict[k] for k in sorted(metrics_dict)]
                     self.recorder.append(row)
                     self.log_epoch(epoch, n_epoch, train_loss, val_loss, metrics_dict, pbar)
@@ -580,7 +578,6 @@ class TbpttLearner(Learner):
             # subsequent chunks already have a warmed-up hidden state.
             skip = self.n_skip if i == 0 else 0
 
-            # Forward
             if state is not None:
                 result = self.model(xb_sub, state=state)
             else:
@@ -593,7 +590,7 @@ class TbpttLearner(Learner):
 
             loss = self.compute_loss(pred, yb_sub, xb_sub, n_skip=skip)
 
-            if torch.isnan(loss):  # feature: NaN guard
+            if torch.isnan(loss):
                 self.opt.zero_grad()
                 state = None
                 continue

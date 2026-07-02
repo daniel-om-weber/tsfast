@@ -1010,9 +1010,8 @@ class TestTbpttLearner:
     def test_tbptt_augmentations_applied_once_per_batch(self):
         """Augmentations must be applied exactly once per batch, not once per chunk.
 
-        Regression test: previously TbpttLearner applied augmentations per chunk
-        instead of once per batch, causing double-augmentation and a mismatch
-        with CUDA-graphed training (which only applied them once).
+        Per-chunk application double-augments the data and diverges from
+        CUDA-graphed training, which applies augmentations once per batch.
         """
         from tsfast.models.rnn import SimpleRNN
         from tsfast.training import TbpttLearner

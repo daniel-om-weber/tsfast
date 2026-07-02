@@ -209,7 +209,7 @@ class TestFranSysRegularization:
 
         wrapper.to(xb.device).eval()
         with torch.no_grad():
-            # Write init_sz on the inner model (what callbacks now do via unwrap_model)
+            # Write init_sz on the inner model (as callbacks do via unwrap_model)
             inner.init_sz = 30
             out_30 = wrapper(xb).clone()
             inner.init_sz = 50

@@ -28,8 +28,8 @@ class SeqLinear(nn.Module):
         hidden_size: number of hidden units per layer
         hidden_layer: number of hidden layers (``0`` = a single linear map, no activation)
         act: activation function class
-        batch_first: retained for API compatibility; ``nn.Linear`` preserves leading-dim order, so
-            this no longer changes the result.
+        batch_first: has no effect (``nn.Linear`` preserves leading-dim order); retained for API
+            compatibility.
     """
 
     def __init__(

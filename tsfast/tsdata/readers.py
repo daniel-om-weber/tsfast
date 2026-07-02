@@ -244,8 +244,7 @@ class Resampled:
     each window independently: per-window resampling rebuilds the interpolation
     grid and lowpass-filter state from each window's own length, drifting the
     sample grid and leaving filter transients at window boundaries.  One resample
-    of the whole signal yields a single, consistent grid — matching the legacy
-    fastai pipeline.
+    of the whole signal yields a single, consistent grid.
 
     Args:
         block: temporal reader with read(entry, l_slc, r_slc) and file_len(entry)

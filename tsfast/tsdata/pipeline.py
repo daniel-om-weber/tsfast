@@ -234,8 +234,8 @@ def create_dls_from_readers(
 
     # --- Build source entries: one file becomes one entry per target rate. The
     # resampling factor lives on the entry (and is its cache key), so several rates
-    # are several entries in one dataset — no ConcatDataset. Without targ_fs every
-    # file is a single entry at factor 1.0. ---
+    # are several entries in one dataset. Without targ_fs every file is a single
+    # entry at factor 1.0. ---
     if targ_fs is not None:
         targ_fs_list = [targ_fs] if isinstance(targ_fs, (int, float)) else list(targ_fs)
         all_files = [str(f) for f in train_files + valid_files + test_files]

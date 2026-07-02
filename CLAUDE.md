@@ -66,3 +66,4 @@ Use `uv sync --extra dev` to install dependencies — it creates/manages the `.v
 - One-liner docstrings are fine for simple utility functions
 - No docstrings needed for: private helpers, trivial property accessors
 - Use pattern matching (`match/case`) for type checking
+- Comments describe the current state only, and only what the code can't say itself (constraints, invariants, non-obvious rationale). Never reference changes, history, or roadmap ("previously", "now uses", "no longer", "Phase 2", "deferred"), and never restate the adjacent code (`# Validate` above `validate()`). Exception: back-compat code may name the old format it exists to support.
