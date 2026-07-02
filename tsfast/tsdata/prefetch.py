@@ -7,7 +7,6 @@ import weakref
 
 from torch.utils.data import DataLoader
 
-
 _DONE = object()
 _live_iterators: set[weakref.ref] = set()
 _lock = threading.Lock()
@@ -16,15 +15,45 @@ _lock = threading.Lock()
 def _cleanup_iterators():
     """Stop all live prefetch threads at interpreter shutdown."""
     with _lock:
-        for ref in list(_live_iterators):
-            it = ref()
-            if it is not None:
-                it._stop.set()
-                it._thread.join(timeout=2.0)
+        refs = list(_live_iterators)
         _live_iterators.clear()
+    for ref in refs:
+        it = ref()
+        if it is not None:
+            it.close()
 
 
 atexit.register(_cleanup_iterators)
+
+
+def _put_until_stop(q: queue.Queue, item, stop: threading.Event) -> bool:
+    """Put `item` on `q`, polling `stop` so an abandoned producer can exit."""
+    while not stop.is_set():
+        try:
+            q.put(item, timeout=0.1)
+            return True
+        except queue.Full:
+            continue
+    return False
+
+
+def _produce(dl_iter, q: queue.Queue, stop: threading.Event):
+    # Module-level function on purpose: the thread must not hold a reference
+    # to the _PrefetchIterator, or the iterator could never be garbage
+    # collected and an abandoned iterator would leak its producer thread.
+    try:
+        for batch in dl_iter:
+            if not _put_until_stop(q, batch, stop):
+                return
+            batch = None
+        _put_until_stop(q, _DONE, stop)
+    except Exception as exc:
+        _put_until_stop(q, exc, stop)
+    finally:
+        stop.set()
+        # Release the DataLoader iterator (and any open file handles) in the
+        # thread that owns it rather than at interpreter teardown.
+        del dl_iter
 
 
 class _PrefetchIterator:
@@ -33,33 +62,31 @@ class _PrefetchIterator:
     def __init__(self, dl_iter, prefetch: int):
         self._queue: queue.Queue = queue.Queue(maxsize=prefetch)
         self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._produce, args=(dl_iter,), daemon=True)
+        self._thread = threading.Thread(target=_produce, args=(dl_iter, self._queue, self._stop), daemon=True)
         self._thread.start()
         ref = weakref.ref(self, _remove_ref)
         with _lock:
             _live_iterators.add(ref)
         self._ref = ref
 
-    def _produce(self, dl_iter):
-        try:
-            for batch in dl_iter:
-                while not self._stop.is_set():
-                    try:
-                        self._queue.put(batch, timeout=0.1)
-                        break
-                    except queue.Full:
-                        continue
-                if self._stop.is_set():
-                    return
-            self._queue.put(_DONE)
-        except Exception as exc:
-            if not self._stop.is_set():
-                self._queue.put(exc)
-        finally:
-            self._stop.set()
+    def close(self, timeout: float = 2.0):
+        """Stop the producer thread and wait for it to exit."""
+        self._stop.set()
+        self._thread.join(timeout=timeout)
+        with _lock:
+            _live_iterators.discard(self._ref)
 
     def __next__(self):
-        item = self._queue.get()
+        while True:
+            try:
+                item = self._queue.get(timeout=1.0)
+                break
+            except queue.Empty:
+                if self._thread.is_alive():
+                    continue
+                if self._stop.is_set():
+                    raise StopIteration from None
+                raise RuntimeError("prefetch producer thread exited without a result") from None
         if item is _DONE:
             raise StopIteration
         if isinstance(item, Exception):
@@ -70,7 +97,10 @@ class _PrefetchIterator:
         return self
 
     def __del__(self):
-        self._stop.set()
+        try:
+            self._stop.set()
+        except Exception:
+            pass
 
 
 def _remove_ref(ref):
