@@ -51,8 +51,8 @@ class NeuralStateSpace(nn.Module):
 
     - ``"eager"``: plain Python loop — the reference implementation, any device and dtype.
     - ``"compiled"``: ``torch.compile`` over the unrolled loop — any device, slow first call.
-    - ``"c"``: generated C++ rollout with a fused BPTT backward, OpenMP-parallel over the
-      batch — float32 on CPU, fastest CPU option for small models.
+    - ``"c"``: generated C++ rollout with a fused BPTT backward, batch-parallel via the
+      ATen thread pool — float32 on CPU, fastest CPU option for small models.
     - ``"triton"``: persistent-GEMV rollout kernel with a fused BPTT backward — float32 on
       CUDA, hidden widths up to 128.
     - ``"auto"``: ``triton`` when it applies, else ``compiled`` on CUDA; ``eager`` on CPU

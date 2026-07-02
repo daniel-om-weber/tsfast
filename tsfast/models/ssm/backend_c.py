@@ -3,7 +3,13 @@
 The per-step Python dispatch of the naive rollout dominates its runtime on CPU. This backend
 generates a C++ rollout specialized to the layer spec (dims baked as compile-time constants so
 the tiny GEMVs fully unroll and vectorize), compiles it once per spec via
-``torch.utils.cpp_extension.load_inline``, and parallelizes over the batch with OpenMP.
+``torch.utils.cpp_extension.load_inline``, and parallelizes over the batch with ATen's
+intra-op thread pool (``at::parallel_for``), which exists on every platform PyTorch runs on.
+
+Requires a host C++ toolchain (g++/clang) and ninja; ``is_available`` verifies this by
+building a tiny probe extension once per process (disk-cached afterwards). The compiled
+extension targets the host CPU (``-march=native``/``-mcpu=native``), so a torch-extensions
+cache shared between machines of different CPU generations must not be reused.
 
 Backward follows the split-BPTT design: the sequential state-adjoint recurrence runs in C++
 (reverse sweep re-using the hidden activations stored by the training forward), while the
@@ -16,7 +22,10 @@ __all__ = [
 ]
 
 import hashlib
+import os
 import shutil
+import sys
+import warnings
 
 import torch
 
@@ -29,9 +38,58 @@ _ACT_C = {
 }
 
 _EXTENSIONS: dict[SSMSpec, object] = {}
+_AVAILABLE: bool | None = None
+
+
+def _build_flags() -> tuple[list[str], list[str]]:
+    """Compile/link flags matched to the host toolchain and torch's intra-op backend.
+
+    ``at::parallel_for`` in an extension is only parallel when the ``AT_PARALLEL_*``
+    macro matching the backend torch was built with is defined: with ``AT_PARALLEL_OPENMP``
+    its implementation is an inline OpenMP pragma (so the extension itself must be compiled
+    as OpenMP), while with ``AT_PARALLEL_NATIVE`` it calls torch's own thread pool and
+    needs no extra flags. Without either macro it silently degrades to a serial loop.
+    """
+    # Apple clang rejects -march=native on arm64; -mcpu=native is its equivalent.
+    arch = "-mcpu=native" if sys.platform == "darwin" else "-march=native"
+    cflags = ["-O3", arch, "-ffast-math"]
+    ldflags: list[str] = []
+    if "OpenMP" in torch.__config__.parallel_info():
+        cflags.append("-DAT_PARALLEL_OPENMP=1")
+        if sys.platform == "darwin":
+            # Apple clang has no -fopenmp driver support and ships no omp.h; use the
+            # Homebrew libomp headers and link the libomp that torch already loads.
+            brew = next((p for p in ("/opt/homebrew/opt/libomp", "/usr/local/opt/libomp") if os.path.isdir(p)), None)
+            if brew is None:
+                raise RuntimeError(
+                    "torch uses the OpenMP intra-op backend, which on macOS requires "
+                    "Homebrew libomp for the C backend: brew install libomp"
+                )
+            cflags += ["-Xpreprocessor", "-fopenmp", f"-I{brew}/include"]
+            torch_lib = os.path.join(os.path.dirname(torch.__file__), "lib")
+            omp_dir = torch_lib if os.path.exists(os.path.join(torch_lib, "libomp.dylib")) else f"{brew}/lib"
+            ldflags += [f"-L{omp_dir}", "-lomp"]
+        else:
+            cflags.append("-fopenmp")
+            ldflags.append("-fopenmp")
+    else:
+        cflags.append("-DAT_PARALLEL_NATIVE=1")
+    return cflags, ldflags
 
 
 def is_available() -> bool:
+    """True if the host toolchain can build the generated extension.
+
+    Verified by compiling a minimal probe spec on first call (a few seconds, then
+    disk-cached by ``load_inline``); the result is cached for the process.
+    """
+    global _AVAILABLE
+    if _AVAILABLE is None:
+        _AVAILABLE = _probe()
+    return _AVAILABLE
+
+
+def _probe() -> bool:
     if shutil.which("c++") is None and shutil.which("g++") is None:
         return False
     try:
@@ -39,6 +97,11 @@ def is_available() -> bool:
 
         ce.verify_ninja_availability()
     except (ImportError, RuntimeError):
+        return False
+    try:
+        _get_extension(SSMSpec(1, 1, (), "tanh"))
+    except Exception as e:
+        warnings.warn(f"C backend disabled, probe compilation failed: {e}")
         return False
     return True
 
@@ -50,6 +113,7 @@ def _gen_source(spec: SSMSpec) -> str:
     act, dact = _ACT_C[spec.act]
     lines: list[str] = [
         "#include <torch/extension.h>",
+        "#include <ATen/Parallel.h>",
         "#include <cmath>",
         "",
         f"constexpr int NX = {nx};",
@@ -73,8 +137,8 @@ def _gen_source(spec: SSMSpec) -> str:
     for i in range(k - 1):
         lines.append(f"    float* z{i}p = z{i}.data_ptr<float>();")
     lines += [
-        "    #pragma omp parallel for",
-        "    for (int64_t b = 0; b < B; ++b) {",
+        "    at::parallel_for(0, B, 1, [&](int64_t b_begin, int64_t b_end) {",
+        "    for (int64_t b = b_begin; b < b_end; ++b) {",
         "        float x[NX];",
         "        for (int i = 0; i < NX; ++i) x[i] = x0p[b * NX + i];",
         "        for (int64_t t = 0; t < L; ++t) {",
@@ -107,6 +171,7 @@ def _gen_source(spec: SSMSpec) -> str:
         "            for (int i = 0; i < NX; ++i) { x[i] = xn[i]; outp[(b * L + t) * NX + i] = xn[i]; }",
         "        }",
         "    }",
+        "    });",
         "}",
         "",
     ]
@@ -131,8 +196,8 @@ def _gen_source(spec: SSMSpec) -> str:
     for i in range(k):
         lines.append(f"    const float* wt{i}p = wt{i}.data_ptr<float>();")
     lines += [
-        "    #pragma omp parallel for",
-        "    for (int64_t b = 0; b < B; ++b) {",
+        "    at::parallel_for(0, B, 1, [&](int64_t b_begin, int64_t b_end) {",
+        "    for (int64_t b = b_begin; b < b_end; ++b) {",
         "        float carry[NX] = {0.0f};",
         "        for (int64_t t = L - 1; t >= 0; --t) {",
         "            float gyv[NX];",
@@ -165,6 +230,7 @@ def _gen_source(spec: SSMSpec) -> str:
         "        }",
         "        for (int i = 0; i < NX; ++i) gx0p[b * NX + i] = carry[i];",
         "    }",
+        "    });",
         "}",
     ]
     return "\n".join(lines)
@@ -176,13 +242,14 @@ def _get_extension(spec: SSMSpec):
         from torch.utils.cpp_extension import load_inline
 
         src = _gen_source(spec)
-        tag = hashlib.md5(src.encode()).hexdigest()[:10]
+        cflags, ldflags = _build_flags()
+        tag = hashlib.md5("".join((src, *cflags, *ldflags)).encode()).hexdigest()[:10]
         ext = load_inline(
             name=f"tsfast_ssm_c_{tag}",
             cpp_sources=src,
             functions=["ssm_fwd", "ssm_bwd"],
-            extra_cflags=["-O3", "-march=native", "-ffast-math", "-fopenmp"],
-            extra_ldflags=["-fopenmp"],
+            extra_cflags=cflags,
+            extra_ldflags=ldflags,
         )
         _EXTENSIONS[spec] = ext
     return ext
