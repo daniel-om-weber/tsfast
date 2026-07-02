@@ -1,13 +1,21 @@
-"""Tests for tsfast.training.profiling — dataloader profiling plugin."""
+"""Tests for tsfast.training.profiling — dataloader profiling and speed timing."""
 
+import copy
 import time
 
+import pytest
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from tsfast.training import Learner
-from tsfast.training.profiling import DataProfiler, _TimedIterator
+from tsfast.training.profiling import (
+    DataProfiler,
+    _TimedIterator,
+    time_inference,
+    time_training_learner,
+    time_training_module,
+)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -192,3 +200,122 @@ class TestDataProfiler:
         prof.step_times = [0.01] * 10
         s = prof.summary()
         assert "bottleneck" in s.lower()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  Speed timing
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class _StatefulModel(nn.Module):
+    """Model returning (pred, state) tuples like return_state=True RNNs."""
+
+    def __init__(self, n_u=1, n_y=1):
+        super().__init__()
+        self.fc = nn.Linear(n_u, n_y)
+
+    def forward(self, x):
+        return self.fc(x), torch.zeros(1)
+
+
+STAT_KEYS = {"median_ms", "mean_ms", "samples_per_s", "timesteps_per_s"}
+
+
+class TestTimeInference:
+    def test_returns_stats(self, capsys):
+        res = time_inference(_SimpleModel(), torch.randn(4, 50, 1), devices=("cpu",), n_warmup=1, min_seconds=0.05)
+        assert set(res) == {"cpu"}
+        assert set(res["cpu"]) == STAT_KEYS
+        assert all(v > 0 for v in res["cpu"].values())
+        assert "Inference Timing" in capsys.readouterr().out
+
+    def test_tuple_output_model(self):
+        res = time_inference(_StatefulModel(), torch.randn(2, 20, 1), devices=("cpu",), n_warmup=1, min_seconds=0.05)
+        assert res["cpu"]["median_ms"] > 0
+
+    @pytest.mark.skipif(torch.cuda.is_available(), reason="requires machine without CUDA")
+    def test_skips_unavailable_device(self, capsys):
+        res = time_inference(
+            _SimpleModel(), torch.randn(2, 20, 1), devices=("cpu", "cuda"), n_warmup=1, min_seconds=0.05
+        )
+        assert "cuda" not in res
+        assert "skipped" in capsys.readouterr().out
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
+    def test_cuda(self):
+        res = time_inference(_SimpleModel(), torch.randn(2, 20, 1), devices=("cuda",), n_warmup=1, min_seconds=0.05)
+        assert res["cuda"]["median_ms"] > 0
+
+    def test_callers_model_untouched(self):
+        model = _SimpleModel()
+        xb = torch.randn(2, 20, 1)
+        time_inference(
+            model, xb, devices=("cpu", "cuda") if torch.cuda.is_available() else ("cpu",), n_warmup=1, min_seconds=0.05
+        )
+        assert not model.fc.weight.is_cuda  # deepcopy moved, original stayed on CPU
+        assert model.training  # deepcopy was eval'd, original stays in train mode
+
+
+class TestTimeTrainingModule:
+    def test_returns_stats(self, capsys):
+        res = time_training_module(
+            _SimpleModel(), torch.randn(4, 50, 1), torch.randn(4, 50, 1), devices=("cpu",), n_warmup=1, min_seconds=0.05
+        )
+        assert set(res["cpu"]) == STAT_KEYS
+        assert all(v > 0 for v in res["cpu"].values())
+        assert "Training Step Timing" in capsys.readouterr().out
+
+    def test_callers_model_unchanged(self):
+        model = _SimpleModel()
+        before = copy.deepcopy(model.state_dict())
+        time_training_module(
+            model, torch.randn(4, 20, 1), torch.randn(4, 20, 1), devices=("cpu",), n_warmup=1, min_seconds=0.05
+        )
+        after = model.state_dict()
+        assert all(torch.equal(before[k], after[k]) for k in before)
+
+    def test_tuple_output_model(self):
+        res = time_training_module(
+            _StatefulModel(),
+            torch.randn(2, 20, 1),
+            torch.randn(2, 20, 1),
+            devices=("cpu",),
+            n_warmup=1,
+            min_seconds=0.05,
+        )
+        assert res["cpu"]["median_ms"] > 0
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
+    def test_cuda(self):
+        res = time_training_module(
+            _SimpleModel(),
+            torch.randn(2, 20, 1),
+            torch.randn(2, 20, 1),
+            devices=("cuda",),
+            n_warmup=1,
+            min_seconds=0.05,
+        )
+        assert res["cuda"]["median_ms"] > 0
+
+
+class TestTimeTrainingLearner:
+    def test_returns_stats(self, capsys):
+        lrn = _make_learner()
+        res = time_training_learner(lrn, n_batches=3, n_warmup=1)
+        assert set(res) == {"batch_ms_median", "batch_ms_mean", "samples_per_s", "sec_per_epoch"}
+        assert all(v > 0 for v in res.values())
+        assert "Training Loop Timing" in capsys.readouterr().out
+
+    def test_restores_learner_state(self, capsys):
+        lrn = _make_learner()
+        before = copy.deepcopy(lrn.model.state_dict())
+        time_training_learner(lrn, n_batches=3, n_warmup=1)
+        after = lrn.model.state_dict()
+        assert all(torch.equal(before[k], after[k]) for k in before)
+        assert lrn.opt is None
+        assert lrn.sched is None
+
+    def test_more_batches_than_dataset(self, capsys):
+        lrn = _make_learner(n_train=8, bs=4)  # only 2 batches per epoch
+        res = time_training_learner(lrn, n_batches=7, n_warmup=2)
+        assert res["batch_ms_median"] > 0

@@ -35,7 +35,13 @@ from .transforms import (
     truncate_sequence,
     vary_seq_len,
 )
-from .profiling import DataProfiler, benchmark_dataloaders
+from .profiling import (
+    DataProfiler,
+    benchmark_dataloaders,
+    time_inference,
+    time_training_learner,
+    time_training_module,
+)
 from .viz import grad_norm, layout_samples, plot_grad_flow, plot_sequence
 from .learners import AR_RNNLearner, AR_TCNLearner, CRNNLearner, RNNLearner, TCNLearner
 
@@ -79,6 +85,9 @@ __all__ = [
     # profiling
     "DataProfiler",
     "benchmark_dataloaders",
+    "time_inference",
+    "time_training_module",
+    "time_training_learner",
     # viz
     "plot_sequence",
     "plot_grad_flow",
