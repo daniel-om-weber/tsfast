@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown]
-# # Example 09: Autoregressive Models
+# # Example 11: Autoregressive Models
 #
 # Autoregressive (AR) models feed their own predictions back as input, enabling
 # free-running multi-step-ahead simulation. During training, they use "teacher
@@ -42,11 +42,12 @@ from tsfast.training import AR_RNNLearner, RNNLearner, AR_TCNLearner, fun_rmse
 # in a single forward pass. In autoregressive mode:
 #
 # - **Training (teacher forcing)**: the model receives `[u(t), y_true(t-1)]` as
-#   input. The `ARInitCB` callback concatenates the true target to the input
-#   automatically.
+#   input. The `prediction_concat` transform (the default transform in
+#   `AR_RNNLearner`) concatenates the true target to the input.
 # - **Inference (free-running)**: the model uses its own prediction
-#   `[u(t), y_pred(t-1)]`. This tests whether the model is stable -- errors can
-#   accumulate and cause divergence.
+#   `[u(t), y_pred(t-1)]`. The `AR_Model` wrapper implements this feedback
+#   loop. This tests whether the model is stable -- errors can accumulate and
+#   cause divergence.
 #
 # AR models are more powerful for long-horizon prediction but require stronger
 # regularization to stay stable.
@@ -74,8 +75,9 @@ print(f"Standard RNN: {lrn_std.validate()}")
 # ## Autoregressive RNN
 #
 # `AR_RNNLearner` wraps the model with autoregressive behavior and adds
-# `TimeSeriesRegularizer` automatically. `alpha` and `beta` control activation
-# and temporal regularization respectively -- AR models need these for stability.
+# `ActivationRegularizer` and `TemporalActivationRegularizer` automatically.
+# `alpha` and `beta` control activation and temporal regularization
+# respectively -- AR models need these for stability.
 #
 # Key parameters:
 #

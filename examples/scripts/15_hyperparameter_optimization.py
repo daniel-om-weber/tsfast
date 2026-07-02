@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown]
-# # Example 14: Hyperparameter Optimization with Ray Tune
+# # Example 15: Hyperparameter Optimization with Ray Tune
 #
 # Manually tuning hyperparameters -- learning rate, hidden size, model type --
 # is tedious and error-prone. TSFast integrates with
@@ -38,8 +38,24 @@
 
 # %% [markdown]
 # ## Setup
+#
+# Ray's uv integration requires the working directory to contain the project's
+# `pyproject.toml` when Ray workers are launched. Notebook kernels start in the
+# notebook's directory, so we move to the project root first.
 
 # %%
+import os
+from pathlib import Path
+
+_root = Path.cwd()
+while not (_root / "pyproject.toml").is_file() and _root != _root.parent:
+    _root = _root.parent
+if (_root / "pyproject.toml").is_file():
+    os.chdir(_root)
+
+# %%
+import identibench as idb
+
 from tsfast.tsdata.benchmark import create_dls_silverbox
 from tsfast.tune import LearnerTrainable, ray_device, report_metrics, resume_checkpoint
 from tsfast.training import RNNLearner, fun_rmse
@@ -77,10 +93,13 @@ from ray.tune.schedulers import PopulationBasedTraining
 # ## Prepare the DataLoaders
 #
 # We use the Silverbox benchmark with a small batch size and window size to
-# keep the example lightweight.
+# keep the example lightweight. The benchmark spec defines an initialization
+# window that its evaluation protocol discards; using it as `n_skip` excludes
+# the same initial transient from the training loss.
 
 # %%
 dls = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
+n_skip = idb.BenchmarkSilverbox_Simulation.task.init_window
 
 # %% [markdown]
 # ## Define a Training Function
@@ -95,7 +114,7 @@ def train(config):
         dls,
         rnn_type=config["rnn_type"],
         hidden_size=config["hidden_size"],
-        n_skip=50,
+        n_skip=n_skip,
         metrics=[fun_rmse],
         device=ray_device(),
     )
@@ -206,7 +225,7 @@ def create_learner(config):
         dls,
         rnn_type="gru",
         hidden_size=32,
-        n_skip=50,
+        n_skip=n_skip,
         metrics=[fun_rmse],
         device=ray_device(),
     )

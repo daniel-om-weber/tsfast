@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -89,17 +89,26 @@ lrn_bias = RNNLearner(
 # %% [markdown]
 # ### Training with Augmentation
 #
-# Train two models -- one with augmentation, one without -- to see the effect
-# on validation performance.
+# Train three models -- one without augmentation, one with `noise`, one with
+# `bias` -- to see the effect on validation performance.
 
 # %%
 lrn_base = RNNLearner(dls, rnn_type='lstm', metrics=[fun_rmse])
 lrn_base.fit_flat_cos(n_epoch=5, lr=3e-3)
-print(f"Without augmentation: {lrn_base.validate()}")
 
 # %%
 lrn_noisy.fit_flat_cos(n_epoch=5, lr=3e-3)
-print(f"With noise augmentation: {lrn_noisy.validate()}")
+
+# %%
+lrn_bias.fit_flat_cos(n_epoch=5, lr=3e-3)
+
+# %%
+_, m_base = lrn_base.validate()
+_, m_noisy = lrn_noisy.validate()
+_, m_bias = lrn_bias.validate()
+print(f"Without augmentation:    {m_base['fun_rmse']:.4f}")
+print(f"With noise augmentation: {m_noisy['fun_rmse']:.4f}")
+print(f"With bias augmentation:  {m_bias['fun_rmse']:.4f}")
 
 # %% [markdown]
 # ## Activation Regularization
@@ -143,9 +152,19 @@ lrn_clip.fit_flat_cos(n_epoch=5, lr=3e-3)
 # helps identify the problem. `plot_grad_flow` shows the gradient magnitude
 # at each layer -- vanishing gradients appear as near-zero bars, exploding
 # gradients as very tall bars.
+#
+# Gradients are cleared after every optimizer step, so we run one fresh
+# forward/backward pass (without stepping the optimizer) to populate them
+# before plotting. The model must be in training mode: `fit` leaves it in
+# eval mode, and cuDNN only supports RNN backward in training mode.
 
 # %%
-lrn_clip.train_one_epoch()
+lrn_clip.model.train()
+xb, yb = lrn_clip.prepare_batch(next(iter(lrn_clip.dls.train)))
+pred = lrn_clip.model(xb)
+if isinstance(pred, tuple):
+    pred = pred[0]
+lrn_clip.compute_loss(pred, yb, xb).backward()
 plot_grad_flow(lrn_clip.model.named_parameters())
 
 # %% [markdown]

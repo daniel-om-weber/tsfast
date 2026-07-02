@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -142,7 +142,9 @@ def spring_damper_physics(u, y_pred, y_ref):
 # ## Train the DD-PINN (physics only)
 #
 # Continuous-time surrogate, no measured data. We give it the physical ranges the test
-# trajectory lives in (a little wider than the data), a uniform collocation sampler in
+# trajectory lives in (a little wider than the data — the printed measured min/max
+# below verifies that every test sample falls inside the box, so the surrogate
+# interpolates rather than extrapolates), a uniform collocation sampler in
 # normalized `[-1, 1]` coordinates with row layout `[x, v, u, t]`, and a training horizon
 # `t_max = 0.1 s`. The horizon is ten sample steps wide on purpose: it keeps the normalized
 # time-derivatives well scaled, while the rollout below still steps at the dataset's
@@ -152,6 +154,10 @@ def spring_damper_physics(u, y_pred, y_ref):
 state_range = [(-0.5, 0.5), (-0.7, 0.7)]  # x, v
 cond_range = [(-1.5, 1.5)]  # u
 T_MAX = 0.1
+
+print(f"measured test ranges  x: [{x_test.min():+.3f}, {x_test.max():+.3f}]  "
+      f"v: [{v_test.min():+.3f}, {v_test.max():+.3f}]  "
+      f"u: [{u_test.min():+.3f}, {u_test.max():+.3f}]")
 
 
 def generate_pinn_input(bs, seq_len, device):

@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -54,10 +54,13 @@ dls_convenience = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
 #
 # Every IdentiBench benchmark has a specification object that defines the input
 # and output column names, the dataset download path, and other metadata. Let's
-# look at the Silverbox specification.
+# look at the Silverbox specification. `spec.ensure_datasets_exist()` downloads
+# and prepares the dataset files on first use, so the file accessors below
+# resolve to real paths on disk.
 
 # %%
 spec = idb.BenchmarkSilverbox_Simulation
+spec.ensure_datasets_exist()
 print(f"Input columns:  {spec.u_cols}")
 print(f"Output columns: {spec.y_cols}")
 print(f"Datasets:       {[ds.dataset_id for ds in spec.datasets]}")
@@ -107,6 +110,15 @@ dls_explicit = create_dls(
 )
 
 # %% [markdown]
+# Both pipelines produce identically shaped batches:
+
+# %%
+xb_explicit, _ = next(iter(dls_explicit.valid))
+xb_convenience, _ = next(iter(dls_convenience.valid))
+print(f"Explicit batch shape:    {tuple(xb_explicit.shape)}")
+print(f"Convenience batch shape: {tuple(xb_convenience.shape)}")
+
+# %% [markdown]
 # ## Normalization
 #
 # By default, TSFast normalizes **input signals only** using z-score
@@ -114,8 +126,10 @@ dls_explicit = create_dls(
 # signals remain in their **original physical units**, which means model
 # predictions are directly interpretable without any inverse transformation.
 #
-# The normalization statistics computed from the training set are stored in
-# `dls.norm_stats`.
+# The normalization statistics are stored in `dls.norm_stats`. By default they
+# are estimated from the first 10 training batches; pass `dls_id` to
+# `create_dls` to compute exact statistics over the full training set and cache
+# them to disk.
 
 # %%
 print("Input normalization:")
@@ -162,11 +176,12 @@ lrn.show_results(max_n=3)
 #   function).
 # - **`create_dls`** is the general-purpose factory: it loads HDF5 files,
 #   extracts sliding windows with configurable size (`win_sz`) and stride
-#   (`stp_sz`), and splits the data by directory structure
-#   (`train/`/`valid/`/`test/`).
+#   (`stp_sz`), and accepts the train/valid/test split either as an explicit
+#   dict of file lists (as here) or as a directory/file list, in which case the
+#   split is inferred from the `train/`/`valid/`/`test/` parent folders.
 # - **Inputs are normalized** (z-score), while **outputs stay in physical
 #   units** so that predictions are directly interpretable.
-# - **`dls.norm_stats`** stores the computed normalization statistics, accessible
-#   as `.u` (inputs) and `.y` (outputs).
+# - **`dls.norm_stats`** stores the normalization statistics (estimated from the
+#   first training batches), accessible as `.u` (inputs) and `.y` (outputs).
 # - **`n_batches_train`** fixes the number of training batches per epoch,
 #   decoupling training time from dataset size.

@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -22,8 +22,9 @@
 # - **TCNs** -- parallel causal convolutions with exponentially growing receptive field
 # - **CRNNs** -- hybrid combining CNN feature extraction with RNN sequential modeling
 #
-# This example trains each architecture on the same dataset and compares their
-# performance and trade-offs.
+# This example trains four models (LSTM, GRU, TCN, CRNN) on the same dataset
+# and compares their performance and trade-offs. Autoregressive variants of
+# these learners (`AR_RNNLearner`, `AR_TCNLearner`) are covered in Example 11.
 
 # %% [markdown]
 # ## Prerequisites
@@ -43,9 +44,17 @@ from tsfast.training import RNNLearner, TCNLearner, CRNNLearner, fun_rmse
 #
 # We use the Silverbox benchmark for a fair comparison. All four models train on
 # exactly the same data and are evaluated on the same validation set.
+#
+# All learners also share the same `n_skip=256`, so the loss and metrics ignore
+# the first 256 timesteps of each window. The value equals the receptive field
+# of the deepest model below (the 8-layer TCN), so `validate()` covers exactly
+# the same fully-informed timesteps for every architecture. Without it the
+# comparison would be skewed: `TCNLearner` defaults `n_skip` to its receptive
+# field while the RNN and CRNN learners default to 0.
 
 # %%
 dls = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
+n_skip = 256
 
 # %% [markdown]
 # ## LSTM
@@ -62,7 +71,7 @@ dls = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
 #   memory usage and training time.
 
 # %%
-lrn_lstm = RNNLearner(dls, rnn_type='lstm', hidden_size=40, metrics=[fun_rmse])
+lrn_lstm = RNNLearner(dls, rnn_type='lstm', hidden_size=40, n_skip=n_skip, metrics=[fun_rmse])
 lrn_lstm.show_batch(max_n=2)
 
 # %%
@@ -80,7 +89,7 @@ lrn_lstm.show_results(max_n=2)
 # with comparable performance on many tasks.
 
 # %%
-lrn_gru = RNNLearner(dls, rnn_type='gru', hidden_size=40, metrics=[fun_rmse])
+lrn_gru = RNNLearner(dls, rnn_type='gru', hidden_size=40, n_skip=n_skip, metrics=[fun_rmse])
 lrn_gru.fit_flat_cos(n_epoch=10, lr=3e-3)
 
 # %%
@@ -96,13 +105,17 @@ lrn_gru.show_results(max_n=2)
 #
 # Key parameters:
 #
-# - **`num_layers=4`** -- number of TCN blocks. Controls the receptive field
-#   (2^4 = 16 timesteps). Deeper networks see further back in time.
+# - **`num_layers=8`** -- number of TCN blocks. Controls the receptive field
+#   (2^8 = 256 timesteps). Unlike an RNN, a TCN can only use as much history as
+#   its receptive field covers, so choose the depth such that 2^num_layers
+#   spans the relevant memory of your system -- a 4-layer TCN (16 timesteps)
+#   is far too short-sighted for these 500-step Silverbox windows and trains
+#   to a noticeably worse RMSE.
 # - **`hidden_size=40`** -- number of channels (feature maps) per layer.
 #   Controls the width of the network.
 
 # %%
-lrn_tcn = TCNLearner(dls, num_layers=4, hidden_size=40, metrics=[fun_rmse])
+lrn_tcn = TCNLearner(dls, num_layers=8, hidden_size=40, n_skip=n_skip, metrics=[fun_rmse])
 lrn_tcn.fit_flat_cos(n_epoch=10, lr=3e-3)
 
 # %%
@@ -120,9 +133,14 @@ lrn_tcn.show_results(max_n=2)
 #
 # - **`num_cnn_layers=4`** -- depth of the TCN feature extractor
 # - **`num_rnn_layers=1`** -- depth of the RNN sequential modeler
+# - **`hs_cnn=40` / `hs_rnn=40`** -- widths of the CNN and RNN stages, matching
+#   the `hidden_size=40` of the other models for a fair comparison
 
 # %%
-lrn_crnn = CRNNLearner(dls, num_cnn_layers=4, num_rnn_layers=1, metrics=[fun_rmse])
+lrn_crnn = CRNNLearner(
+    dls, num_cnn_layers=4, num_rnn_layers=1, hs_cnn=40, hs_rnn=40,
+    n_skip=n_skip, metrics=[fun_rmse],
+)
 lrn_crnn.fit_flat_cos(n_epoch=10, lr=3e-3)
 
 # %%
@@ -177,7 +195,8 @@ for name, (loss, metrics) in results.items():
 # - **LSTM and GRU** process sequences step-by-step. GRU is simpler and often
 #   trains faster; LSTM has more capacity for complex dynamics.
 # - **TCN** processes sequences in parallel via causal convolutions. Fast to
-#   train, with receptive field controlled by network depth.
+#   train, with receptive field controlled by network depth -- make sure
+#   2^num_layers covers the memory of your system.
 # - **CRNN** combines CNN feature extraction with RNN sequential modeling,
 #   offering a flexible hybrid architecture.
 # - All architectures are accessed through the same simple API:

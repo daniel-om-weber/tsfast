@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown]
-# # Example 10: Physics-Informed Neural Networks (PINN)
+# # Example 12: Physics-Informed Neural Networks (PINN)
 #
 # This example demonstrates how to train physics-informed RNNs for system
 # identification. Two approaches are shown:
@@ -208,6 +208,16 @@ learn.fit_flat_cos(10, 3e-3)
 # Since the model was trained purely on physics constraints, it has learned
 # to produce outputs that satisfy the ODE -- even though it never saw the
 # actual measured trajectories during training.
+#
+# Two caveats when reading the numbers: the reported `valid` loss is just the
+# (zero) data loss `zero_loss` -- the physics losses are not evaluated during
+# validation -- so `valid=0.0000` does **not** mean a perfect fit; `fun_rmse`
+# is the real accuracy signal. And because collocation batches carry no
+# reference data (`y_ref=None`, so the `initial` term is skipped) while the
+# RNN always starts from a zero hidden state, the model satisfies the ODE but
+# cannot match the measured initial transient -- which caps its `fun_rmse`.
+# Approach 2 addresses exactly this with its `initial` anchor and the
+# StateEncoder.
 
 # %%
 learn.show_results(max_n=3)
@@ -281,7 +291,9 @@ learn.fit_flat_cos(10, 3e-3)
 # ## Approach 2: Results
 #
 # The PIRNN model benefits from both data fitting and physics constraints.
-# The StateEncoder allows it to handle variable initial conditions.
+# The StateEncoder allows it to handle variable initial conditions. As in
+# Approach 1, `valid` shows only the zero data loss -- judge accuracy by
+# `fun_rmse`.
 
 # %%
 learn.show_results(max_n=3)

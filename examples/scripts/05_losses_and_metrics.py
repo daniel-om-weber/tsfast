@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -36,13 +36,14 @@
 # ## Setup
 
 # %%
+import torch
 from torch import nn
 
 from tsfast.tsdata.benchmark import create_dls_silverbox
 from tsfast.training import (
     RNNLearner,
     fun_rmse, nrmse, nrmse_std, mean_vaf,
-    weighted_mae, norm_loss, cut_loss,
+    weighted_mae, norm_loss, cut_loss, mse_nan,
 )
 
 # %% [markdown]
@@ -128,6 +129,10 @@ lrn_skip.fit_flat_cos(n_epoch=5, lr=3e-3)
 # - **`r_cut=450`** -- keep up to timestep 450 (trim from the right)
 #
 # This evaluates only timesteps 50 through 450 of each 500-step window.
+#
+# A related modifier, `rand_seq_len_loss`, truncates every sequence in the
+# minibatch to an individually random length before computing the loss, which
+# exposes the model to varying prediction horizons during training.
 
 # %%
 my_cut_loss = cut_loss(nn.L1Loss(), l_cut=50, r_cut=450)
@@ -166,16 +171,45 @@ lrn_wmae = RNNLearner(dls, rnn_type='lstm', loss_func=weighted_mae, metrics=[fun
 lrn_wmae.fit_flat_cos(n_epoch=5, lr=3e-3)
 
 # %% [markdown]
+# ## NaN-Safe Losses
+#
+# Real measurement data often contains gaps: sensor dropouts, invalid samples,
+# or variable-length records padded with NaN. A standard loss returns NaN as
+# soon as a single target value is NaN, and training collapses. TSFast provides
+# NaN-safe alternatives that mask out invalid timesteps:
+#
+# - **`mse_nan`** -- MSE that drops every timestep whose target contains NaN
+# - **`ignore_nan`** -- decorator that adds the same masking to any loss
+#   function of your own
+# - **`nan_mean`** -- wraps a per-element loss into a masked mean with static
+#   tensor shapes, keeping it compatible with CUDA graphs (see Example 18)
+
+# %%
+targ = torch.randn(4, 100, 1)
+pred = targ + 0.1 * torch.randn_like(targ)
+targ[:, ::10] = float('nan')
+
+print(f"mse_loss: {nn.functional.mse_loss(pred, targ).item()}")
+print(f"mse_nan:  {mse_nan(pred, targ).item():.4f}")
+
+# %% [markdown]
+# The plain MSE is unusable once NaNs enter the target, while `mse_nan` returns
+# the mean over the valid timesteps only. Pass it as `loss_func` to train
+# directly on gappy measurement data.
+
+# %% [markdown]
 # ## Custom Learning Rate Schedules
 #
 # All examples so far use `fit_flat_cos`, which keeps the learning rate flat
 # then cosine-decays it to zero. For more control, call `fit()` directly with
-# a `scheduler_fn`. TSFast provides several schedule functions:
+# a `scheduler_fn`. `tsfast.training` exports two schedule functions:
 #
-# - **`sched_flat_cos`** -- flat then cosine decay (used by `fit_flat_cos`)
 # - **`sched_ramp`** -- constant at `start`, linear ramp to `end`, then constant
 # - **`sched_lin_p`** -- linear decay from `start` to `end`, reaching `end` by
 #   position `p`
+#
+# The flat-then-cosine schedule behind `fit_flat_cos` can be reused directly
+# via `from tsfast.training.schedulers import sched_flat_cos`.
 #
 # `scheduler_fn` is a factory `(optimizer, total_steps) -> scheduler` that
 # creates a PyTorch LR scheduler. The schedule functions return a multiplier
@@ -229,6 +263,8 @@ lrn_onecycle.fit(
 #   computing the loss in normalized space.
 # - **`weighted_mae`** emphasizes early timesteps, useful for transient-response
 #   modeling.
+# - **`mse_nan`** (with the `ignore_nan` and `nan_mean` wrappers) keeps
+#   training stable when targets contain NaNs from sensor dropouts or padding.
 # - **`fit()` with `scheduler_fn`** gives full control over the learning rate
 #   schedule. Use `sched_ramp` or `sched_lin_p` for custom warmup/decay
 #   profiles, or pass any PyTorch built-in scheduler like `OneCycleLR`.

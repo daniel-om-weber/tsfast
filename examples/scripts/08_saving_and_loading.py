@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown]
-# # Example 18: Saving and Loading
+# # Example 08: Saving and Loading
 #
 # After training a model, you need to save it -- either for deployment (run
 # inference without retraining) or to resume training later. TSFast provides

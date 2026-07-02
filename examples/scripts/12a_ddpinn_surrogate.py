@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -14,12 +14,19 @@
 # ---
 
 # %% [markdown]
-# # Example 10: Physics-Only Surrogates with the DD-PINN
+# # Example 12a: Physics-Only Surrogates with the DD-PINN
 #
 # Most of this curriculum learns a model from measured input-output data. This
 # example is different: we train a continuous-time surrogate of a dynamical system
 # from its **governing equations alone** — no training data at all. The only thing
 # you provide is the ODE residual.
+#
+# Unlike examples [12](12_pinn.ipynb) and [12b](12b_ddpinn_vs_pirnn.ipynb), which use
+# the mass-spring-damper system, this example works on a generic forced damped
+# oscillator so it can showcase **conditioning**: the surrogate generalizes over the
+# natural frequency ω instead of learning one fixed system. Example 12b then
+# re-instantiates the DD-PINN on example 12's spring-damper for a head-to-head
+# comparison with the PIRNN.
 #
 # The tool is a **DD-PINN** (a physics-informed network with a *damped ansatz*).
 # Given an initial state `x_k`, a constant control `u`, conditioning variables, and

@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -96,6 +96,10 @@ lrn.show_results(max_n=3)
 # `validate()` runs the model on the validation set and returns a tuple of
 # `(loss, {metric_name: value})`. You can pass a different DataLoader via
 # `dl=` to evaluate on other splits (e.g., `lrn.validate(dl=dls.test)`).
+# One caveat for the test split: the test DataLoader yields each file as a
+# single full-length sequence at batch size 1, and evaluation concatenates
+# results across batches -- so this only works when all test files have the
+# same length.
 
 # %%
 val_loss, val_metrics = lrn.validate()
@@ -186,6 +190,7 @@ print(f"Output shape: {y_pred.shape}")
 # - **`lrn.recorder`** stores per-epoch training and validation loss (plus
 #   metrics). Plot it to diagnose training progress.
 # - **Pass `dl=` to evaluate on a specific split**: e.g. `dl=lrn.dls.test`
-#   for the test set (defaults to validation).
+#   for the test set (defaults to validation). The test loader yields full-length
+#   files at batch size 1, so this requires equal-length test files.
 # - **`InferenceWrapper` provides numpy-in / numpy-out inference** with automatic
 #   normalization, making it easy to use trained models outside of the training loop.

@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -14,12 +14,14 @@
 # ---
 
 # %% [markdown]
-# # Example 17: CUDA Graphs
+# # Example 18: CUDA Graphs
 #
 # CUDA graphs record a sequence of GPU operations once, then replay
 # them — eliminating CPU-side kernel launch overhead on every call.
-# The speedup is largest for small, fast kernels where launch overhead
-# dominates (typical for RNNs and lightweight CNNs).
+# The speedup is largest when each call issues many tiny kernels and the CPU
+# cannot keep the GPU fed — typical for small RNNs running with small batches
+# (e.g. streaming inference). When kernels are large enough to keep the GPU
+# busy, graphs replay the same work and the speedup is ~1x.
 #
 # **Key constraint:** all input tensors must have the **same shape** on every
 # call. Dynamic batch sizes or sequence lengths are not supported.
@@ -33,13 +35,14 @@
 # %% [markdown]
 # ## Prerequisites
 #
-# This example requires a CUDA GPU and builds on concepts from Examples 00 and 16.
+# This example requires a CUDA GPU and builds on concepts from Examples 00 and 17.
 
 # %% [markdown]
 # ## Setup
 
 # %%
 import time
+import warnings
 
 import torch
 
@@ -47,6 +50,11 @@ from tsfast.models.cnn import TCN
 from tsfast.models.cudagraph import GraphedStatefulModel
 from tsfast.models.rnn import SimpleRNN
 
+# %%
+if not torch.cuda.is_available():
+    raise RuntimeError("This example requires a CUDA GPU")
+
+# %%
 B, T, N_IN, N_OUT = 32, 200, 3, 1
 
 
@@ -72,7 +80,11 @@ def bench(fn, n=200, warmup=50):
 tcn = TCN(N_IN, N_OUT, hl_depth=4, hl_width=32).cuda()
 sample_x = torch.randn(B, T, N_IN, device="cuda")
 
-graphed_tcn = torch.cuda.make_graphed_callables(tcn, (sample_x,), num_warmup_iters=3)
+# make_graphed_callables warns about the AccumulateGrad node's stream during
+# capture; the warning is irrelevant for inference-only use.
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", "The AccumulateGrad node's stream")
+    graphed_tcn = torch.cuda.make_graphed_callables(tcn, (sample_x,), num_warmup_iters=3)
 
 # %%
 # Verify outputs match
@@ -94,6 +106,14 @@ print(f"TCN graphed: {t_graph:.2f} ms")
 print(f"Speedup:     {t_eager / t_graph:.1f}x")
 
 # %% [markdown]
+# The TCN shows ~1.0x on a fast GPU: its convolution kernels are launched
+# asynchronously and keep the GPU busy, so the runtime is bounded by kernel
+# execution rather than CPU launch overhead — a graph replays the same
+# kernels and cannot make them execute faster. This is the general pattern
+# for compute-bound models; CUDA graphs only pay off when the CPU-side
+# launch path is the bottleneck, as in the RNN benchmark below.
+
+# %% [markdown]
 # ## Stateful Model — SimpleRNN
 #
 # Stateful models return `(output, state)` where state is a nested structure of
@@ -109,13 +129,20 @@ print(f"Speedup:     {t_eager / t_graph:.1f}x")
 #
 # From the outside, the wrapped model has the same `forward(x, state=None)`
 # interface as the original.
+#
+# The benchmark uses a small model (16 hidden units) with batch size 1 and
+# 50-step chunks — the streaming-inference regime, where every kernel is tiny
+# and the CPU-side launch path dominates the runtime. This is where CUDA
+# graphs shine.
 
 # %%
-rnn = SimpleRNN(N_IN, N_OUT, num_layers=2, hidden_size=64, return_state=True).cuda()
+B_S, T_S = 1, 50  # streaming inference: single sequence, short chunks
+
+rnn = SimpleRNN(N_IN, N_OUT, num_layers=2, hidden_size=16, return_state=True).cuda()
 graphed_rnn = GraphedStatefulModel(rnn)
 
 # First call triggers graph capture
-x = torch.randn(B, T, N_IN, device="cuda")
+x = torch.randn(B_S, T_S, N_IN, device="cuda")
 pred, state = graphed_rnn(x)
 print(f"Output shape: {pred.shape}")
 print(f"State: {len(state)} layers, each {state[0].shape}")
@@ -125,7 +152,7 @@ pred2, state2 = graphed_rnn(x, state=state)
 
 # %%
 # Benchmark: eager vs CUDA-graphed inference
-rnn_eager = SimpleRNN(N_IN, N_OUT, num_layers=2, hidden_size=64, return_state=True).cuda()
+rnn_eager = SimpleRNN(N_IN, N_OUT, num_layers=2, hidden_size=16, return_state=True).cuda()
 
 with torch.no_grad():
     t_eager = bench(lambda: rnn_eager(x, state=None))
@@ -149,7 +176,7 @@ print(f"Speedup:     {t_eager / t_graph:.1f}x")
 # ```
 #
 # Under the hood this wraps the model in `GraphedStatefulModel` before passing
-# it to `TbpttLearner`. See Example 16 for TBPTT details and
+# it to `TbpttLearner`. See Example 17 for TBPTT details and
 # `benchmarks/benchmark_rnn.py` for comprehensive training benchmarks.
 
 # %% [markdown]
@@ -162,3 +189,7 @@ print(f"Speedup:     {t_eager / t_graph:.1f}x")
 # - **Training**: `RNNLearner(..., cuda_graph=True)` does this for you
 # - **Fixed shapes required**: all inputs must have identical shapes across calls
 # - **Best for**: models where CPU kernel-launch overhead dominates GPU compute
+#   (small RNNs, small batches, short chunks)
+# - **No benefit** for compute-bound models whose kernels already keep the GPU
+#   busy (like the TCN here): graphs replay the same kernels, so the speedup
+#   is ~1x

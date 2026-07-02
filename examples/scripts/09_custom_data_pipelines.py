@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown]
-# # Example 13: Custom Data Pipelines with HDF5
+# # Example 09: Custom Data Pipelines with HDF5
 #
 # When your dataset doesn't fit the standard `create_dls` pattern -- custom
 # readers, different signal combinations, fixed batch counts -- you need a
@@ -128,6 +128,9 @@ for f in files:
 #   200-step slice.
 # - **`stp_sz=50`** -- step size (stride) between consecutive windows.
 # - **`bs=32`** -- batch size.
+#
+# We build `dls_standard` purely as a reference point -- the rest of this
+# example reconstructs the same pipeline from its primitives.
 
 # %%
 dls_standard = create_dls(
@@ -136,6 +139,8 @@ dls_standard = create_dls(
     win_sz=200, stp_sz=50,
     bs=32,
 )
+xb, yb = next(iter(dls_standard.train))
+print(f"Input batch: {tuple(xb.shape)}, target batch: {tuple(yb.shape)}")
 
 # %% [markdown]
 # ## Building a Custom Pipeline Step by Step
@@ -202,22 +207,35 @@ dls_custom = DataLoaders(train_dl, valid_dl)
 # ## Using create_dls_from_readers
 #
 # For a more concise approach, `create_dls_from_readers` handles the
-# `WindowedDataset` and `DataLoader` construction for you. It also supports
-# `n_batches_train` to control the number of training batches per epoch.
+# `WindowedDataset` and `DataLoader` construction for you. Two defaults differ
+# from the manual pipeline above: `n_batches_train` defaults to 300 (random
+# sampling with replacement instead of iterating every window once), and the
+# validation stride defaults to `win_sz`. Passing `n_batches_train=None` and
+# `valid_stp_sz=50` matches `dls_custom`: the same windows, sampled once per
+# epoch.
 
 # %%
 dls_readers = create_dls_from_readers(
     inputs=inputs, targets=targets,
     train_files=train_files, valid_files=valid_files,
-    win_sz=200, stp_sz=50, bs=32,
+    win_sz=200, stp_sz=50, valid_stp_sz=50, bs=32,
+    n_batches_train=None,
 )
+
+assert len(dls_readers.train.dataset) == len(dls_custom.train.dataset)
+assert len(dls_readers.valid.dataset) == len(dls_custom.valid.dataset)
+xb_c, _ = next(iter(dls_custom.train))
+xb_r, _ = next(iter(dls_readers.train))
+print(f"Custom batch shape:  {tuple(xb_c.shape)}")
+print(f"Readers batch shape: {tuple(xb_r.shape)}")
 
 # %% [markdown]
 # ## Fixed Batch Counts
 #
 # When datasets have very different sizes, you may want a fixed number of
 # batches per epoch regardless of how many windows exist. Pass
-# `n_batches_train` to `create_dls_from_readers` or `create_dls`.
+# `n_batches_train` to `create_dls_from_readers` or `create_dls` -- both
+# default to `n_batches_train=300`.
 #
 # This uses `RandomSampler` with `replacement=True` to oversample when there
 # are fewer windows than requested, ensuring consistent training time across

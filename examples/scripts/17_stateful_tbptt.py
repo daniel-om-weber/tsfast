@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -33,6 +33,8 @@
 # ## Setup
 
 # %%
+import torch
+
 from tsfast.tsdata.benchmark import create_dls_silverbox
 from tsfast.training import RNNLearner, fun_rmse
 
@@ -92,7 +94,10 @@ dls_tbptt = create_dls_silverbox(bs=16, win_sz=500, stp_sz=10)
 #   5 sub-windows of 100 timesteps. The RNN does **not** reset its hidden
 #   state between sub-windows. Instead, the state from the previous sub-window
 #   initializes the next one, allowing information to flow across sub-window
-#   boundaries. The window size `win_sz` must be divisible by `sub_seq_len`.
+#   boundaries. The window size `win_sz` should ideally be divisible by
+#   `sub_seq_len`; if it is not, the final sub-window is simply shorter than
+#   the others (and with `cuda_graph=True` that ragged final chunk falls back
+#   to eager execution because its shape differs from the captured graph).
 #
 # When `sub_seq_len` is set, `RNNLearner` automatically uses `TbpttLearner`
 # and a stateful RNN. The hidden state is carried across the sub-windows of
@@ -136,6 +141,37 @@ print(f"Stateful (TBPTT):      {lrn_tbptt.validate()}")
 # sub-window boundaries. However, performance should be comparable. The key
 # advantage is **memory efficiency** -- TBPTT can handle sequences that would
 # cause out-of-memory errors with standard training.
+
+# %% [markdown]
+# ## Measuring the Memory Advantage
+#
+# The 500-step windows above are short enough that both approaches fit
+# comfortably in GPU memory. The advantage becomes visible with much longer
+# windows. Here both variants train one short epoch on 5000-step windows
+# while `torch.cuda.max_memory_allocated()` tracks the peak: standard BPTT
+# stores activations for all 5000 timesteps of a batch, while TBPTT only ever
+# holds one 100-step sub-window at a time. The peak is reached on the first
+# batch, so a few batches (`n_batches_train=20`) suffice for the measurement.
+
+# %%
+if torch.cuda.is_available():
+    def peak_train_memory_mb(sub_seq_len=None):
+        dls_long = create_dls_silverbox(bs=16, win_sz=5000, stp_sz=1000, n_batches_train=20)
+        kwargs = dict(rnn_type='lstm', hidden_size=40, metrics=[fun_rmse])
+        if sub_seq_len is not None:
+            kwargs['sub_seq_len'] = sub_seq_len
+        lrn = RNNLearner(dls_long, **kwargs)
+        torch.cuda.reset_peak_memory_stats()
+        lrn.fit(1, lr=3e-3)
+        return torch.cuda.max_memory_allocated() / 2**20
+
+    mem_standard = peak_train_memory_mb()
+    mem_tbptt = peak_train_memory_mb(sub_seq_len=100)
+    print(f"Standard (full BPTT, win_sz=5000):    {mem_standard:7.1f} MiB")
+    print(f"TBPTT (sub_seq_len=100, win_sz=5000): {mem_tbptt:7.1f} MiB")
+    print(f"Memory ratio: {mem_standard / mem_tbptt:.1f}x")
+else:
+    print("CUDA not available -- skipping the GPU memory comparison.")
 
 # %% [markdown]
 # ## When to Use TBPTT

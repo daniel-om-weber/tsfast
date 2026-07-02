@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown]
-# # Example 12: Sequence-to-Scalar Prediction
+# # Example 14: Sequence-to-Scalar Prediction
 #
 # Not all system identification tasks predict a full output sequence. Sometimes
 # the target is a single scalar -- a physical parameter, a classification label,
@@ -25,8 +25,8 @@
 # %% [markdown]
 # ## Prerequisites
 #
-# This example builds on [Example 00](00_your_first_model.py) and
-# [Example 01](01_data_pipeline.py). Make sure the library is installed:
+# This example builds on [Example 00](00_your_first_model.ipynb) and
+# [Example 01](01_data_pipeline.ipynb). Make sure the library is installed:
 #
 # ```bash
 # uv sync --extra dev
@@ -47,15 +47,16 @@ from tsfast.tsdata import (
 )
 from tsfast.models.rnn import SimpleRNN
 from tsfast.models.layers import SeqAggregation
+from tsfast.models.scaling import ScaledModel, StandardScaler
 from tsfast.training import Learner, fun_rmse
 
 # %% [markdown]
 # ## The Task: Estimating Initial Conditions
 #
 # We have spring-damper trajectories with different initial positions (`x0`) and
-# velocities (`v0`). Given the full time series `[u, x, v]` -- force input,
-# position, and velocity -- can a neural network estimate what the initial
-# conditions were?
+# velocities (`v0`). Given the opening segment of the time series `[u, x, v]` --
+# force input, position, and velocity -- can a neural network estimate what the
+# initial conditions were?
 #
 # This is a **sequence-to-scalar regression** problem: the input is a multi-
 # channel time series and the output is a fixed-size vector `[x0, v0]`.
@@ -119,11 +120,16 @@ valid_entries = [entries[i] for i in valid_idx]
 
 # %% [markdown]
 # Build `WindowedDataset` for train and validation splits. Using
-# `win_sz=500, stp_sz=500` gives one window per file (the full trajectory).
+# `win_sz=100, stp_sz=500` gives one window per file: the first 100 timesteps
+# of the trajectory. The window must start at the trajectory beginning -- that
+# is where the initial condition is directly observable -- so the step size
+# matches the file length (500) to prevent additional windows from later in
+# the trajectory, whose `[x0, v0]` labels would not describe the window's own
+# starting state.
 
 # %%
-train_ds = WindowedDataset(train_entries, inputs=inputs_block, targets=targets_block, win_sz=500, stp_sz=500)
-valid_ds = WindowedDataset(valid_entries, inputs=inputs_block, targets=targets_block, win_sz=500, stp_sz=500)
+train_ds = WindowedDataset(train_entries, inputs=inputs_block, targets=targets_block, win_sz=100, stp_sz=500)
+valid_ds = WindowedDataset(valid_entries, inputs=inputs_block, targets=targets_block, win_sz=100, stp_sz=500)
 
 print(f"Train samples: {len(train_ds)}")
 print(f"Valid samples: {len(valid_ds)}")
@@ -145,8 +151,8 @@ dls = DataLoaders(train_dl, valid_dl)
 # - **`HDF5Attrs(['x0', 'v0'])`** -- reads named attributes from HDF5
 #   metadata as a scalar target vector of shape `(2,)`.
 # - **`WindowedDataset`** -- combines the blocks and slices files into
-#   windows. With `win_sz=500, stp_sz=500`, each file produces exactly one
-#   sample.
+#   windows. With `win_sz=100, stp_sz=500`, each file produces exactly one
+#   sample covering the first 100 timesteps.
 # - **`split_by_parent`** -- uses the directory structure (`train/`, `valid/`)
 #   to split files into train and validation sets.
 
@@ -158,17 +164,23 @@ dls = DataLoaders(train_dl, valid_dl)
 # which selects the last timestep of the RNN output, reducing it to
 # `(batch, n_outputs)`.
 #
-# We build the model manually with `SimpleRNN` and wrap it in a `Learner`
-# because `RNNLearner` expects `dls.norm_stats` (computed by `create_dls`),
-# which our custom pipeline does not provide.
+# We build the model manually with `SimpleRNN` because `RNNLearner` produces a
+# pure sequence-to-sequence model with no way to append the aggregation layer.
+# Normalization comes from `ScaledModel.from_dls`, which reads `dls.norm_stats`
+# -- for a custom pipeline like this one, the stats are estimated automatically
+# from the first training batches. `ScaledModel` wraps the RNN itself (its
+# scalers broadcast over `(batch, seq_len, features)` tensors), and
+# `SeqAggregation` follows it in the `nn.Sequential`: selecting the last
+# timestep commutes with the per-feature output denormalization.
 
 # %%
 input_size = 3   # u, x, v
 output_size = 2  # x0, v0
 hidden_size = 40
 
+rnn = SimpleRNN(input_size, output_size, hidden_size=hidden_size, rnn_type='gru')
 model = nn.Sequential(
-    SimpleRNN(input_size, output_size, hidden_size=hidden_size, rnn_type='lstm'),
+    ScaledModel.from_dls(rnn, dls, StandardScaler, StandardScaler),
     SeqAggregation(),
 )
 
@@ -183,16 +195,23 @@ lrn = Learner(
 # %% [markdown]
 # The model pipeline:
 #
-# 1. **`SimpleRNN`** processes the 3-channel input sequence and produces
-#    `(batch, seq_len, 2)`.
+# 1. **`ScaledModel`** normalizes the 3-channel input, runs the wrapped
+#    **`SimpleRNN`**, and denormalizes the `(batch, seq_len, 2)` output.
 # 2. **`SeqAggregation()`** selects the last timestep, yielding
 #    `(batch, 2)` -- one prediction for `x0` and one for `v0`.
 
 # %% [markdown]
 # ## Train and Evaluate
+#
+# With only 20 training trajectories, one batch covers most of an epoch, so a
+# single epoch is just a couple of gradient steps. Training for 300 epochs
+# still takes only seconds and brings the validation `fun_rmse` to roughly
+# 0.1 -- the validation initial conditions are combinations never seen during
+# training, so the model has to read them off the trajectory rather than
+# memorize them.
 
 # %%
-lrn.fit_flat_cos(n_epoch=10, lr=1e-3)
+lrn.fit_flat_cos(n_epoch=300, lr=1e-3)
 
 # %% [markdown]
 # ## Inspect Predictions
@@ -225,5 +244,8 @@ for i in range(min(5, len(preds))):
 # - **Custom pipelines** combine `WindowedDataset`, `HDF5Signals`, `HDF5Attrs`,
 #   and `split_by_parent` for flexible task definitions beyond the standard
 #   `create_dls` workflow.
+# - **Normalization still applies**: `ScaledModel.from_dls` attaches input and
+#   output scalers to a hand-built model, using `dls.norm_stats` estimated
+#   from training batches.
 # - The same RNN architectures work for both sequence-to-sequence and
 #   sequence-to-scalar problems -- only the output reduction changes.

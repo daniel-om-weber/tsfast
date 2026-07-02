@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown]
-# # Example 15: ONNX Export and Deployment
+# # Example 16: ONNX Export and Deployment
 #
 # Once you have trained a model, you often want to deploy it without requiring
 # the full PyTorch stack. ONNX (Open Neural Network Exchange) is an open
@@ -92,12 +92,17 @@ print(f"Output shape: {y_pytorch.shape}")
 #
 # - **`lrn`** -- the trained Learner to export
 # - **`path`** -- output file path (a `.onnx` suffix is added if missing)
-# - **`opset_version=17`** (default) -- ONNX operator set version. Higher
-#   versions support more operations; 17 is a safe default for most runtimes.
+# - **`opset_version=18`** (default) -- ONNX operator set version. Higher
+#   versions support more operations; 18 is a safe default for most runtimes.
 # - **`seq_len=None`** (default) -- override the sequence length for the dummy
 #   input used during tracing. By default it uses the window size from the
 #   DataLoaders. The exported model accepts any sequence length at runtime thanks
 #   to dynamic axes.
+#
+# The export may emit warnings from the PyTorch tracer -- e.g. a `UserWarning`
+# about RNN `_flat_weights` and a `FutureWarning` about `LeafSpec`. These are
+# expected and harmless; the numerical agreement check below confirms the
+# exported model matches the PyTorch one.
 
 # %%
 onnx_path = export_onnx(lrn, '/tmp/tsfast_model.onnx')

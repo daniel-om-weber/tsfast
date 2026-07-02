@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown]
-# # Example 11: Benchmarking with IdentiBench
+# # Example 13: Benchmarking with IdentiBench
 #
 # IdentiBench provides standardized benchmarks for comparing system
 # identification methods. This example shows how to run your TSFast models
@@ -27,7 +27,6 @@
 # - [Example 00: Your First Model](00_your_first_model.ipynb)
 # - [Example 01: Understanding the Data Pipeline](01_data_pipeline.ipynb)
 # - [Example 02: Simulation](02_simulation.ipynb)
-# - [Benchmark RNN](../../benchmarks/benchmark_rnn.py)
 
 # %% [markdown]
 # ## Setup
@@ -89,7 +88,8 @@ def build_model(context: idb.TrainingContext):
     )
 
     lrn.fit_flat_cos(n_epoch=10, lr=3e-3)
-    return InferenceWrapper(lrn)
+    wrapper = InferenceWrapper(lrn)
+    return lambda u, y_init, attrs: wrapper(u, y_init)
 
 
 # %% [markdown]
@@ -104,8 +104,12 @@ def build_model(context: idb.TrainingContext):
 #   matches IdentiBench's evaluation protocol, which discards the first
 #   `init_window` timesteps.
 # - **`InferenceWrapper`** wraps the trained learner into a numpy-in,
-#   numpy-out callable that IdentiBench's evaluation harness can call
-#   directly.
+#   numpy-out callable `wrapper(u, y_init)`. IdentiBench's evaluation harness
+#   calls the model with three positional arguments -- `model(u, y_init,
+#   attrs)` -- so a small lambda adapts the wrapper to that contract. The
+#   wrapper forwards `y_init` to models that consume an initial output window
+#   (e.g. prediction models trained with `prediction_concat`) and ignores it
+#   for simulation models driven by `u` alone.
 
 # %% [markdown]
 # ## Configure and Run Benchmarks
@@ -162,7 +166,9 @@ print(results_v2)
 # - **IdentiBench provides standardized, reproducible benchmarks** for fair
 #   comparison across system identification methods.
 # - The **`build_model` function** follows a simple API: receive a training
-#   context, build and train a model, return an `InferenceWrapper`.
+#   context, build and train a model, return a callable matching
+#   IdentiBench's `model(u, y_init, attrs)` contract -- here an
+#   `InferenceWrapper` behind a three-argument lambda.
 # - **`create_dls_from_spec`** handles dataset-specific configuration
 #   automatically -- column names, window sizes, and prediction settings
 #   are all extracted from the benchmark spec.

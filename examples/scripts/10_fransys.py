@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown]
-# # Example 08: FranSys -- Diagnosis/Prognosis Architecture
+# # Example 10: FranSys -- Diagnosis/Prognosis Architecture
 #
 # FranSys (Framework for Nonlinear System identification) uses a two-phase
 # approach: a **diagnosis** RNN estimates the system's hidden state from an
@@ -135,7 +135,10 @@ lrn_reg.show_results(dl=lrn_reg.dls.test, max_n=2)
 # window. This improves long-horizon stability.
 #
 # The regularizer requires the diagnosis and prognosis modules to be passed
-# explicitly so it can hook into both and compare their hidden states.
+# explicitly so it can hook into both and compare their hidden states. The
+# sync weight `p_state_sync` needs tuning per system -- the library default
+# (`1e7`) is far too strong for this small model and would let the sync term
+# dominate the training loss, hurting accuracy.
 
 # %%
 lrn_sync = FranSysLearner(
@@ -153,10 +156,18 @@ lrn_sync.aux_losses.append(
     FranSysRegularizer(
         modules=[model_sync.diagnosis, model_sync.prognosis],
         model=model_sync,
+        p_state_sync=1e5,
     )
 )
 lrn_sync.fit_flat_cos(n_epoch=10, lr=3e-3)
 lrn_sync.show_results(dl=lrn_sync.dls.test, max_n=2)
+
+# %% [markdown]
+# On this short prognosis horizon the state-synchronized model reaches an
+# accuracy comparable to the regularizer-only model -- which of the two comes
+# out ahead varies with the random seed. The sync term's value lies in
+# stabilizing the hidden-state trajectory over long prognosis horizons, not in
+# improving short-horizon error.
 
 # %% [markdown]
 # ## Key Takeaways
@@ -171,5 +182,6 @@ lrn_sync.show_results(dl=lrn_sync.dls.test, max_n=2)
 #   them via `lrn.aux_losses.append(...)`.
 # - `FranSysRegularizer` adds state synchronization regularization for improved
 #   long-horizon stability. It requires the diagnosis and prognosis modules
-#   to be passed so it can compare their hidden states.
+#   to be passed so it can compare their hidden states, and its `p_state_sync`
+#   weight must be tuned per system.
 # - The architecture naturally handles variable initial conditions.

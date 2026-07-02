@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -22,7 +22,8 @@
 # signal. TSFast helps you do exactly that: load time-series data, train a
 # recurrent neural network, and evaluate predictions -- all in a few lines of
 # code. In this example, you will load a benchmark dataset, train an LSTM, and
-# visualize predictions in under 10 lines.
+# evaluate its predictions -- a core workflow of just 5 lines: create
+# DataLoaders, build a Learner, fit, plot results, validate.
 
 # %% [markdown]
 # ## Prerequisites
@@ -105,11 +106,13 @@ lrn.show_results(max_n=3)
 # %% [markdown]
 # ## Evaluate the Model
 #
-# `validate` runs the model on the full validation set and returns the loss and
-# any metrics (RMSE by default).
+# `validate` runs the model on the full validation set and returns a tuple of
+# `(loss, {metric_name: value})` -- RMSE by default.
 
 # %%
-lrn.validate()
+val_loss, val_metrics = lrn.validate()
+print(f"Validation loss: {val_loss}")
+print(f"Validation metrics: {val_metrics}")
 
 # %% [markdown]
 # ## Key Takeaways
