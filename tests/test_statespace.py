@@ -25,7 +25,7 @@ def _assert_backend_parity(backend, device, hidden=(48, 32), act="tanh", tol=5e-
     from tsfast.models.ssm import NeuralStateSpace
 
     torch.manual_seed(0)
-    m = NeuralStateSpace(4, 3, hidden_size=list(hidden), act=act, backend="eager").to(device)
+    m = NeuralStateSpace(3, 2, n_state=4, hidden_size=list(hidden), act=act, backend="eager").to(device)
     u = torch.randn(5, 40, 3, device=device)
     x0 = torch.randn(5, 4, device=device)
     out_e, g_e, du_e, dx0_e = _run(m, "eager", u, x0)
@@ -44,25 +44,25 @@ class TestNeuralStateSpace:
     def test_eager_shapes(self):
         from tsfast.models.ssm import NeuralStateSpace
 
-        m = NeuralStateSpace(2, 3, hidden_size=16, num_layers=1, backend="eager")
+        m = NeuralStateSpace(3, 2, n_state=5, hidden_size=16, num_layers=1, backend="eager")
         u = torch.randn(4, 25, 3)
         assert m(u).shape == (4, 25, 2)
-        assert m(u, torch.randn(4, 2)).shape == (4, 25, 2)
-        assert m(u, torch.randn(4, 1, 2)).shape == (4, 25, 2)  # [B,1,NX] x0 accepted
+        assert m(u, torch.randn(4, 5)).shape == (4, 25, 2)
+        assert m(u, torch.randn(4, 1, 5)).shape == (4, 25, 2)  # [B,1,NX] x0 accepted
 
     def test_arbitrary_layers(self):
         from tsfast.models.ssm import NeuralStateSpace
 
-        m = NeuralStateSpace(2, 1, hidden_size=[8, 16, 8], act="relu", backend="eager")
+        m = NeuralStateSpace(1, 2, n_state=3, hidden_size=[8, 16, 8], act="relu", backend="eager")
         assert m(torch.randn(2, 10, 1)).shape == (2, 10, 2)
-        linear = NeuralStateSpace(2, 1, hidden_size=[], backend="eager")  # linear state space
+        linear = NeuralStateSpace(1, 2, n_state=3, hidden_size=[], backend="eager")  # linear state space
         assert linear(torch.randn(2, 10, 1)).shape == (2, 10, 2)
 
     def test_unknown_activation_raises(self):
         from tsfast.models.ssm import NeuralStateSpace
 
         with pytest.raises(ValueError):
-            NeuralStateSpace(2, 1, act="gelu")
+            NeuralStateSpace(1, 2, act="gelu")
 
     @pytest.mark.slow
     def test_compiled_parity(self):
@@ -110,7 +110,7 @@ class TestNeuralStateSpace:
         from tsfast.models.ssm import NeuralStateSpace
 
         torch.manual_seed(0)
-        m = NeuralStateSpace(3, 2, hidden_size=16, num_layers=1, backend="eager", return_state=True)
+        m = NeuralStateSpace(2, 1, n_state=3, hidden_size=16, num_layers=1, backend="eager", return_state=True)
         u = torch.randn(4, 30, 2)
         full, _ = m(u)
         out1, state = m(u[:, :10])
@@ -126,7 +126,9 @@ class TestNeuralStateSpace:
         if not torch.cuda.is_available():
             pytest.skip("no CUDA")
         torch.manual_seed(0)
-        m = NeuralStateSpace(4, 3, hidden_size=32, num_layers=2, backend="triton", return_state=True).to("cuda")
+        m = NeuralStateSpace(3, 2, n_state=4, hidden_size=32, num_layers=2, backend="triton", return_state=True).to(
+            "cuda"
+        )
         graphed = GraphedStatefulModel(m, num_warmup_iters=3)
         u = torch.randn(8, 40, 3, device="cuda")
         out_g, state_g = graphed(u)

@@ -21,7 +21,7 @@ class SSMSpec:
     """Static architecture description of the transition MLP, used to generate backend kernels.
 
     Args:
-        n_state: state dimension (also the model output size)
+        n_state: state dimension
         n_input: exogenous input dimension
         hidden: widths of the hidden layers (may be empty for a linear state space model)
         act: activation name, a key of ``_ACTS``
@@ -43,11 +43,17 @@ class SSMSpec:
 
 
 class NeuralStateSpace(nn.Module):
-    """Discrete-time neural state space model ``x_{k+1} = f(x_k, u_k)`` with an MLP transition.
+    """Discrete-time neural state space model with an MLP transition and a linear observation.
+
+    ``x_{k+1} = f(x_k, u_k)``, ``y_k = C x_k + d``. The latent state dimension is independent
+    of the output dimension, so the model can carry more internal dynamics (e.g. velocities,
+    phases) than the measured signal exposes — ``n_state`` must be at least the order of the
+    system being identified.
 
     The rollout over the input sequence is irreducibly sequential, so a naive per-step Python
     loop is dispatch-bound rather than FLOP-bound. Several backends implement the identical
-    computation:
+    state rollout (the observation map is a single batched matmul applied on top and works
+    with every backend unchanged):
 
     - ``"eager"``: plain Python loop — the reference implementation, any device and dtype.
     - ``"compiled"``: ``torch.compile`` over the unrolled loop — any device, slow first call.
@@ -69,8 +75,9 @@ class NeuralStateSpace(nn.Module):
     full sequence.
 
     Args:
-        n_state: state dimension (model output size).
         n_input: exogenous input dimension.
+        n_output: observed output dimension.
+        n_state: latent state dimension.
         hidden_size: hidden width, or an explicit list of hidden widths for arbitrary layers.
         num_layers: number of hidden layers (ignored when ``hidden_size`` is a list).
         act: activation name, one of ``tanh``, ``sigmoid``, ``relu``.
@@ -80,8 +87,9 @@ class NeuralStateSpace(nn.Module):
 
     def __init__(
         self,
-        n_state: int,
         n_input: int,
+        n_output: int,
+        n_state: int = 8,
         hidden_size: int | list[int] = 64,
         num_layers: int = 2,
         act: str = "tanh",
@@ -93,6 +101,7 @@ class NeuralStateSpace(nn.Module):
             raise ValueError(f"unknown activation {act!r}, expected one of {sorted(_ACTS)}")
         hidden = tuple(hidden_size) if isinstance(hidden_size, (list, tuple)) else (hidden_size,) * num_layers
         self.spec = SSMSpec(n_state, n_input, hidden, act)
+        self.n_output = n_output
         self.backend = backend
         self.return_state = return_state
 
@@ -103,6 +112,7 @@ class NeuralStateSpace(nn.Module):
             if i < self.spec.n_linear - 1:
                 layers.append(_ACTS[act]())
         self.net = nn.Sequential(*layers)
+        self.output_map = nn.Linear(n_state, n_output)
         self._compiled_rollout = None
 
     @property
@@ -110,10 +120,11 @@ class NeuralStateSpace(nn.Module):
         return [m for m in self.net if isinstance(m, nn.Linear)]
 
     def _params_flat(self) -> list[torch.Tensor]:
+        """Transition MLP parameters in backend order (the observation map is applied outside)."""
         return [t for lin in self.linears for t in (lin.weight, lin.bias)]
 
     def forward(self, u: torch.Tensor, x0: torch.Tensor | None = None, state: dict | None = None):
-        """Roll the transition MLP over the input sequence.
+        """Roll the transition MLP over the input sequence and observe the states.
 
         Args:
             u: input sequence ``[batch, seq, n_input]``.
@@ -121,8 +132,8 @@ class NeuralStateSpace(nn.Module):
             state: carried state ``{"x": x_last}`` from a previous chunk; overrides ``x0``.
 
         Returns:
-            State sequence ``[batch, seq, n_state]`` containing ``x_1 .. x_L``, or
-            ``(sequence, {"x": x_L})`` when ``return_state`` is set.
+            Output sequence ``[batch, seq, n_output]`` observing the states ``x_1 .. x_L``,
+            or ``(sequence, {"x": x_L})`` when ``return_state`` is set.
         """
         match state:
             case {"x": x_carry}:
@@ -150,9 +161,10 @@ class NeuralStateSpace(nn.Module):
                 out = triton_rollout(self.spec, u, x0, self._params_flat())
             case unknown:
                 raise ValueError(f"unknown backend {unknown!r}")
+        y = self.output_map(out)
         if self.return_state:
-            return out, {"x": out[:, -1]}
-        return out
+            return y, {"x": out[:, -1]}
+        return y
 
     def _resolve_backend(self, u: torch.Tensor) -> str:
         if self.backend != "auto":

@@ -180,6 +180,7 @@ def AR_RNNLearner(
 
 def SSMLearner(
     dls,
+    n_state: int = 8,
     hidden_size: int | list[int] = 64,
     num_layers: int = 2,
     act: str = "tanh",
@@ -202,7 +203,12 @@ def SSMLearner(
     show_bar: bool = True,
     **kwargs,
 ):
-    """Create a Learner with a NeuralStateSpace model ``x_{k+1} = f(x_k, u_k)``.
+    """Create a Learner with a NeuralStateSpace model ``x_{k+1} = f(x_k, u_k)``, ``y_k = C x_k + d``.
+
+    The latent state dimension ``n_state`` is independent of the dataset's output size and
+    must be at least the order of the system being identified — a state narrower than the
+    dynamics (e.g. a scalar state for a resonant second-order system) cannot carry the
+    velocity/phase information the rollout needs and will not train past a constant predictor.
 
     The model rolls out from a zero initial state (in normalized coordinates), so use
     ``n_skip`` to exclude the initial transient from the loss when the true initial state
@@ -213,6 +219,7 @@ def SSMLearner(
 
     Args:
         dls: DataLoaders providing training and validation data.
+        n_state: latent state dimension of the state space model.
         hidden_size: hidden width, or an explicit list of hidden widths.
         num_layers: number of hidden layers (ignored when ``hidden_size`` is a list).
         act: transition MLP activation (``tanh``/``sigmoid``/``relu``).
@@ -241,7 +248,7 @@ def SSMLearner(
     inp, out = get_io_size(dls)
     if sub_seq_len:
         kwargs.setdefault("return_state", True)
-    model = NeuralStateSpace(out, inp, hidden_size, num_layers, act=act, backend=backend, **kwargs)
+    model = NeuralStateSpace(inp, out, n_state, hidden_size, num_layers, act=act, backend=backend, **kwargs)
     model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
 
     if sub_seq_len and cuda_graph:

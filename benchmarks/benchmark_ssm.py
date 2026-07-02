@@ -21,6 +21,7 @@ from tsfast.models.ssm import NeuralStateSpace
 
 N_STATE = 10
 N_INPUT = 10
+N_OUTPUT = 10
 N_WARMUP = 10
 N_TIMED = 30
 SEED = 42
@@ -67,7 +68,7 @@ def backends_for(device: torch.device, include_compiled: bool) -> list[str]:
 def make_train_step(name, device, hidden, B, seq_len):
     """Build a training-step closure for a backend name ('<backend>' or '<backend>+graph')."""
     backend, _, graphed = name.partition("+")
-    m = NeuralStateSpace(N_STATE, N_INPUT, hidden, backend=backend, return_state=bool(graphed)).to(device)
+    m = NeuralStateSpace(N_INPUT, N_OUTPUT, N_STATE, hidden, backend=backend, return_state=bool(graphed)).to(device)
     model = m
     if graphed:
         from tsfast.models.cudagraph import GraphedStatefulModel
@@ -75,7 +76,7 @@ def make_train_step(name, device, hidden, B, seq_len):
         model = GraphedStatefulModel(m)
     u = torch.randn(B, seq_len, N_INPUT, device=device)
     x0 = torch.zeros(B, N_STATE, device=device)
-    tgt = torch.randn(B, seq_len, N_STATE, device=device)
+    tgt = torch.randn(B, seq_len, N_OUTPUT, device=device)
     opt = torch.optim.Adam(m.parameters(), lr=1e-3)
 
     def step():
@@ -113,7 +114,7 @@ def run(args):
     for name in [n for n in names if "+" not in n]:  # graph capture only pays off in training
         cells = []
         for B in args.batch_sizes:
-            m = NeuralStateSpace(N_STATE, N_INPUT, hidden, backend=name).to(device).eval()
+            m = NeuralStateSpace(N_INPUT, N_OUTPUT, N_STATE, hidden, backend=name).to(device).eval()
             u = torch.randn(B, args.seq_len, N_INPUT, device=device)
             x0 = torch.zeros(B, N_STATE, device=device)
             with torch.no_grad():
