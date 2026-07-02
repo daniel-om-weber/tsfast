@@ -215,8 +215,10 @@ def make_collocation_dls(
     physics-only learner.
     """
     train_ds = _CollocationStream(generate_pinn_input, bs, seq_len, steps_per_epoch)
-    with torch.random.fork_rng(devices=list(range(torch.cuda.device_count()))):
-        torch.manual_seed(val_seed)
+    # Fork/seed only the CPU generator: touching the CUDA generators (e.g. via torch.manual_seed)
+    # would initialize a CUDA context on every visible GPU, even in CPU-only processes.
+    with torch.random.fork_rng(devices=[]):
+        torch.default_generator.manual_seed(val_seed)
         val_batches = [generate_pinn_input(bs, seq_len, "cpu") for _ in range(val_steps)]
     valid_ds = _CachedBatches(val_batches)
     train_dl = torch.utils.data.DataLoader(train_ds, batch_size=None, num_workers=0)
@@ -302,7 +304,7 @@ class SurrogatePINNLearner(Learner):
 
     def training_step(self, xb: Tensor, yb: Tensor) -> float:
         loss = self.physics_loss(xb)
-        if torch.isnan(loss):  # feature: NaN guard
+        if torch.isnan(loss):
             self.opt.zero_grad()
             return float("nan")
         self.backward_step(loss)
