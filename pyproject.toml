@@ -42,7 +42,11 @@ onnx = [
 tune = [
     "ray[tune]",
 ]
+cpp = [
+    "ninja",
+]
 dev = [
+    "ninja",
     "pytest",
     "pytest-cov",
     "nbmake",

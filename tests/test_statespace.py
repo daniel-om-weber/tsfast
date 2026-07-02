@@ -1,0 +1,116 @@
+"""Tests for tsfast.models.ssm (NeuralStateSpace and its execution backends)."""
+
+import pytest
+import torch
+
+
+def _run(m, backend, u, x0):
+    """Forward + backward on cloned leaves; returns (out, param grads, du, dx0)."""
+    m.backend = backend
+    for p in m.parameters():
+        p.grad = None
+    u = u.clone().requires_grad_()
+    x0 = x0.clone().requires_grad_()
+    out = m(u, x0)
+    loss = (out**2).mean() + out.abs().sum() * 0.01
+    loss.backward()
+    return out, [p.grad.clone() for p in m.parameters()], u.grad.clone(), x0.grad.clone()
+
+
+def _rel(a, b):
+    return (a - b).abs().max().item() / (b.abs().max().item() + 1e-30)
+
+
+def _assert_backend_parity(backend, device, hidden=(48, 32), act="tanh", tol=5e-4):
+    from tsfast.models.ssm import NeuralStateSpace
+
+    torch.manual_seed(0)
+    m = NeuralStateSpace(4, 3, hidden_size=list(hidden), act=act, backend="eager").to(device)
+    u = torch.randn(5, 40, 3, device=device)
+    x0 = torch.randn(5, 4, device=device)
+    out_e, g_e, du_e, dx0_e = _run(m, "eager", u, x0)
+    out_b, g_b, du_b, dx0_b = _run(m, backend, u, x0)
+    assert _rel(out_b, out_e) < tol
+    assert max(_rel(a, b) for a, b in zip(g_b, g_e)) < tol
+    assert _rel(du_b, du_e) < tol and _rel(dx0_b, dx0_e) < tol
+    # inference path (no autograd graph)
+    m.backend = backend
+    with torch.no_grad():
+        out_i = m(u, x0)
+    assert _rel(out_i, out_e.detach()) < tol
+
+
+class TestNeuralStateSpace:
+    def test_eager_shapes(self):
+        from tsfast.models.ssm import NeuralStateSpace
+
+        m = NeuralStateSpace(2, 3, hidden_size=16, num_layers=1, backend="eager")
+        u = torch.randn(4, 25, 3)
+        assert m(u).shape == (4, 25, 2)
+        assert m(u, torch.randn(4, 2)).shape == (4, 25, 2)
+        assert m(u, torch.randn(4, 1, 2)).shape == (4, 25, 2)  # [B,1,NX] x0 accepted
+
+    def test_arbitrary_layers(self):
+        from tsfast.models.ssm import NeuralStateSpace
+
+        m = NeuralStateSpace(2, 1, hidden_size=[8, 16, 8], act="relu", backend="eager")
+        assert m(torch.randn(2, 10, 1)).shape == (2, 10, 2)
+        linear = NeuralStateSpace(2, 1, hidden_size=[], backend="eager")  # linear state space
+        assert linear(torch.randn(2, 10, 1)).shape == (2, 10, 2)
+
+    def test_unknown_activation_raises(self):
+        from tsfast.models.ssm import NeuralStateSpace
+
+        with pytest.raises(ValueError):
+            NeuralStateSpace(2, 1, act="gelu")
+
+    @pytest.mark.slow
+    def test_compiled_parity(self):
+        _assert_backend_parity("compiled", "cpu", hidden=(16,))
+
+    def test_c_parity(self):
+        from tsfast.models.ssm import backend_c as ssm_c
+
+        if not ssm_c.is_available():
+            pytest.skip("no C++ toolchain / ninja")
+        _assert_backend_parity("c", "cpu")
+
+    def test_c_parity_linear_and_acts(self):
+        from tsfast.models.ssm import backend_c as ssm_c
+
+        if not ssm_c.is_available():
+            pytest.skip("no C++ toolchain / ninja")
+        _assert_backend_parity("c", "cpu", hidden=(), act="tanh")
+        _assert_backend_parity("c", "cpu", hidden=(24,), act="sigmoid")
+        _assert_backend_parity("c", "cpu", hidden=(24,), act="relu")
+
+    def test_triton_parity(self):
+        from tsfast.models.ssm import backend_triton as ssm_triton
+
+        if not ssm_triton.is_available():
+            pytest.skip("no CUDA/triton")
+        prev = torch.backends.cuda.matmul.allow_tf32
+        torch.backends.cuda.matmul.allow_tf32 = False
+        try:
+            _assert_backend_parity("triton", "cuda")
+            _assert_backend_parity("triton", "cuda", hidden=(), act="tanh")
+            _assert_backend_parity("triton", "cuda", hidden=(64, 64), act="sigmoid")
+        finally:
+            torch.backends.cuda.matmul.allow_tf32 = prev
+
+    def test_triton_fit_envelope(self):
+        from tsfast.models.ssm.backend_triton import fits
+        from tsfast.models.ssm import SSMSpec
+
+        assert fits(SSMSpec(10, 10, (128, 128), "tanh"))
+        assert not fits(SSMSpec(10, 10, (256,), "tanh"))
+        assert not fits(SSMSpec(200, 10, (64,), "tanh"))
+
+    @pytest.mark.slow
+    def test_ssm_learner_fit(self, dls_simulation):
+        from tsfast.training import SSMLearner
+
+        lrn = SSMLearner(dls_simulation, hidden_size=16, num_layers=1, backend="eager", n_skip=5)
+        lrn.fit(1, 1e-3)
+        final_valid_loss = lrn.recorder[-1][1]
+        assert not torch.isnan(torch.tensor(final_valid_loss))

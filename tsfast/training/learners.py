@@ -6,6 +6,7 @@ __all__ = [
     "TCNLearner",
     "CRNNLearner",
     "AR_TCNLearner",
+    "SSMLearner",
 ]
 
 import torch
@@ -19,6 +20,7 @@ from ..models.cudagraph import GraphedStatefulModel
 from ..models.cnn import CRNN, TCN
 from ..models.layers import AR_Model
 from ..models.rnn import SimpleRNN
+from ..models.ssm import NeuralStateSpace
 from ..models.scaling import ScaledModel, Scaler, StandardScaler
 from ..tsdata import get_io_size
 
@@ -157,6 +159,81 @@ def AR_RNNLearner(
         ]
 
     model = ScaledModel.from_dls(ar_model, dls, input_norm, autoregressive=True)
+
+    return Learner(
+        model,
+        dls,
+        loss_func=loss_func,
+        metrics=metrics,
+        lr=lr,
+        n_skip=n_skip,
+        opt_func=opt_func,
+        transforms=transforms,
+        augmentations=augmentations,
+        aux_losses=aux_losses,
+        grad_clip=grad_clip,
+        plot_fn=plot_fn,
+        device=device,
+        show_bar=show_bar,
+    )
+
+
+def SSMLearner(
+    dls,
+    hidden_size: int | list[int] = 64,
+    num_layers: int = 2,
+    act: str = "tanh",
+    backend: str = "auto",
+    loss_func=nn.MSELoss(),
+    metrics: list | None = None,
+    lr: float = 3e-3,
+    n_skip: int = 0,
+    opt_func=torch.optim.Adam,
+    input_norm: type | None = StandardScaler,
+    output_norm: type | None = StandardScaler,
+    transforms: list | None = None,
+    augmentations: list | None = None,
+    aux_losses: list | None = None,
+    grad_clip: float | None = None,
+    plot_fn=None,
+    device: torch.device | None = None,
+    show_bar: bool = True,
+    **kwargs,
+):
+    """Create a Learner with a NeuralStateSpace model ``x_{k+1} = f(x_k, u_k)``.
+
+    The model rolls out from a zero initial state (in normalized coordinates), so use
+    ``n_skip`` to exclude the initial transient from the loss when the true initial state
+    is unknown. The fused ``c``/``triton`` backends make the sequential rollout 1–2 orders
+    of magnitude faster to train than the naive loop; see ``NeuralStateSpace``.
+
+    Args:
+        dls: DataLoaders providing training and validation data.
+        hidden_size: hidden width, or an explicit list of hidden widths.
+        num_layers: number of hidden layers (ignored when ``hidden_size`` is a list).
+        act: transition MLP activation (``tanh``/``sigmoid``/``relu``).
+        backend: execution backend of the rollout, see ``NeuralStateSpace``.
+        loss_func: loss function for training.
+        metrics: metric functions for validation, or None for default RMSE.
+        n_skip: number of initial timesteps to skip in loss and metric computation.
+        opt_func: optimizer constructor.
+        input_norm: scaler class for input normalization, or None to disable.
+        output_norm: scaler class for output denormalization, or None to disable.
+        transforms: list of transforms (train + valid).
+        augmentations: list of augmentation transforms (train only).
+        aux_losses: list of auxiliary loss functions.
+        grad_clip: max gradient norm for clipping, or None to disable.
+        plot_fn: plotting function for show_batch/show_results.
+        device: target device (auto-detected if None).
+        show_bar: whether to show tqdm progress bars.
+        **kwargs: additional keyword arguments forwarded to ``NeuralStateSpace``.
+    """
+    if metrics is None:
+        metrics = [fun_rmse]
+
+    inp, out = get_io_size(dls)
+    model = NeuralStateSpace(out, inp, hidden_size, num_layers, act=act, backend=backend, **kwargs)
+    model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
 
     return Learner(
         model,
