@@ -38,6 +38,36 @@ _ACT_C = {
     "relu": ("({a} > 0.0f ? {a} : 0.0f)", "({z} > 0.0f ? 1.0f : 0.0f)"),
 }
 
+# Rational tanh approximation (Eigen's single-precision coefficients), accurate to a few
+# ulp on the clamped range. Plain arithmetic instead of libm so the activation loop stays
+# auto-vectorizable on macOS, which ships no vector libm — a scalar tanhf call per element
+# otherwise dominates the rollout.
+_FAST_TANH_C = """\
+static inline float fast_tanhf(float x) {
+    x = fminf(7.90531110763549805f, fmaxf(-7.90531110763549805f, x));
+    const float x2 = x * x;
+    float p = -2.76076847742355e-16f;
+    p = p * x2 + 2.00018790482477e-13f;
+    p = p * x2 + -8.60467152213735e-11f;
+    p = p * x2 + 5.12229709037114e-08f;
+    p = p * x2 + 1.48572235717979e-05f;
+    p = p * x2 + 6.37261928875436e-04f;
+    p = p * x2 + 4.89352455891786e-03f;
+    p = p * x;
+    float q = 1.19825839466702e-06f;
+    q = q * x2 + 1.18534705686654e-04f;
+    q = q * x2 + 2.26843463243900e-03f;
+    q = q * x2 + 4.89352518554385e-03f;
+    return p / q;
+}
+"""
+
+_ACT_C_DARWIN = {
+    **_ACT_C,
+    "tanh": ("fast_tanhf({a})", _ACT_C["tanh"][1]),
+    "sigmoid": ("(0.5f + 0.5f * fast_tanhf(0.5f * ({a})))", _ACT_C["sigmoid"][1]),
+}
+
 _EXTENSIONS: dict[SSMSpec, object] = {}
 _AVAILABLE: bool | None = None
 
@@ -128,14 +158,19 @@ def _gen_source(spec: SSMSpec) -> str:
     """Emit the spec-specialized C++ forward/backward rollout."""
     dims = spec.dims
     nx, nu, k = spec.n_state, spec.n_input, spec.n_linear
-    act, dact = _ACT_C[spec.act]
+    darwin = sys.platform == "darwin"
+    act, dact = (_ACT_C_DARWIN if darwin else _ACT_C)[spec.act]
     lines: list[str] = [
         "#include <torch/extension.h>",
         "#include <ATen/Parallel.h>",
         "#include <algorithm>",
         "#include <cmath>",
         "",
-        _BATCH_PARALLEL_GCD if sys.platform == "darwin" else _BATCH_PARALLEL_ATEN,
+        _BATCH_PARALLEL_GCD if darwin else _BATCH_PARALLEL_ATEN,
+    ]
+    if darwin and "fast_tanhf" in act:
+        lines.append(_FAST_TANH_C)
+    lines += [
         f"constexpr int NX = {nx};",
         f"constexpr int NU = {nu};",
         "",
@@ -180,7 +215,8 @@ def _gen_source(spec: SSMSpec) -> str:
         lines.append(f"                {dst}[o] = acc;")
         lines.append("            }")
         if i < k - 1:
-            # separate loop so the transcendental vectorizes via libmvec (-ffast-math)
+            # separate loop so the activation vectorizes (libmvec via -ffast-math on
+            # glibc, the inline fast_tanhf polynomial on macOS)
             lines.append(f"            for (int o = 0; o < {n_out}; ++o) {dst}[o] = " + act.format(a=f"{dst}[o]") + ";")
             lines.append(
                 f"            if (store_z) for (int o = 0; o < {n_out}; ++o) "
