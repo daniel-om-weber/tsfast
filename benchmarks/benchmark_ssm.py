@@ -28,12 +28,18 @@ SEED = 42
 
 
 def detect_device() -> torch.device:
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
 
 
 def sync(device: torch.device):
     if device.type == "cuda":
         torch.cuda.synchronize()
+    elif device.type == "mps":
+        torch.mps.synchronize()
 
 
 def bench(fn, device, n_warmup=N_WARMUP, n_timed=N_TIMED) -> float:
@@ -57,6 +63,11 @@ def backends_for(device: torch.device, include_compiled: bool) -> list[str]:
 
         if ssm_triton.is_available():
             names.append("triton")
+    elif device.type == "mps":
+        from tsfast.models.ssm import backend_metal as ssm_metal
+
+        if ssm_metal.is_available():
+            names.append("metal")
     else:
         from tsfast.models.ssm import backend_c as ssm_c
 

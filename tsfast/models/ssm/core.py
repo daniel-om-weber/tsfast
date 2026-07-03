@@ -61,8 +61,11 @@ class NeuralStateSpace(nn.Module):
       ATen thread pool — float32 on CPU, fastest CPU option for small models.
     - ``"triton"``: persistent-GEMV rollout kernel with a fused BPTT backward — float32 on
       CUDA, hidden widths up to 128.
-    - ``"auto"``: ``triton`` when it applies, else ``compiled`` on CUDA; ``eager`` on CPU
-      (select ``"c"`` explicitly to trade a one-time compilation for much faster CPU training).
+    - ``"metal"``: persistent register-resident rollout kernel with a fused BPTT backward —
+      float32 on MPS (Apple GPUs), layer widths up to 128.
+    - ``"auto"``: ``triton`` when it applies, else ``compiled`` on CUDA; ``metal`` when it
+      applies on MPS; ``eager`` on CPU (select ``"c"`` explicitly to trade a one-time
+      compilation for much faster CPU training).
 
     All backends share the same parameters, so the backend can be switched at any time via
     the ``backend`` attribute. The fused backends are loss-agnostic ``autograd.Function``s:
@@ -159,6 +162,10 @@ class NeuralStateSpace(nn.Module):
                 from .backend_triton import triton_rollout
 
                 out = triton_rollout(self.spec, u, x0, self._params_flat())
+            case "metal":
+                from .backend_metal import metal_rollout
+
+                out = metal_rollout(self.spec, u, x0, self._params_flat())
             case unknown:
                 raise ValueError(f"unknown backend {unknown!r}")
         y = self.output_map(out)
@@ -175,6 +182,11 @@ class NeuralStateSpace(nn.Module):
             if backend_triton.is_available() and backend_triton.fits(self.spec):
                 return "triton"
             return "compiled"
+        if u.device.type == "mps" and u.dtype == torch.float32:
+            from . import backend_metal
+
+            if backend_metal.is_available() and backend_metal.fits(self.spec):
+                return "metal"
         return "eager"
 
     def _rollout_eager(self, u: torch.Tensor, x0: torch.Tensor) -> torch.Tensor:

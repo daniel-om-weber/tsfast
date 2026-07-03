@@ -98,6 +98,24 @@ class TestNeuralStateSpace:
         finally:
             torch.backends.cuda.matmul.allow_tf32 = prev
 
+    def test_metal_parity(self):
+        from tsfast.models.ssm import backend_metal as ssm_metal
+
+        if not ssm_metal.is_available():
+            pytest.skip("no MPS / shader compilation")
+        _assert_backend_parity("metal", "mps")
+        _assert_backend_parity("metal", "mps", hidden=(), act="tanh")
+        _assert_backend_parity("metal", "mps", hidden=(24,), act="sigmoid")
+        _assert_backend_parity("metal", "mps", hidden=(64, 64), act="relu")
+
+    def test_metal_fit_envelope(self):
+        from tsfast.models.ssm.backend_metal import fits
+        from tsfast.models.ssm import SSMSpec
+
+        assert fits(SSMSpec(10, 10, (128, 128), "tanh"))
+        assert not fits(SSMSpec(10, 10, (256,), "tanh"))
+        assert not fits(SSMSpec(120, 10, (64,), "tanh"))
+
     def test_triton_fit_envelope(self):
         from tsfast.models.ssm.backend_triton import fits
         from tsfast.models.ssm import SSMSpec
