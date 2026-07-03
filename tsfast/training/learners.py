@@ -7,6 +7,7 @@ __all__ = [
     "CRNNLearner",
     "AR_TCNLearner",
     "SSMLearner",
+    "DynoNetLearner",
 ]
 
 import torch
@@ -18,6 +19,7 @@ from .losses import fun_rmse
 from .transforms import prediction_concat
 from ..models.cudagraph import GraphedStatefulModel
 from ..models.cnn import CRNN, TCN
+from ..models.dynonet import DynoNet
 from ..models.layers import AR_Model
 from ..models.rnn import SimpleRNN
 from ..models.ssm import NeuralStateSpace
@@ -253,6 +255,108 @@ def SSMLearner(
 
     if sub_seq_len and cuda_graph:
         model = GraphedStatefulModel(model)
+    cls = TbpttLearner if sub_seq_len else Learner
+    extra = {"sub_seq_len": sub_seq_len} if sub_seq_len else {}
+    return cls(
+        model,
+        dls,
+        loss_func=loss_func,
+        metrics=metrics,
+        lr=lr,
+        n_skip=n_skip,
+        opt_func=opt_func,
+        transforms=transforms,
+        augmentations=augmentations,
+        aux_losses=aux_losses,
+        grad_clip=grad_clip,
+        plot_fn=plot_fn,
+        device=device,
+        show_bar=show_bar,
+        **extra,
+    )
+
+
+def DynoNetLearner(
+    dls,
+    n_channels: int = 8,
+    nb: int = 8,
+    na: int = 2,
+    hidden_size: int = 32,
+    hidden_layers: int = 1,
+    bypass: bool = True,
+    backend: str = "scan",
+    loss_func=nn.MSELoss(),
+    metrics: list | None = None,
+    lr: float = 3e-3,
+    n_skip: int = 0,
+    sub_seq_len: int | None = None,
+    opt_func=torch.optim.Adam,
+    input_norm: type | None = StandardScaler,
+    output_norm: type | None = StandardScaler,
+    transforms: list | None = None,
+    augmentations: list | None = None,
+    aux_losses: list | None = None,
+    grad_clip: float | None = None,
+    plot_fn=None,
+    device: torch.device | None = None,
+    show_bar: bool = True,
+    **kwargs,
+):
+    """Create a Learner with a DynoNet model: linear transfer functions G(q) around a static nonlinearity.
+
+    The blocks have no finite receptive field: the FIR part settles after ``nb - 1`` samples,
+    but the IIR transient decays with the slowest learned pole, which is unknown a priori.
+    Set ``n_skip`` to the task's initial-condition window (or a few multiples of the dominant
+    time constant) to keep the cold-start transient out of the loss. Coefficients are
+    unconstrained, so poles can drift outside the unit circle during training; the Learner's
+    NaN guard skips the affected steps and ``grad_clip`` damps the gradient spikes near the
+    stability boundary.
+
+    Args:
+        dls: DataLoaders providing training and validation data.
+        n_channels: signal width between the G-blocks.
+        nb: numerator taps per filter in every G-block.
+        na: denominator order per filter in every G-block.
+        hidden_size: hidden width of the static nonlinearity MLP.
+        hidden_layers: number of hidden layers of the static nonlinearity MLP.
+        bypass: add a parallel linear path from input to output.
+        backend: execution backend of the G-blocks, see ``LinearDynamicalOperator``.
+        loss_func: loss function for training.
+        metrics: metric functions for validation, or None for default RMSE.
+        n_skip: number of initial timesteps to skip in loss and metric computation.
+        sub_seq_len: sub-sequence length for TBPTT; enables stateful training when set.
+        opt_func: optimizer constructor.
+        input_norm: scaler class for input normalization, or None to disable.
+        output_norm: scaler class for output denormalization, or None to disable.
+        transforms: list of transforms (train + valid).
+        augmentations: list of augmentation transforms (train only).
+        aux_losses: list of auxiliary loss functions.
+        grad_clip: max gradient norm for clipping, or None to disable.
+        plot_fn: plotting function for show_batch/show_results.
+        device: target device (auto-detected if None).
+        show_bar: whether to show tqdm progress bars.
+        **kwargs: additional keyword arguments forwarded to ``DynoNet``.
+    """
+    if metrics is None:
+        metrics = [fun_rmse]
+
+    inp, out = get_io_size(dls)
+    if sub_seq_len:
+        kwargs.setdefault("return_state", True)
+    model = DynoNet(
+        inp,
+        out,
+        n_channels=n_channels,
+        nb=nb,
+        na=na,
+        hidden_size=hidden_size,
+        hidden_layers=hidden_layers,
+        bypass=bypass,
+        backend=backend,
+        **kwargs,
+    )
+    model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
+
     cls = TbpttLearner if sub_seq_len else Learner
     extra = {"sub_seq_len": sub_seq_len} if sub_seq_len else {}
     return cls(
