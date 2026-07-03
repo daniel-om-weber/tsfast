@@ -19,6 +19,7 @@ initialization or precision noise (the one exception is noted inside `compare_ma
 | `compare_mamba.py` | `tsfast.models.mamba` | official `selective_scan_ref` (transcribed, Apache-2.0) + `mambapy` (PyPI) |
 | `compare_subnet.py` | `tsfast.models.subnet` | deepSI `SS_encoder_general` (transcribed, BSD-3-Clause) |
 | `compare_phnn.py` | `tsfast.models.phnn` | OE-pHNN paper equations, autograd-based (authors' repo is unlicensed; formulation separately verified against their released trained models) |
+| `compare_transformer.py` | `tsfast.models.transformer` | Rufolo et al., `sysid-prob-transformer` (unlicensed, so downloaded at run time from a pinned commit rather than transcribed) |
 
 Run from the repository root:
 
@@ -30,6 +31,7 @@ uv run python comparisons/compare_s5.py
 uv run python comparisons/compare_mamba.py
 uv run python comparisons/compare_subnet.py
 uv run python comparisons/compare_phnn.py
+uv run python comparisons/compare_transformer.py   # downloads the reference module (network required)
 ```
 
 Every script exits non-zero if any deviation exceeds its stated tolerance.

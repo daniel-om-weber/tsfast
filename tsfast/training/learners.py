@@ -14,10 +14,12 @@ __all__ = [
     "MambaLearner",
     "SubnetLearner",
     "PHNNLearner",
+    "TransformerLearner",
 ]
 
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 from .aux_losses import ActivationRegularizer, TemporalActivationRegularizer
 from .learner import Learner, TbpttLearner
@@ -35,6 +37,7 @@ from ..models.rnn import SimpleRNN
 from ..models.ssm import NeuralStateSpace
 from ..models.subnet import SubnetSSM
 from ..models.phnn import PHNN
+from ..models.transformer import TSTransformer
 from ..models.scaling import ScaledModel, Scaler, StandardScaler
 from ..tsdata import get_io_size
 
@@ -1107,6 +1110,161 @@ def SubnetLearner(
     model = ScaledModel.from_dls(model, dls, input_norm, autoregressive=True)
 
     return Learner(
+        model,
+        dls,
+        loss_func=loss_func,
+        metrics=metrics,
+        lr=lr,
+        n_skip=n_init,
+        opt_func=opt_func,
+        transforms=transforms,
+        augmentations=augmentations,
+        aux_losses=aux_losses,
+        grad_clip=grad_clip,
+        plot_fn=plot_fn,
+        device=device,
+        show_bar=show_bar,
+    )
+
+
+class _GaussianNLLLearner(Learner):
+    """Learner whose training loss is the Gaussian NLL of a ``(mean, logvar)`` model output.
+
+    The model must return ``(mean, logvar)`` in train mode. The mean is
+    denormalized by the ``ScaledModel`` wrapper while the log-variance stays in
+    normalized output coordinates, so the variance is rescaled by the squared
+    affine slope of the output scaler before the likelihood. Validation goes
+    through the standard path (``loss_func`` and metrics on the eval-mode mean).
+    """
+
+    def training_step(self, xb, yb):
+        mean, logvar = self.model(xb)
+        n = self.n_skip
+        var = logvar[:, n:].exp()
+
+        out_norm = getattr(self.model, "output_norm", None)
+        if out_norm is not None:
+            ref = torch.ones(1, 1, var.shape[-1], device=var.device)
+            scale = out_norm.denormalize(ref) - out_norm.denormalize(torch.zeros_like(ref))
+            var = var * scale.pow(2)
+
+        loss = F.gaussian_nll_loss(mean[:, n:], yb[:, n:], var)
+        for aux in self.aux_losses:
+            loss = loss + aux(mean, yb, xb)
+
+        if torch.isnan(loss):
+            self.opt.zero_grad()
+            return float("nan")
+
+        self.backward_step(loss)
+        return loss.item()
+
+
+def TransformerLearner(
+    dls,
+    n_init: int,
+    d_model: int = 128,
+    n_heads: int = 4,
+    n_layers: int = 4,
+    n_in: int = 10,
+    chunk_len: int | None = None,
+    max_ctx_tokens: int = 400,
+    d_rnn: int = 128,
+    dropout: float = 0.0,
+    loss_func=nn.MSELoss(),
+    metrics: list | None = None,
+    lr: float = 3e-3,
+    opt_func=torch.optim.Adam,
+    input_norm: type | None = StandardScaler,
+    transforms: list | None = None,
+    augmentations: list | None = None,
+    aux_losses: list | None = None,
+    grad_clip: float | None = None,
+    plot_fn=None,
+    device: torch.device | None = None,
+    show_bar: bool = True,
+    **kwargs,
+):
+    """Create a Learner with a TSTransformer: encoder-decoder simulation Transformer.
+
+    The architecture of Rufolo, Piga & Forgione (ECC 2025, arXiv:2410.03291)
+    trained on a single system: the encoder embeds the first
+    ``n_init - n_in`` warm-up samples as the context, the last ``n_in``
+    warm-up samples seed the decoder as initial-condition tokens, and the
+    causal decoder predicts the remaining window from the inputs. Training
+    minimizes the reference's Gaussian negative log-likelihood via the
+    ``(mean, logvar)`` head; ``loss_func`` is only used for the validation
+    loss on the predicted mean, so ``valid_loss`` stays comparable across
+    model families. ``n_skip`` is fixed to ``n_init``: earlier positions
+    carry no prediction.
+
+    Measured outputs enter the model input via ``prediction_concat``, so
+    inference through ``InferenceWrapper`` requires ``y_init`` (the first
+    ``n_init`` output samples), like the autoregressive families. Signals
+    longer than ``chunk_len`` are simulated chunk by chunk with the model's
+    own predictions as initial conditions, staying within the positional
+    range seen in training; ``chunk_len`` therefore defaults to the
+    training-window prediction span ``win_sz - n_init``.
+
+    Args:
+        dls: DataLoaders providing training and validation data.
+        n_init: warm-up length (context + initial conditions); predictions
+            and loss start here.
+        d_model: embedding width of the attention blocks.
+        n_heads: attention heads per block.
+        n_layers: number of encoder and of decoder blocks.
+        n_in: initial-condition samples prepended to the decoder query;
+            clamped to ``n_init // 2`` so a context always remains.
+        chunk_len: maximum prediction span per decoder pass (defaults to the
+            training window minus ``n_init``).
+        max_ctx_tokens: context length above which recurrent patching engages.
+        d_rnn: hidden width of the patching RNN.
+        dropout: dropout probability in all blocks.
+        loss_func: validation loss on the predicted mean (training uses the
+            Gaussian NLL).
+        metrics: metric functions for validation, or None for default RMSE.
+        lr: learning rate.
+        opt_func: optimizer constructor.
+        input_norm: scaler class for the concatenated ``[u, y]`` input, also used
+            to denormalize the output (AR scaling), or None to disable.
+        transforms: list of transforms (train + valid); defaults to prediction_concat.
+        augmentations: list of augmentation transforms (train only).
+        aux_losses: list of auxiliary loss functions.
+        grad_clip: max gradient norm for clipping, or None to disable.
+        plot_fn: plotting function for show_batch/show_results.
+        device: target device (auto-detected if None).
+        show_bar: whether to show tqdm progress bars.
+        **kwargs: additional keyword arguments forwarded to ``TSTransformer``.
+    """
+    if metrics is None:
+        metrics = [fun_rmse]
+    if transforms is None:
+        transforms = [prediction_concat(t_offset=0)]
+    if chunk_len is None:
+        win_sz = getattr(dls.train.dataset, "win_sz", None)
+        if win_sz is None:
+            raise ValueError("chunk_len is required when the DataLoaders use full-file windows")
+        chunk_len = win_sz - n_init
+    n_in = max(1, min(n_in, n_init // 2))
+
+    inp, out = get_io_size(dls)
+    model = TSTransformer(
+        inp,
+        out,
+        n_init=n_init,
+        d_model=d_model,
+        n_heads=n_heads,
+        n_layers=n_layers,
+        n_in=n_in,
+        chunk_len=chunk_len,
+        max_ctx_tokens=max_ctx_tokens,
+        d_rnn=d_rnn,
+        dropout=dropout,
+        **kwargs,
+    )
+    model = ScaledModel.from_dls(model, dls, input_norm, autoregressive=True)
+
+    return _GaussianNLLLearner(
         model,
         dls,
         loss_func=loss_func,

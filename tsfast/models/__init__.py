@@ -10,3 +10,4 @@ from tsfast.models.s5 import *
 from tsfast.models.narx import *
 from tsfast.models.subnet import *
 from tsfast.models.phnn import *
+from tsfast.models.transformer import *

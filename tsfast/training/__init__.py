@@ -57,6 +57,7 @@ from .learners import (
     SSMLearner,
     SubnetLearner,
     TCNLearner,
+    TransformerLearner,
 )
 
 __all__ = [
@@ -121,4 +122,5 @@ __all__ = [
     "MambaLearner",
     "SubnetLearner",
     "PHNNLearner",
+    "TransformerLearner",
 ]
