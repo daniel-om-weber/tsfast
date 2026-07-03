@@ -65,9 +65,10 @@ class LinearDynamicalOperator(nn.Module):
     convolution; the denominator recurrence runs in state-space (companion) form through
     ``linear_recurrence``, so the whole operator is exact and sequence-parallel.
 
-    Coefficients are unconstrained as in Forgione & Piga (2021): ``b`` starts small and random,
-    ``a`` starts at zero (all poles at the origin — a pure FIR filter), so the operator is
-    stable at initialization but poles may leave the unit circle during training.
+    Coefficients are unconstrained as in Forgione & Piga (2021, arXiv:2006.02250; full
+    citation on ``DynoNet``): ``b`` starts small and random, ``a`` starts at zero (all poles
+    at the origin — a pure FIR filter), so the operator is stable at initialization but
+    poles may leave the unit circle during training.
 
     The internal pair flattening is input-major (``index = j_in * out_channels + i_out``),
     forced by ``conv1d`` group semantics; every reshape below relies on this ordering.
@@ -161,6 +162,11 @@ class DynoNet(nn.Module):
     (``forward(u, state=...) -> (out, state)``); the carried state holds each G-block's FIR
     tail and IIR states, so chunked rollouts are exactly equivalent to the full sequence and
     ``TbpttLearner`` works unchanged. Initial conditions are zero unless ``state`` is passed.
+
+    References:
+        M. Forgione and D. Piga, "dynoNet: A neural network architecture for learning
+        dynamical systems," International Journal of Adaptive Control and Signal
+        Processing, 35(4):612-626, 2021. arXiv:2006.02250.
 
     Args:
         input_size: number of input signals.
