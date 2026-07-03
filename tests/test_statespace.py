@@ -108,6 +108,25 @@ class TestNeuralStateSpace:
         _assert_backend_parity("metal", "mps", hidden=(24,), act="sigmoid")
         _assert_backend_parity("metal", "mps", hidden=(64, 64), act="relu")
 
+    def test_metal_scan_backward_parity(self):
+        # long sequence at small batch engages the sequence-parallel adjoint scan
+        from tsfast.models.ssm import backend_metal as ssm_metal
+
+        if not ssm_metal.is_available():
+            pytest.skip("no MPS / shader compilation")
+        from tsfast.models.ssm import NeuralStateSpace
+
+        torch.manual_seed(0)
+        m = NeuralStateSpace(3, 2, n_state=4, hidden_size=[48, 32], backend="eager").to("mps")
+        u = torch.randn(4, 400, 3, device="mps")
+        x0 = torch.randn(4, 4, device="mps")
+        assert ssm_metal._scan_chunks(m.spec, 4, 400) > 1
+        out_e, g_e, du_e, dx0_e = _run(m, "eager", u, x0)
+        out_b, g_b, du_b, dx0_b = _run(m, "metal", u, x0)
+        assert _rel(out_b, out_e) < 5e-4
+        assert max(_rel(a, b) for a, b in zip(g_b, g_e)) < 5e-4
+        assert _rel(du_b, du_e) < 5e-4 and _rel(dx0_b, dx0_e) < 5e-4
+
     def test_metal_fit_envelope(self):
         from tsfast.models.ssm.backend_metal import fits
         from tsfast.models.ssm import SSMSpec

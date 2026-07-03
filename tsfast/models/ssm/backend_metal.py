@@ -12,6 +12,14 @@ Backward follows the split-BPTT design shared with the C and Triton backends: a 
 kernel carries the state adjoint (each thread holding the weight column it needs in
 registers) and emits the per-step pre-activation adjoints; the parameter gradients are
 batched MPS GEMMs over the ``[B*L, .]`` flattened adjoints (``mlp_param_grads``).
+
+Unlike the nonlinear forward, the state-adjoint recurrence is LINEAR in the adjoint
+(``gy_t = gout_t + J^T_{t+1} gy_{t+1}`` with per-step Jacobians of the transition MLP), so
+when the batch alone cannot fill the GPU the backward is additionally parallelized over the
+sequence: the Jacobians are built for all steps at once by batched GEMMs, parallel chunks
+reduce to boundary summaries (matrix suffix products), a short scan propagates the adjoint
+across chunk boundaries, and the reverse sweep then runs in every chunk concurrently. This
+cuts the sequential depth from L to roughly L/chunks and is exact — no approximation.
 """
 
 __all__ = [
@@ -30,10 +38,27 @@ _ACT_MSL = {
     "relu": ("fmax({a}, 0.0f)", "({z} > 0.0f ? 1.0f : 0.0f)"),
 }
 
+_DACT_TORCH = {
+    "tanh": lambda z: 1.0 - z * z,
+    "sigmoid": lambda z: z * (1.0 - z),
+    "relu": lambda z: (z > 0).to(z.dtype),
+}
+
 # One thread per neuron with its weight row/column in registers: beyond this width the
 # register pressure defeats the design (and Metal's buffer-binding count caps the depth).
 _MAX_WIDTH = 128
 _MAX_LINEAR = 8
+
+# Sequence-parallel backward: engaged when the batch alone leaves the GPU latency-bound
+# (measured crossover: wins up to B=16, loses from B=64 where the plain sweep is already
+# throughput-bound and the Jacobian build is pure extra work). The state must be small
+# enough for NX x NX chunk products in threadgroup memory, and the materialized Jacobians
+# [B, L, NX, NX] must stay a reasonable fraction of memory.
+_SCAN_MAX_STATE = 32
+_SCAN_MAX_BATCH = 16
+_SCAN_MIN_CHUNK = 64
+_SCAN_TARGET_GROUPS = 512
+_SCAN_MAX_JT_BYTES = 256 * 1024**2
 
 _LIBS: dict[SSMSpec, object] = {}
 _AVAILABLE: bool | None = None
@@ -173,12 +198,16 @@ def _gen_source(spec: SSMSpec) -> str:
         out = [
             "kernel void ssm_bwd(",
             "    device const float* gout,",
-            z_args + w_args + "    device float* gy,",
+            z_args + w_args + "    device const float* jt, device const float* bnd,",
+            "    device float* gy,",
             ga_args + "    device float* gx0,",
-            "    constant uint& L,",
+            "    constant uint& L, constant uint& CL, constant uint& C,",
             "    uint tid [[thread_position_in_threadgroup]],",
-            "    uint b   [[threadgroup_position_in_grid]])",
+            "    uint g   [[threadgroup_position_in_grid]])",
             "{",
+            "    const uint b = g / C, c = g % C;",
+            "    const uint t0 = c * CL;",
+            "    const uint t1 = min(t0 + CL, L);",
             f"    threadgroup float gys[{nx}];",
         ]
         for i in range(k - 1):
@@ -194,14 +223,19 @@ def _gen_source(spec: SSMSpec) -> str:
             ]
         out += [
             "    float carry = 0.0f;",
-            "    float goutr = (tid < NX) ? gout[(b*L + L - 1)*NX + tid] : 0.0f;",
+            "    if (tid < NX && t1 < L) {",
+            "        // carry entering step t1-1 is J^T_{t1} times the boundary adjoint gy_{t1}",
+            "        for (uint m = 0; m < NX; ++m)",
+            "            carry += jt[((b*L + t1)*NX + tid)*NX + m] * bnd[(b*(C + 1) + c + 1)*NX + m];",
+            "    }",
+            "    float goutr = (tid < NX) ? gout[(b*L + t1 - 1)*NX + tid] : 0.0f;",
         ]
         for i in range(k - 1):
-            out.append(f"    float z{i}r = (tid < {dims[i + 1]}) ? z{i}[(b*L + L - 1)*{dims[i + 1]} + tid] : 0.0f;")
+            out.append(f"    float z{i}r = (tid < {dims[i + 1]}) ? z{i}[(b*L + t1 - 1)*{dims[i + 1]} + tid] : 0.0f;")
         out += [
             "",
-            "    for (uint ti = 0; ti < L; ++ti) {",
-            "        const uint t = L - 1 - ti;",
+            "    for (uint ti = t1; ti > t0; --ti) {",
+            "        const uint t = ti - 1;",
             "        if (tid < NX) {",
             "            const float gyv = goutr + carry;",
             "            gys[tid] = gyv;",
@@ -237,15 +271,121 @@ def _gen_source(spec: SSMSpec) -> str:
             out.append("        threadgroup_barrier(mem_flags::mem_threadgroup);")
         out += [
             "    }",
-            "    if (tid < NX) gx0[b*NX + tid] = carry;",
+            "    if (tid < NX && t0 == 0) gx0[b*NX + tid] = carry;",
             "}",
         ]
         return out
 
+    def scan_kernels() -> str:
+        nn = nx * nx
+        return f"""
+kernel void ssm_bwd_summary(
+    device const float* jt, device const float* gout,
+    device float* pc, device float* sc,
+    constant uint& L, constant uint& CL, constant uint& C,
+    uint tid [[thread_position_in_threadgroup]],
+    uint g   [[threadgroup_position_in_grid]])
+{{
+    const uint b = g / C, c = g % C;
+    const uint t0 = c * CL;
+    const uint t1 = min(t0 + CL, L);
+    threadgroup float P[2][{nn}];
+    threadgroup float s[2][{nx}];
+    threadgroup float A[{nn}];
+    for (uint e = tid; e < {nn}; e += 32) P[0][e] = (e / NX == e % NX) ? 1.0f : 0.0f;
+    if (tid < NX) s[0][tid] = 0.0f;
+    uint cur = 0;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint ti = t1; ti > t0; --ti) {{
+        const uint t = ti - 1;
+        if (t + 1 < L) {{
+            for (uint e = tid; e < {nn}; e += 32) A[e] = jt[(b*L + t + 1)*{nn} + e];
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+            for (uint e = tid; e < {nn}; e += 32) {{
+                const uint i = e / NX, j = e % NX;
+                float acc = 0.0f;
+                for (uint m = 0; m < NX; ++m) acc += A[i*NX + m] * P[cur][m*NX + j];
+                P[1 - cur][e] = acc;
+            }}
+            if (tid < NX) {{
+                float acc = gout[(b*L + t)*NX + tid];
+                for (uint m = 0; m < NX; ++m) acc += A[tid*NX + m] * s[cur][m];
+                s[1 - cur][tid] = acc;
+            }}
+        }} else {{
+            // the recurrence terminates at t = L-1: gy = gout, no carry from beyond
+            for (uint e = tid; e < {nn}; e += 32) P[1 - cur][e] = 0.0f;
+            if (tid < NX) s[1 - cur][tid] = gout[(b*L + t)*NX + tid];
+        }}
+        cur = 1 - cur;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }}
+    for (uint e = tid; e < {nn}; e += 32) pc[(b*C + c)*{nn} + e] = P[cur][e];
+    if (tid < NX) sc[(b*C + c)*NX + tid] = s[cur][tid];
+}}
+
+kernel void ssm_bwd_scan(
+    device const float* pc, device const float* sc,
+    device float* bnd,
+    constant uint& C,
+    uint tid [[thread_position_in_threadgroup]],
+    uint b   [[threadgroup_position_in_grid]])
+{{
+    threadgroup float v[2][{nx}];
+    if (tid < NX) {{
+        v[0][tid] = 0.0f;
+        bnd[(b*(C + 1) + C)*NX + tid] = 0.0f;
+    }}
+    uint cur = 0;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint ci = C; ci > 0; --ci) {{
+        const uint c = ci - 1;
+        if (tid < NX) {{
+            float acc = sc[(b*C + c)*NX + tid];
+            for (uint m = 0; m < NX; ++m) acc += pc[(b*C + c)*{nn} + tid*NX + m] * v[cur][m];
+            v[1 - cur][tid] = acc;
+            bnd[(b*(C + 1) + c)*NX + tid] = acc;
+        }}
+        cur = 1 - cur;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }}
+}}
+"""
+
     lines += fwd_kernel("ssm_fwd", store_z=False)
     lines += fwd_kernel("ssm_fwd_train", store_z=True)
     lines += bwd_kernel()
+    if nx <= _SCAN_MAX_STATE:
+        lines.append(scan_kernels())
     return "\n".join(lines)
+
+
+def _scan_chunks(spec: SSMSpec, B: int, L: int) -> int:
+    """Number of sequence chunks for the backward; 1 disables the scan path."""
+    nx = spec.n_state
+    if spec.n_linear < 2 or nx > _SCAN_MAX_STATE or B > _SCAN_MAX_BATCH:
+        return 1
+    if B * L * nx * nx * 4 > _SCAN_MAX_JT_BYTES:
+        return 1
+    return max(1, min(-(-_SCAN_TARGET_GROUPS // B), L // _SCAN_MIN_CHUNK))
+
+
+@torch.no_grad()
+def _build_jt(spec: SSMSpec, weights: list[torch.Tensor], zs: list[torch.Tensor]) -> torch.Tensor:
+    """Per-step transposed state Jacobians ``J^T_t = W0x^T D0 W1^T D1 ... W_{k-1}^T`` as [B, L, NX, NX].
+
+    The diagonal activation-derivative factors come from the stored hidden activations, so
+    all L Jacobians are produced by k-1 flat GEMMs — fully parallel over the sequence.
+    """
+    nx, k = spec.n_state, spec.n_linear
+    B, L = zs[0].shape[0], zs[0].shape[1]
+    dact = _DACT_TORCH[spec.act]
+    n = weights[0][:, :nx].t().unsqueeze(0) * dact(zs[0]).reshape(B * L, 1, -1)
+    for i in range(1, k):
+        n = (n.reshape(B * L * nx, -1) @ weights[i].t()).reshape(B * L, nx, -1)
+        if i < k - 1:
+            n = n * dact(zs[i]).reshape(B * L, 1, -1)
+    return n.reshape(B, L, nx, nx).contiguous()
 
 
 def _get_lib(spec: SSMSpec):
@@ -289,12 +429,26 @@ class _MetalSSMRollout(torch.autograd.Function):
         zs = list(saved[3 : 3 + k - 1])
         weights = list(saved[3 + k - 1 :])
         B, L = u.shape[0], u.shape[1]
+        nx = spec.n_state
         tpg = _tpg(spec)
         ws = [w.detach().contiguous() for w in weights]
-        gy = torch.empty(B, L, spec.n_state, device=u.device, dtype=torch.float32)
+        gout = grad_out.contiguous()
+        gy = torch.empty(B, L, nx, device=u.device, dtype=torch.float32)
         gas = [torch.empty_like(z) for z in zs]
-        gx0 = torch.empty(B, spec.n_state, device=u.device, dtype=torch.float32)
-        lib.ssm_bwd(grad_out.contiguous(), *zs, *ws, gy, *gas, gx0, L, threads=B * tpg, group_size=tpg)
+        gx0 = torch.empty(B, nx, device=u.device, dtype=torch.float32)
+        C = _scan_chunks(spec, B, L)
+        cl = -(-L // C)
+        C = -(-L // cl)
+        if C > 1:
+            jt = _build_jt(spec, ws, zs)
+            pc = torch.empty(B, C, nx, nx, device=u.device)
+            sc = torch.empty(B, C, nx, device=u.device)
+            bnd = torch.empty(B, C + 1, nx, device=u.device)
+            lib.ssm_bwd_summary(jt, gout, pc, sc, L, cl, C, threads=B * C * 32, group_size=32)
+            lib.ssm_bwd_scan(pc, sc, bnd, C, threads=B * 32, group_size=32)
+        else:
+            jt = bnd = torch.zeros(1, device=u.device)
+        lib.ssm_bwd(gout, *zs, *ws, jt, bnd, gy, *gas, gx0, L, cl, C, threads=B * C * tpg, group_size=tpg)
         grads, du = mlp_param_grads(spec, x0, u, out, zs, gy, gas, w0=weights[0], need_du=ctx.needs_input_grad[2])
         dx0 = gx0 if ctx.needs_input_grad[3] else None
         return (None, None, du, dx0, *grads)
