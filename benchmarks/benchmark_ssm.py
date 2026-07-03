@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Benchmark: NeuralStateSpace execution backends (eager vs compiled vs c vs triton).
+"""Benchmark: NeuralStateSpace execution backends (eager vs compiled vs c vs triton vs metal).
 
 Times a full training step (forward + MSE + backward + Adam) and inference of the
 sequential rollout, reported as microseconds per trajectory. Runs on synthetic
