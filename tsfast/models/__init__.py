@@ -8,3 +8,5 @@ from tsfast.models.lru import *
 from tsfast.models.mamba import *
 from tsfast.models.s5 import *
 from tsfast.models.narx import *
+from tsfast.models.subnet import *
+from tsfast.models.phnn import *

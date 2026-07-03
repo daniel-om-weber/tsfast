@@ -17,6 +17,8 @@ initialization or precision noise (the one exception is noted inside `compare_ma
 | `compare_lru.py` | `tsfast.models.lru` | Forgione et al., `lru-reduction` (transcribed, MIT) |
 | `compare_s5.py` | `tsfast.models.s5` | official JAX S5 (transcribed, MIT) + `s5-pytorch` (PyPI) |
 | `compare_mamba.py` | `tsfast.models.mamba` | official `selective_scan_ref` (transcribed, Apache-2.0) + `mambapy` (PyPI) |
+| `compare_subnet.py` | `tsfast.models.subnet` | deepSI `SS_encoder_general` (transcribed, BSD-3-Clause) |
+| `compare_phnn.py` | `tsfast.models.phnn` | OE-pHNN paper equations, autograd-based (authors' repo is unlicensed; formulation separately verified against their released trained models) |
 
 Run from the repository root:
 
@@ -26,6 +28,8 @@ uv run python comparisons/compare_dynonet.py
 uv run python comparisons/compare_lru.py
 uv run python comparisons/compare_s5.py
 uv run python comparisons/compare_mamba.py
+uv run python comparisons/compare_subnet.py
+uv run python comparisons/compare_phnn.py
 ```
 
 Every script exits non-zero if any deviation exceeds its stated tolerance.

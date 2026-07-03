@@ -12,6 +12,8 @@ __all__ = [
     "LRULearner",
     "S5Learner",
     "MambaLearner",
+    "SubnetLearner",
+    "PHNNLearner",
 ]
 
 import torch
@@ -31,6 +33,8 @@ from ..models.s5 import DeepS5
 from ..models.narx import NarxMLP
 from ..models.rnn import SimpleRNN
 from ..models.ssm import NeuralStateSpace
+from ..models.subnet import SubnetSSM
+from ..models.phnn import PHNN
 from ..models.scaling import ScaledModel, Scaler, StandardScaler
 from ..tsdata import get_io_size
 
@@ -1002,6 +1006,230 @@ def AR_TCNLearner(
         metrics=metrics,
         lr=lr,
         n_skip=n_skip,
+        opt_func=opt_func,
+        transforms=transforms,
+        augmentations=augmentations,
+        aux_losses=aux_losses,
+        grad_clip=grad_clip,
+        plot_fn=plot_fn,
+        device=device,
+        show_bar=show_bar,
+    )
+
+
+def SubnetLearner(
+    dls,
+    n_init: int,
+    n_state: int = 8,
+    hidden_size: int | list[int] = 64,
+    num_layers: int = 2,
+    act: str = "tanh",
+    backend: str = "auto",
+    na: int | None = None,
+    nb: int | None = None,
+    enc_hidden_size: int = 64,
+    enc_num_layers: int = 2,
+    loss_func=nn.MSELoss(),
+    metrics: list | None = None,
+    lr: float = 3e-3,
+    opt_func=torch.optim.Adam,
+    input_norm: type | None = StandardScaler,
+    transforms: list | None = None,
+    augmentations: list | None = None,
+    aux_losses: list | None = None,
+    grad_clip: float | None = None,
+    plot_fn=None,
+    device: torch.device | None = None,
+    show_bar: bool = True,
+    **kwargs,
+):
+    """Create a Learner with a SUBNET model: encoder-initialized neural state space.
+
+    An encoder estimates the state at ``n_init`` from the first ``n_init`` input
+    and output samples, and the state-space rollout simulates from there — the
+    subspace-encoder training scheme of Beintema et al. Every training window is
+    one simulation section, so the DataLoaders' ``win_sz`` should be
+    ``n_init + section_length``. ``n_skip`` is fixed to ``n_init``: earlier
+    positions carry no prediction.
+
+    Measured outputs enter the model input via ``prediction_concat``, so
+    inference through ``InferenceWrapper`` requires ``y_init`` (the first
+    ``n_init`` output samples), like the autoregressive families.
+
+    Args:
+        dls: DataLoaders providing training and validation data.
+        n_init: encoder warm-up length; predictions and loss start here.
+        n_state: latent state dimension.
+        hidden_size: transition MLP hidden width, or explicit list of widths.
+        num_layers: number of transition hidden layers.
+        act: transition MLP activation (``tanh``/``sigmoid``/``relu``).
+        backend: rollout backend, see ``NeuralStateSpace``.
+        na: encoder output-history length (defaults to ``n_init``).
+        nb: encoder input-history length (defaults to ``n_init``).
+        enc_hidden_size: encoder MLP hidden width.
+        enc_num_layers: encoder MLP hidden layers.
+        loss_func: loss function for training.
+        metrics: metric functions for validation, or None for default RMSE.
+        lr: learning rate.
+        opt_func: optimizer constructor.
+        input_norm: scaler class for the concatenated ``[u, y]`` input, also used
+            to denormalize the output (AR scaling), or None to disable.
+        transforms: list of transforms (train + valid); defaults to prediction_concat.
+        augmentations: list of augmentation transforms (train only).
+        aux_losses: list of auxiliary loss functions.
+        grad_clip: max gradient norm for clipping, or None to disable.
+        plot_fn: plotting function for show_batch/show_results.
+        device: target device (auto-detected if None).
+        show_bar: whether to show tqdm progress bars.
+        **kwargs: additional keyword arguments forwarded to ``SubnetSSM``.
+    """
+    if metrics is None:
+        metrics = [fun_rmse]
+    if transforms is None:
+        transforms = [prediction_concat(t_offset=0)]
+
+    inp, out = get_io_size(dls)
+    model = SubnetSSM(
+        inp,
+        out,
+        n_state=n_state,
+        hidden_size=hidden_size,
+        num_layers=num_layers,
+        act=act,
+        n_init=n_init,
+        na=na,
+        nb=nb,
+        enc_hidden_size=enc_hidden_size,
+        enc_num_layers=enc_num_layers,
+        backend=backend,
+        **kwargs,
+    )
+    model = ScaledModel.from_dls(model, dls, input_norm, autoregressive=True)
+
+    return Learner(
+        model,
+        dls,
+        loss_func=loss_func,
+        metrics=metrics,
+        lr=lr,
+        n_skip=n_init,
+        opt_func=opt_func,
+        transforms=transforms,
+        augmentations=augmentations,
+        aux_losses=aux_losses,
+        grad_clip=grad_clip,
+        plot_fn=plot_fn,
+        device=device,
+        show_bar=show_bar,
+    )
+
+
+def PHNNLearner(
+    dls,
+    n_init: int,
+    n_state: int = 4,
+    hidden_size: int = 64,
+    num_layers: int = 2,
+    dt: float = 0.1,
+    rk4_steps: int = 1,
+    h_lower_bound: float | None = 0.0,
+    output: str = "ph",
+    backend: str = "auto",
+    na: int | None = None,
+    nb: int | None = None,
+    enc_hidden_size: int = 64,
+    enc_num_layers: int = 2,
+    loss_func=nn.MSELoss(),
+    metrics: list | None = None,
+    lr: float = 3e-3,
+    opt_func=torch.optim.Adam,
+    input_norm: type | None = StandardScaler,
+    transforms: list | None = None,
+    augmentations: list | None = None,
+    aux_losses: list | None = None,
+    grad_clip: float | None = None,
+    plot_fn=None,
+    device: torch.device | None = None,
+    show_bar: bool = True,
+    **kwargs,
+):
+    """Create a Learner with an OE-pHNN: encoder-initialized port-Hamiltonian model.
+
+    Same subspace-encoder training scheme as ``SubnetLearner``, with the state
+    transition replaced by an RK4-discretized port-Hamiltonian vector field and
+    the output by the collocated map ``G^T dH/dx`` (Moradi et al.). The pH
+    output structure requires as many outputs as inputs; pass
+    ``output="linear"`` for a learned observation on non-square systems.
+
+    ``dt`` is the RK4 step in the model's time unit and doubles as a
+    time-normalization constant: the reference implementation rescales time so
+    ``dt`` stays around 0.1 (its cascaded-tanks model uses 0.04 instead of the
+    true 4 s sampling period), otherwise the explicit integrator diverges.
+    Treat it as a hyperparameter rather than the physical sampling time.
+
+    Args:
+        dls: DataLoaders providing training and validation data.
+        n_init: encoder warm-up length; predictions and loss start here.
+        n_state: state dimension.
+        hidden_size: hidden width of the H/J/R/G component nets.
+        num_layers: hidden layers of the component nets.
+        dt: RK4 step size (see above).
+        rk4_steps: RK4 substeps per sample.
+        h_lower_bound: ELU lower bound of the Hamiltonian, or None to disable.
+        output: ``"ph"`` (collocated, requires square) or ``"linear"``.
+        backend: ``"eager"``, ``"compiled"``, or ``"auto"``, see ``PHNN``.
+        na: encoder output-history length (defaults to ``n_init``).
+        nb: encoder input-history length (defaults to ``n_init``).
+        enc_hidden_size: encoder MLP hidden width.
+        enc_num_layers: encoder MLP hidden layers.
+        loss_func: loss function for training.
+        metrics: metric functions for validation, or None for default RMSE.
+        lr: learning rate.
+        opt_func: optimizer constructor.
+        input_norm: scaler class for the concatenated ``[u, y]`` input, also used
+            to denormalize the output (AR scaling), or None to disable.
+        transforms: list of transforms (train + valid); defaults to prediction_concat.
+        augmentations: list of augmentation transforms (train only).
+        aux_losses: list of auxiliary loss functions.
+        grad_clip: max gradient norm for clipping, or None to disable.
+        plot_fn: plotting function for show_batch/show_results.
+        device: target device (auto-detected if None).
+        show_bar: whether to show tqdm progress bars.
+        **kwargs: additional keyword arguments forwarded to ``PHNN``.
+    """
+    if metrics is None:
+        metrics = [fun_rmse]
+    if transforms is None:
+        transforms = [prediction_concat(t_offset=0)]
+
+    inp, out = get_io_size(dls)
+    model = PHNN(
+        inp,
+        out,
+        n_state=n_state,
+        hidden_size=hidden_size,
+        num_layers=num_layers,
+        dt=dt,
+        n_init=n_init,
+        na=na,
+        nb=nb,
+        enc_hidden_size=enc_hidden_size,
+        enc_num_layers=enc_num_layers,
+        rk4_steps=rk4_steps,
+        h_lower_bound=h_lower_bound,
+        output=output,
+        backend=backend,
+        **kwargs,
+    )
+    model = ScaledModel.from_dls(model, dls, input_norm, autoregressive=True)
+
+    return Learner(
+        model,
+        dls,
+        loss_func=loss_func,
+        metrics=metrics,
+        lr=lr,
+        n_skip=n_init,
         opt_func=opt_func,
         transforms=transforms,
         augmentations=augmentations,
