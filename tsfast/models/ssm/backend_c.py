@@ -3,8 +3,10 @@
 The per-step Python dispatch of the naive rollout dominates its runtime on CPU. This backend
 generates a C++ rollout specialized to the layer spec (dims baked as compile-time constants so
 the tiny GEMVs fully unroll and vectorize), compiles it once per spec via
-``torch.utils.cpp_extension.load_inline``, and parallelizes over the batch with ATen's
-intra-op thread pool (``at::parallel_for``), which exists on every platform PyTorch runs on.
+``torch.utils.cpp_extension.load_inline``, and parallelizes over the batch: with ATen's
+intra-op thread pool (``at::parallel_for``) where the toolchain matches torch's threading
+backend, and with Grand Central Dispatch on macOS, which ships with the OS and frees the
+user from providing an OpenMP runtime for Apple clang.
 
 Requires a host C++ toolchain (g++/clang) and ninja; ``is_available`` verifies this by
 building a tiny probe extension once per process (disk-cached afterwards). The compiled
@@ -22,7 +24,6 @@ __all__ = [
 ]
 
 import hashlib
-import os
 import shutil
 import sys
 import warnings
@@ -40,38 +41,55 @@ _ACT_C = {
 _EXTENSIONS: dict[SSMSpec, object] = {}
 _AVAILABLE: bool | None = None
 
+# Chunked to at::get_num_threads() tasks so torch.set_num_threads() is honored; GCD picks
+# the worker threads itself. dispatch_apply_f (not dispatch_apply) because blocks capturing
+# C++ locals are an Apple extension, while a captureless lambda is a plain function pointer.
+_BATCH_PARALLEL_GCD = """\
+#include <dispatch/dispatch.h>
+
+template <typename F>
+static void batch_parallel(int64_t n, const F& f) {
+    if (n <= 0) return;
+    struct Ctx { const F* f; int64_t n, n_tasks; };
+    Ctx ctx{&f, n, std::min<int64_t>(n, at::get_num_threads())};
+    dispatch_apply_f(
+        (size_t)ctx.n_tasks, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), &ctx,
+        [](void* p, size_t i) {
+            auto* c = static_cast<Ctx*>(p);
+            const int64_t chunk = (c->n + c->n_tasks - 1) / c->n_tasks;
+            const int64_t b0 = (int64_t)i * chunk, b1 = std::min(c->n, b0 + chunk);
+            if (b0 < b1) (*c->f)(b0, b1);
+        });
+}
+"""
+
+_BATCH_PARALLEL_ATEN = """\
+template <typename F>
+static void batch_parallel(int64_t n, const F& f) {
+    at::parallel_for(0, n, 1, f);
+}
+"""
+
 
 def _build_flags() -> tuple[list[str], list[str]]:
     """Compile/link flags matched to the host toolchain and torch's intra-op backend.
 
-    ``at::parallel_for`` in an extension is only parallel when the ``AT_PARALLEL_*``
+    On macOS the generated source parallelizes via Grand Central Dispatch (part of
+    libSystem, always available to Apple clang), so no threading flags are needed.
+    Elsewhere it uses ``at::parallel_for``, which is only parallel when the ``AT_PARALLEL_*``
     macro matching the backend torch was built with is defined: with ``AT_PARALLEL_OPENMP``
     its implementation is an inline OpenMP pragma (so the extension itself must be compiled
     as OpenMP), while with ``AT_PARALLEL_NATIVE`` it calls torch's own thread pool and
     needs no extra flags. Without either macro it silently degrades to a serial loop.
     """
-    # Apple clang rejects -march=native on arm64; -mcpu=native is its equivalent.
-    arch = "-mcpu=native" if sys.platform == "darwin" else "-march=native"
-    cflags = ["-O3", arch, "-ffast-math"]
+    if sys.platform == "darwin":
+        # Apple clang rejects -march=native on arm64; -mcpu=native is its equivalent.
+        return ["-O3", "-mcpu=native", "-ffast-math"], []
+    cflags = ["-O3", "-march=native", "-ffast-math"]
     ldflags: list[str] = []
     if "OpenMP" in torch.__config__.parallel_info():
-        cflags.append("-DAT_PARALLEL_OPENMP=1")
-        if sys.platform == "darwin":
-            # Apple clang has no -fopenmp driver support and ships no omp.h; use the
-            # Homebrew libomp headers and link the libomp that torch already loads.
-            brew = next((p for p in ("/opt/homebrew/opt/libomp", "/usr/local/opt/libomp") if os.path.isdir(p)), None)
-            if brew is None:
-                raise RuntimeError(
-                    "torch uses the OpenMP intra-op backend, which on macOS requires "
-                    "Homebrew libomp for the C backend: brew install libomp"
-                )
-            cflags += ["-Xpreprocessor", "-fopenmp", f"-I{brew}/include"]
-            torch_lib = os.path.join(os.path.dirname(torch.__file__), "lib")
-            omp_dir = torch_lib if os.path.exists(os.path.join(torch_lib, "libomp.dylib")) else f"{brew}/lib"
-            ldflags += [f"-L{omp_dir}", "-lomp"]
-        else:
-            cflags.append("-fopenmp")
-            ldflags.append("-fopenmp")
+        cflags += ["-DAT_PARALLEL_OPENMP=1", "-fopenmp"]
+        ldflags.append("-fopenmp")
     else:
         cflags.append("-DAT_PARALLEL_NATIVE=1")
     return cflags, ldflags
@@ -114,8 +132,10 @@ def _gen_source(spec: SSMSpec) -> str:
     lines: list[str] = [
         "#include <torch/extension.h>",
         "#include <ATen/Parallel.h>",
+        "#include <algorithm>",
         "#include <cmath>",
         "",
+        _BATCH_PARALLEL_GCD if sys.platform == "darwin" else _BATCH_PARALLEL_ATEN,
         f"constexpr int NX = {nx};",
         f"constexpr int NU = {nu};",
         "",
@@ -137,7 +157,7 @@ def _gen_source(spec: SSMSpec) -> str:
     for i in range(k - 1):
         lines.append(f"    float* z{i}p = z{i}.data_ptr<float>();")
     lines += [
-        "    at::parallel_for(0, B, 1, [&](int64_t b_begin, int64_t b_end) {",
+        "    batch_parallel(B, [&](int64_t b_begin, int64_t b_end) {",
         "    for (int64_t b = b_begin; b < b_end; ++b) {",
         "        float x[NX];",
         "        for (int i = 0; i < NX; ++i) x[i] = x0p[b * NX + i];",
@@ -196,7 +216,7 @@ def _gen_source(spec: SSMSpec) -> str:
     for i in range(k):
         lines.append(f"    const float* wt{i}p = wt{i}.data_ptr<float>();")
     lines += [
-        "    at::parallel_for(0, B, 1, [&](int64_t b_begin, int64_t b_end) {",
+        "    batch_parallel(B, [&](int64_t b_begin, int64_t b_end) {",
         "    for (int64_t b = b_begin; b < b_end; ++b) {",
         "        float carry[NX] = {0.0f};",
         "        for (int64_t t = L - 1; t >= 0; --t) {",
