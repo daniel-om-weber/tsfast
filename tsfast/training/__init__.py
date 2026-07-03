@@ -43,7 +43,16 @@ from .profiling import (
     time_training_module,
 )
 from .viz import grad_norm, layout_samples, plot_grad_flow, plot_sequence
-from .learners import AR_RNNLearner, AR_TCNLearner, CRNNLearner, DynoNetLearner, RNNLearner, SSMLearner, TCNLearner
+from .learners import (
+    AR_RNNLearner,
+    AR_TCNLearner,
+    CRNNLearner,
+    DynoNetLearner,
+    NarxMLPLearner,
+    RNNLearner,
+    SSMLearner,
+    TCNLearner,
+)
 
 __all__ = [
     # core
@@ -101,4 +110,5 @@ __all__ = [
     "AR_TCNLearner",
     "SSMLearner",
     "DynoNetLearner",
+    "NarxMLPLearner",
 ]

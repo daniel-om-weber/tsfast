@@ -8,6 +8,7 @@ __all__ = [
     "AR_TCNLearner",
     "SSMLearner",
     "DynoNetLearner",
+    "NarxMLPLearner",
 ]
 
 import torch
@@ -21,6 +22,7 @@ from ..models.cudagraph import GraphedStatefulModel
 from ..models.cnn import CRNN, TCN
 from ..models.dynonet import DynoNet
 from ..models.layers import AR_Model
+from ..models.narx import NarxMLP
 from ..models.rnn import SimpleRNN
 from ..models.ssm import NeuralStateSpace
 from ..models.scaling import ScaledModel, Scaler, StandardScaler
@@ -375,6 +377,109 @@ def DynoNetLearner(
         device=device,
         show_bar=show_bar,
         **extra,
+    )
+
+
+def NarxMLPLearner(
+    dls,
+    na: int = 8,
+    nb: int = 8,
+    hidden_size: int = 64,
+    num_layers: int = 2,
+    train_mode: str = "free_run",
+    washout: int | None = None,
+    loss_func=nn.MSELoss(),
+    metrics: list | None = None,
+    lr: float = 3e-3,
+    n_skip: int | None = None,
+    opt_func=torch.optim.Adam,
+    input_norm: type | None = StandardScaler,
+    transforms: list | None = None,
+    augmentations: list | None = None,
+    aux_losses: list | None = None,
+    grad_clip: float | None = None,
+    plot_fn=None,
+    device: torch.device | None = None,
+    show_bar: bool = True,
+    **kwargs,
+):
+    """Create a Learner with an MLP NARX model over explicit lag windows.
+
+    ``train_mode`` selects how the output lags are filled during training:
+    ``"free_run"`` feeds back the model's own predictions (simulation training,
+    gradients flow through the feedback), ``"one_step"`` reads the true outputs
+    (teacher forcing, fully parallel). Validation losses and inference always
+    free-run, so the two modes stay comparable on the objective that matters
+    and ``valid_loss`` is a simulation error in both cases.
+
+    Args:
+        dls: DataLoaders providing training and validation data.
+        na: output lags per channel (autoregressive order).
+        nb: input lags per channel, including the current sample.
+        hidden_size: width of the hidden layers.
+        num_layers: number of hidden layers.
+        train_mode: ``"free_run"`` or ``"one_step"``.
+        washout: initial samples whose true outputs seed the lag buffer in free
+            run; defaults to ``n_skip`` so the teacher-forced prefix never enters
+            the loss.
+        loss_func: loss function for training.
+        metrics: metric functions for validation, or None for default RMSE.
+        lr: learning rate.
+        n_skip: number of initial timesteps to skip in loss and metric
+            computation; defaults to the lag-window length ``max(na, nb - 1)``.
+        opt_func: optimizer constructor.
+        input_norm: scaler class for the concatenated ``[u, y]`` input, also used
+            to denormalize the output (AR scaling), or None to disable.
+        transforms: list of transforms (train + valid); defaults to prediction_concat.
+        augmentations: list of augmentation transforms (train only).
+        aux_losses: list of auxiliary loss functions.
+        grad_clip: max gradient norm for clipping, or None to disable; consider
+            setting it in free-run mode, where long rollouts can spike gradients.
+        plot_fn: plotting function for show_batch/show_results.
+        device: target device (auto-detected if None).
+        show_bar: whether to show tqdm progress bars.
+        **kwargs: additional keyword arguments forwarded to ``NarxMLP``.
+    """
+    if train_mode not in ("free_run", "one_step"):
+        raise ValueError(f"train_mode must be 'free_run' or 'one_step', got {train_mode!r}")
+    if metrics is None:
+        metrics = [fun_rmse]
+    if transforms is None:
+        transforms = [prediction_concat(t_offset=0)]
+    if n_skip is None:
+        n_skip = max(na, nb - 1)
+    if washout is None:
+        washout = n_skip
+
+    inp, out = get_io_size(dls)
+    model = NarxMLP(
+        inp,
+        out,
+        na=na,
+        nb=nb,
+        hidden_size=hidden_size,
+        num_layers=num_layers,
+        teacher_forcing=train_mode == "one_step",
+        washout=washout,
+        **kwargs,
+    )
+    model = ScaledModel.from_dls(model, dls, input_norm, autoregressive=True)
+
+    return Learner(
+        model,
+        dls,
+        loss_func=loss_func,
+        metrics=metrics,
+        lr=lr,
+        n_skip=n_skip,
+        opt_func=opt_func,
+        transforms=transforms,
+        augmentations=augmentations,
+        aux_losses=aux_losses,
+        grad_clip=grad_clip,
+        plot_fn=plot_fn,
+        device=device,
+        show_bar=show_bar,
     )
 
 

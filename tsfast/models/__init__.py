@@ -4,3 +4,4 @@ from tsfast.models.rnn import *
 from tsfast.models.cnn import *
 from tsfast.models.ssm import *
 from tsfast.models.dynonet import *
+from tsfast.models.narx import *
