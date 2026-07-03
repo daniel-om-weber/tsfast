@@ -48,8 +48,11 @@ from .learners import (
     AR_TCNLearner,
     CRNNLearner,
     DynoNetLearner,
+    LRULearner,
+    MambaLearner,
     NarxMLPLearner,
     RNNLearner,
+    S5Learner,
     SSMLearner,
     TCNLearner,
 )
@@ -111,4 +114,7 @@ __all__ = [
     "SSMLearner",
     "DynoNetLearner",
     "NarxMLPLearner",
+    "LRULearner",
+    "S5Learner",
+    "MambaLearner",
 ]

@@ -9,6 +9,9 @@ __all__ = [
     "SSMLearner",
     "DynoNetLearner",
     "NarxMLPLearner",
+    "LRULearner",
+    "S5Learner",
+    "MambaLearner",
 ]
 
 import torch
@@ -22,6 +25,9 @@ from ..models.cudagraph import GraphedStatefulModel
 from ..models.cnn import CRNN, TCN
 from ..models.dynonet import DynoNet
 from ..models.layers import AR_Model
+from ..models.lru import DeepLRU
+from ..models.mamba import DeepMamba
+from ..models.s5 import DeepS5
 from ..models.narx import NarxMLP
 from ..models.rnn import SimpleRNN
 from ..models.ssm import NeuralStateSpace
@@ -354,6 +360,320 @@ def DynoNetLearner(
         hidden_size=hidden_size,
         hidden_layers=hidden_layers,
         bypass=bypass,
+        backend=backend,
+        **kwargs,
+    )
+    model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
+
+    cls = TbpttLearner if sub_seq_len else Learner
+    extra = {"sub_seq_len": sub_seq_len} if sub_seq_len else {}
+    return cls(
+        model,
+        dls,
+        loss_func=loss_func,
+        metrics=metrics,
+        lr=lr,
+        n_skip=n_skip,
+        opt_func=opt_func,
+        transforms=transforms,
+        augmentations=augmentations,
+        aux_losses=aux_losses,
+        grad_clip=grad_clip,
+        plot_fn=plot_fn,
+        device=device,
+        show_bar=show_bar,
+        **extra,
+    )
+
+
+def LRULearner(
+    dls,
+    d_model: int = 32,
+    d_state: int = 64,
+    n_layers: int = 3,
+    dropout: float = 0.0,
+    r_min: float = 0.0,
+    r_max: float = 1.0,
+    max_phase: float = 6.283,
+    backend: str = "scan",
+    loss_func=nn.MSELoss(),
+    metrics: list | None = None,
+    lr: float = 3e-3,
+    n_skip: int = 0,
+    sub_seq_len: int | None = None,
+    opt_func=torch.optim.Adam,
+    input_norm: type | None = StandardScaler,
+    output_norm: type | None = StandardScaler,
+    transforms: list | None = None,
+    augmentations: list | None = None,
+    aux_losses: list | None = None,
+    grad_clip: float | None = None,
+    plot_fn=None,
+    device: torch.device | None = None,
+    show_bar: bool = True,
+    **kwargs,
+):
+    """Create a Learner with a DeepLRU model: stacked diagonal linear state-space layers.
+
+    Every block is a linear time-invariant system with a static nonlinearity between
+    blocks, so the stack is a deep Wiener-Hammerstein-like cascade with stable poles by
+    construction. The recurrence transient decays with the slowest learned eigenvalue;
+    set ``n_skip`` to the task's initial-condition window to keep the cold start out of
+    the loss. ``r_min``/``r_max`` bound the eigenvalue magnitudes at initialization only —
+    slow dominant dynamics benefit from a ring close to 1 (e.g. ``[0.9, 0.999]``).
+
+    Args:
+        dls: DataLoaders providing training and validation data.
+        d_model: signal width between the blocks.
+        d_state: complex state dimension per block.
+        n_layers: number of LRU blocks.
+        dropout: dropout probability inside the blocks.
+        r_min: eigenvalue-ring lower bound at initialization.
+        r_max: eigenvalue-ring upper bound at initialization.
+        max_phase: eigenvalue-phase upper bound at initialization (radians).
+        backend: execution backend of the recurrences, see ``LRU``.
+        loss_func: loss function for training.
+        metrics: metric functions for validation, or None for default RMSE.
+        n_skip: number of initial timesteps to skip in loss and metric computation.
+        sub_seq_len: sub-sequence length for TBPTT; enables stateful training when set.
+        opt_func: optimizer constructor.
+        input_norm: scaler class for input normalization, or None to disable.
+        output_norm: scaler class for output denormalization, or None to disable.
+        transforms: list of transforms (train + valid).
+        augmentations: list of augmentation transforms (train only).
+        aux_losses: list of auxiliary loss functions.
+        grad_clip: max gradient norm for clipping, or None to disable.
+        plot_fn: plotting function for show_batch/show_results.
+        device: target device (auto-detected if None).
+        show_bar: whether to show tqdm progress bars.
+        **kwargs: additional keyword arguments forwarded to ``DeepLRU``.
+    """
+    if metrics is None:
+        metrics = [fun_rmse]
+
+    inp, out = get_io_size(dls)
+    if sub_seq_len:
+        kwargs.setdefault("return_state", True)
+    model = DeepLRU(
+        inp,
+        out,
+        d_model=d_model,
+        d_state=d_state,
+        n_layers=n_layers,
+        dropout=dropout,
+        r_min=r_min,
+        r_max=r_max,
+        max_phase=max_phase,
+        backend=backend,
+        **kwargs,
+    )
+    model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
+
+    cls = TbpttLearner if sub_seq_len else Learner
+    extra = {"sub_seq_len": sub_seq_len} if sub_seq_len else {}
+    return cls(
+        model,
+        dls,
+        loss_func=loss_func,
+        metrics=metrics,
+        lr=lr,
+        n_skip=n_skip,
+        opt_func=opt_func,
+        transforms=transforms,
+        augmentations=augmentations,
+        aux_losses=aux_losses,
+        grad_clip=grad_clip,
+        plot_fn=plot_fn,
+        device=device,
+        show_bar=show_bar,
+        **extra,
+    )
+
+
+def S5Learner(
+    dls,
+    d_model: int = 32,
+    d_state: int = 64,
+    n_layers: int = 3,
+    blocks: int = 1,
+    dropout: float = 0.0,
+    activation: str = "half_glu1",
+    dt_min: float = 0.001,
+    dt_max: float = 0.1,
+    backend: str = "scan",
+    loss_func=nn.MSELoss(),
+    metrics: list | None = None,
+    lr: float = 3e-3,
+    n_skip: int = 0,
+    sub_seq_len: int | None = None,
+    opt_func=torch.optim.Adam,
+    input_norm: type | None = StandardScaler,
+    output_norm: type | None = StandardScaler,
+    transforms: list | None = None,
+    augmentations: list | None = None,
+    aux_losses: list | None = None,
+    grad_clip: float | None = None,
+    plot_fn=None,
+    device: torch.device | None = None,
+    show_bar: bool = True,
+    **kwargs,
+):
+    """Create a Learner with a DeepS5 model: stacked HiPPO-initialized diagonal SSM layers.
+
+    Like the LRU, every block is a linear time-invariant system with a static nonlinearity
+    between blocks; the difference is the continuous-time parameterization with per-state
+    learned timesteps, ZOH-discretized every forward pass. ``dt_min``/``dt_max`` set the
+    timescale range at initialization relative to the sampling time — widen towards small
+    values for fast dynamics, large for slow. Set ``n_skip`` to the task's initial-condition
+    window to keep the cold-start transient out of the loss.
+
+    Args:
+        dls: DataLoaders providing training and validation data.
+        d_model: signal width between the blocks.
+        d_state: full state dimension per block.
+        n_layers: number of S5 blocks.
+        blocks: HiPPO blocks per layer at initialization.
+        dropout: dropout probability inside the blocks.
+        activation: block activation variant, see ``S5Block``.
+        dt_min: timestep initialization lower bound.
+        dt_max: timestep initialization upper bound.
+        backend: execution backend of the recurrences, see ``S5``.
+        loss_func: loss function for training.
+        metrics: metric functions for validation, or None for default RMSE.
+        n_skip: number of initial timesteps to skip in loss and metric computation.
+        sub_seq_len: sub-sequence length for TBPTT; enables stateful training when set.
+        opt_func: optimizer constructor.
+        input_norm: scaler class for input normalization, or None to disable.
+        output_norm: scaler class for output denormalization, or None to disable.
+        transforms: list of transforms (train + valid).
+        augmentations: list of augmentation transforms (train only).
+        aux_losses: list of auxiliary loss functions.
+        grad_clip: max gradient norm for clipping, or None to disable.
+        plot_fn: plotting function for show_batch/show_results.
+        device: target device (auto-detected if None).
+        show_bar: whether to show tqdm progress bars.
+        **kwargs: additional keyword arguments forwarded to ``DeepS5``.
+    """
+    if metrics is None:
+        metrics = [fun_rmse]
+
+    inp, out = get_io_size(dls)
+    if sub_seq_len:
+        kwargs.setdefault("return_state", True)
+    model = DeepS5(
+        inp,
+        out,
+        d_model=d_model,
+        d_state=d_state,
+        n_layers=n_layers,
+        blocks=blocks,
+        dropout=dropout,
+        activation=activation,
+        dt_min=dt_min,
+        dt_max=dt_max,
+        backend=backend,
+        **kwargs,
+    )
+    model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
+
+    cls = TbpttLearner if sub_seq_len else Learner
+    extra = {"sub_seq_len": sub_seq_len} if sub_seq_len else {}
+    return cls(
+        model,
+        dls,
+        loss_func=loss_func,
+        metrics=metrics,
+        lr=lr,
+        n_skip=n_skip,
+        opt_func=opt_func,
+        transforms=transforms,
+        augmentations=augmentations,
+        aux_losses=aux_losses,
+        grad_clip=grad_clip,
+        plot_fn=plot_fn,
+        device=device,
+        show_bar=show_bar,
+        **extra,
+    )
+
+
+def MambaLearner(
+    dls,
+    d_model: int = 32,
+    d_state: int = 16,
+    n_layers: int = 3,
+    d_conv: int = 4,
+    expand: int = 2,
+    dt_min: float = 0.001,
+    dt_max: float = 0.1,
+    backend: str = "scan",
+    loss_func=nn.MSELoss(),
+    metrics: list | None = None,
+    lr: float = 3e-3,
+    n_skip: int = 0,
+    sub_seq_len: int | None = None,
+    opt_func=torch.optim.Adam,
+    input_norm: type | None = StandardScaler,
+    output_norm: type | None = StandardScaler,
+    transforms: list | None = None,
+    augmentations: list | None = None,
+    aux_losses: list | None = None,
+    grad_clip: float | None = None,
+    plot_fn=None,
+    device: torch.device | None = None,
+    show_bar: bool = True,
+    **kwargs,
+):
+    """Create a Learner with a DeepMamba model: stacked selective state-space blocks.
+
+    Unlike the LRU/S5 layers, the state-space parameters are input-dependent, so each block
+    is a structured nonlinear state-space model that can gate and switch dynamics with the
+    signal. ``d_state``, ``d_conv``, and ``expand`` are architecture constants in the
+    reference and rarely need tuning. Set ``n_skip`` to the task's initial-condition window
+    to keep the cold-start transient out of the loss.
+
+    Args:
+        dls: DataLoaders providing training and validation data.
+        d_model: signal width between the blocks.
+        d_state: SSM state dimension per channel.
+        n_layers: number of Mamba blocks.
+        d_conv: depthwise convolution kernel width.
+        expand: inner width multiplier.
+        dt_min: timestep initialization lower bound.
+        dt_max: timestep initialization upper bound.
+        backend: execution backend of the scans, see ``MambaLayer``.
+        loss_func: loss function for training.
+        metrics: metric functions for validation, or None for default RMSE.
+        n_skip: number of initial timesteps to skip in loss and metric computation.
+        sub_seq_len: sub-sequence length for TBPTT; enables stateful training when set.
+        opt_func: optimizer constructor.
+        input_norm: scaler class for input normalization, or None to disable.
+        output_norm: scaler class for output denormalization, or None to disable.
+        transforms: list of transforms (train + valid).
+        augmentations: list of augmentation transforms (train only).
+        aux_losses: list of auxiliary loss functions.
+        grad_clip: max gradient norm for clipping, or None to disable.
+        plot_fn: plotting function for show_batch/show_results.
+        device: target device (auto-detected if None).
+        show_bar: whether to show tqdm progress bars.
+        **kwargs: additional keyword arguments forwarded to ``DeepMamba``.
+    """
+    if metrics is None:
+        metrics = [fun_rmse]
+
+    inp, out = get_io_size(dls)
+    if sub_seq_len:
+        kwargs.setdefault("return_state", True)
+    model = DeepMamba(
+        inp,
+        out,
+        d_model=d_model,
+        d_state=d_state,
+        n_layers=n_layers,
+        d_conv=d_conv,
+        expand=expand,
+        dt_min=dt_min,
+        dt_max=dt_max,
         backend=backend,
         **kwargs,
     )
