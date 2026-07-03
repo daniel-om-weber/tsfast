@@ -2,6 +2,8 @@
 
 import math
 
+import pytest
+
 import numpy as np
 import torch
 
@@ -97,3 +99,86 @@ class TestNarxMLPLearner:
         out = wrapper(u, y_init)
         assert out.shape == (200, 1)
         assert np.isfinite(out).all()
+
+
+def _run_backend(m, backend, x):
+    """Free-run forward + backward on a cloned leaf; returns (out, param grads, dx)."""
+    m.backend = backend
+    for p in m.parameters():
+        p.grad = None
+    x = x.clone().requires_grad_()
+    out = m.forward(x, ar=True)
+    loss = (out**2).mean() + out.abs().sum() * 0.01
+    loss.backward()
+    return out, [p.grad.clone() for p in m.parameters()], x.grad.clone()
+
+
+def _rel(a, b):
+    return (a - b).abs().max().item() / (b.abs().max().item() + 1e-30)
+
+
+def _assert_backend_parity(backend, device, act="tanh", num_layers=2, washout=7, tol=2e-3):
+    from tsfast.models.narx import NarxMLP
+
+    torch.manual_seed(0)
+    m = NarxMLP(2, 3, na=3, nb=4, hidden_size=24, num_layers=num_layers, act=act, washout=washout).to(device)
+    x = torch.randn(5, 40, 5, device=device)
+    out_e, g_e, dx_e = _run_backend(m, "eager", x)
+    out_b, g_b, dx_b = _run_backend(m, backend, x)
+    assert _rel(out_b, out_e) < tol
+    assert max(_rel(a, b) for a, b in zip(g_b, g_e)) < tol
+    assert _rel(dx_b, dx_e) < tol
+    # inference path (no autograd graph)
+    m.backend = backend
+    with torch.no_grad():
+        out_i = m.forward(x, ar=True)
+    assert _rel(out_i, out_e.detach()) < tol
+
+
+class TestNarxBackends:
+    def test_c_parity(self):
+        from tsfast.models.narx import backend_c
+
+        if not backend_c.is_available():
+            pytest.skip("no C++ toolchain")
+        _assert_backend_parity("c", "cpu")
+
+    @pytest.mark.parametrize("act", ["tanh", "sigmoid", "relu"])
+    @pytest.mark.parametrize("washout", [0, 7, 100])
+    def test_c_parity_acts_and_washouts(self, act, washout):
+        from tsfast.models.narx import backend_c
+
+        if not backend_c.is_available():
+            pytest.skip("no C++ toolchain")
+        _assert_backend_parity("c", "cpu", act=act, washout=washout)
+
+    def test_c_parity_single_layer(self):
+        from tsfast.models.narx import backend_c
+
+        if not backend_c.is_available():
+            pytest.skip("no C++ toolchain")
+        _assert_backend_parity("c", "cpu", num_layers=1)
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+    def test_triton_parity(self):
+        from tsfast.models.narx import backend_triton
+
+        if not backend_triton.is_available():
+            pytest.skip("triton unavailable")
+        _assert_backend_parity("triton", "cuda")
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+    @pytest.mark.parametrize("act", ["tanh", "sigmoid", "relu"])
+    @pytest.mark.parametrize("washout", [0, 7, 100])
+    def test_triton_parity_acts_and_washouts(self, act, washout):
+        from tsfast.models.narx import backend_triton
+
+        if not backend_triton.is_available():
+            pytest.skip("triton unavailable")
+        _assert_backend_parity("triton", "cuda", act=act, washout=washout)
+
+    def test_triton_fit_envelope(self):
+        from tsfast.models.narx import NarxSpec, backend_triton
+
+        assert backend_triton.fits(NarxSpec(1, 32, (64, 64), "tanh"))
+        assert not backend_triton.fits(NarxSpec(6, 32, (64, 64), "tanh"))  # padded buffer 256
