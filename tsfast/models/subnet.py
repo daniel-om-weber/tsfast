@@ -69,7 +69,9 @@ class SubnetEncoder(nn.Module):
     can be transplanted one-to-one.
     """
 
-    def __init__(self, n_input: int, n_output: int, n_state: int, na: int, nb: int, hidden_size: int = 64, num_layers: int = 2):
+    def __init__(
+        self, n_input: int, n_output: int, n_state: int, na: int, nb: int, hidden_size: int = 64, num_layers: int = 2
+    ):
         super().__init__()
         self.na, self.nb = na, nb
         self.net = ResMLP(nb * n_input + na * n_output, n_state, hidden_size, num_layers)

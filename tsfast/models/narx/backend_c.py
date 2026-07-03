@@ -96,8 +96,7 @@ def _gen_source(spec: NarxSpec) -> str:
         "                h0[o] = acc;",
         "            }",
         f"            for (int o = 0; o < {dims[1]}; ++o) h0[o] = " + act.format(a="h0[o]") + ";",
-        f"            if (store_z) for (int o = 0; o < {dims[1]}; ++o) "
-        f"z0p[(b * L + t) * {dims[1]} + o] = h0[o];",
+        f"            if (store_z) for (int o = 0; o < {dims[1]}; ++o) z0p[(b * L + t) * {dims[1]} + o] = h0[o];",
     ]
     prev = "h0"
     for i in range(1, k):
