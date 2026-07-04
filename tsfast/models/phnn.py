@@ -185,9 +185,11 @@ class PHNN(nn.Module):
     warm-up). Predictions start at ``n_init``; earlier positions are zero and
     must be excluded from the loss via ``n_skip=n_init``.
 
-    Backends: ``"eager"`` is a plain Python loop; ``"compiled"`` wraps it in
-    ``torch.compile`` (recompiles per sequence length — right for fixed-length
-    training sections, wasteful for one-off full-signal inference); ``"auto"``
+    Backends: ``"eager"`` is a plain Python loop; ``"compiled"`` keeps the loop
+    but routes each transition through a ``torch.compile``d ``core.step`` — the
+    traced graph covers a single step, so graph size and compile time are
+    independent of sequence length (compiling the whole rollout unrolled every
+    step into one graph, which exhausted memory on long free runs); ``"auto"``
     picks ``compiled`` on CUDA and ``eager`` otherwise.
 
     Args:
@@ -235,7 +237,7 @@ class PHNN(nn.Module):
         self.backend = backend
         self.core = PHNNCore(n_state, n_input, n_output, hidden_size, num_layers, dt, rk4_steps, h_lower_bound, output)
         self.encoder = SubnetEncoder(n_input, n_output, n_state, na, nb, enc_hidden_size, enc_num_layers)
-        self._compiled_rollout = None
+        self._compiled_step = None
 
     @property
     def dt(self) -> float:
@@ -251,19 +253,22 @@ class PHNN(nn.Module):
         n0 = self.n_init
         return self.encoder(u[:, n0 - self.encoder.nb : n0], y[:, n0 - self.encoder.na : n0])
 
-    def _rollout(self, u_future: torch.Tensor, x0: torch.Tensor) -> torch.Tensor:
+    def _rollout(self, u_future: torch.Tensor, x0: torch.Tensor, step=None) -> torch.Tensor:
+        step = self.core.step if step is None else step
         x = x0
         outs = []
         for t in range(u_future.shape[1]):
-            y, x = self.core.step(x, u_future[:, t])
+            y, x = step(x, u_future[:, t])
             outs.append(y)
         return torch.stack(outs, dim=1)
 
     def _rollout_compiled(self, u_future: torch.Tensor, x0: torch.Tensor) -> torch.Tensor:
-        if self._compiled_rollout is None:
+        if self._compiled_step is None:
+            # The bump covers per-batch-shape recompiles (e.g. the last, smaller
+            # batch of an epoch); graph size no longer depends on sequence length.
             torch._dynamo.config.cache_size_limit = max(torch._dynamo.config.cache_size_limit, 64)
-            self._compiled_rollout = torch.compile(self._rollout, dynamic=False)
-        return self._compiled_rollout(u_future, x0)
+            self._compiled_step = torch.compile(self.core.step, dynamic=False)
+        return self._rollout(u_future, x0, step=self._compiled_step)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Simulate from the encoder state; returns ``[B, L, n_output]`` with zeros before ``n_init``."""
