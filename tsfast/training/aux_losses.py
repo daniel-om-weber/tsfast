@@ -44,7 +44,16 @@ class AuxiliaryLoss:
 
 
 class _ActivationHookMixin:
-    """Shared hook logic for activation-based regularizers."""
+    """Shared hook logic for activation-based regularizers.
+
+    ``capture`` selects which tensor of the hooked module the penalty applies to:
+    ``"output"`` (default) regularizes the module's output, ``"input"`` its first
+    input — the latter designates the representation *entering* an output map
+    (e.g. the state trajectory feeding a linear observation) without requiring
+    the producing computation to be a single module call.
+    """
+
+    capture: str = "output"
 
     def setup(self, trainer):
         for m in self.modules:
@@ -56,12 +65,13 @@ class _ActivationHookMixin:
         self._hooks.clear()
 
     def _hook_fn(self, m, i, o):
-        if isinstance(o, torch.Tensor):
-            self._out = o
+        t = i if self.capture == "input" else o
+        if isinstance(t, torch.Tensor):
+            self._out = t
         else:
-            self._out = o[0]
+            self._out = t[0]
 
-        if self.dim is None:
+        if self.dim is None and self._out.dim() >= 3:
             self.dim = int(np.argmax([0, self._out.shape[1], self._out.shape[2]]))
 
 
@@ -74,10 +84,13 @@ class ActivationRegularizer(_ActivationHookMixin):
         dim: time axis index; auto-detected from the hooked layer output if None
     """
 
-    def __init__(self, modules: list[nn.Module], alpha: float = 1.0, dim: int | None = None):
+    def __init__(
+        self, modules: list[nn.Module], alpha: float = 1.0, dim: int | None = None, capture: str = "output"
+    ):
         self.modules = modules
         self.alpha = alpha
         self.dim = dim
+        self.capture = capture
         self._hooks: list[torch.utils.hooks.RemovableHook] = []
         self._out: Tensor | None = None
 
@@ -98,10 +111,13 @@ class TemporalActivationRegularizer(_ActivationHookMixin):
         dim: time axis index; auto-detected from the hooked layer output if None
     """
 
-    def __init__(self, modules: list[nn.Module], beta: float = 1.0, dim: int | None = None):
+    def __init__(
+        self, modules: list[nn.Module], beta: float = 1.0, dim: int | None = None, capture: str = "output"
+    ):
         self.modules = modules
         self.beta = beta
         self.dim = dim
+        self.capture = capture
         self._hooks: list[torch.utils.hooks.RemovableHook] = []
         self._out: Tensor | None = None
 
@@ -110,7 +126,7 @@ class TemporalActivationRegularizer(_ActivationHookMixin):
             return torch.tensor(0.0, device=pred.device)
         h = self._out.float()
         self._out = None
-        if h.shape[self.dim] <= 1:
+        if self.dim is None or h.dim() < 3 or h.shape[self.dim] <= 1:
             return torch.tensor(0.0, device=pred.device)
         h_diff = (h[:, 1:] - h[:, :-1]) if self.dim == 1 else (h[:, :, 1:] - h[:, :, :-1])
         return float(self.beta) * h_diff.pow(2).mean()
