@@ -1,5 +1,5 @@
 # Scaling
 
-::: tsfast.models.scaling
+::: tsfast.models._core.scaling
     options:
       members_order: source

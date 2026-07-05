@@ -26,7 +26,7 @@ import sys
 
 import torch
 
-from ..ssm.backend_c import (
+from ..._core.kernel_c import (
     _ACT_C,
     _ACT_C_DARWIN,
     _BATCH_PARALLEL_ATEN,

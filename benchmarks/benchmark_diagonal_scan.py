@@ -16,7 +16,7 @@ import time
 
 import torch
 
-import tsfast.models.scan as scan
+import tsfast.models._core.scan as scan
 
 N_WARMUP = 10
 N_TIMED = 30

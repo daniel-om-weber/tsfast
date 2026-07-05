@@ -4,7 +4,7 @@ Reference: the official JAX repository github.com/lindermanlab/S5 (MIT license),
 published with "Simplified State Space Layers for Sequence Modeling" (ICLR 2023,
 arXiv:2208.04933). Two comparisons are run:
 
-1. Initialization: ``tsfast.models.s5.make_dplr_hippo`` against a verbatim NumPy
+1. Initialization: ``tsfast.models.architectures.s5.make_dplr_hippo`` against a verbatim NumPy
    transcription of the official ``make_DPLR_HiPPO`` (``s5/ssm_init.py``) — the diagonal
    approximation of HiPPO-LegS whose eigenvalue real parts are exactly -0.5.
 2. Forward/backward: the tsfast ``S5`` layer against a transcription of the official
@@ -23,7 +23,7 @@ import sys
 import numpy as np
 import torch
 
-from tsfast.models.s5 import S5, make_dplr_hippo
+from tsfast.models.architectures.s5 import S5, make_dplr_hippo
 
 TOL = 1e-12
 

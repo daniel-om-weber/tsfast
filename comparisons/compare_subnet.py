@@ -32,7 +32,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from tsfast.models.subnet import SubnetSSM
+from tsfast.models.architectures.subnet import SubnetSSM
 
 TOL = 1e-12
 

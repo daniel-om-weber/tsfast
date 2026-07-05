@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from ..models.scaling import ScaledModel, unwrap_model
+from ..models._core.scaling import ScaledModel, unwrap_model
 from ..training.transforms import prediction_concat
 
 

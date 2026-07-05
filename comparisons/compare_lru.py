@@ -25,7 +25,7 @@ import sys
 import torch
 from torch import nn
 
-from tsfast.models.lru import LRU
+from tsfast.models.architectures.lru import LRU
 
 TOL = 1e-12
 

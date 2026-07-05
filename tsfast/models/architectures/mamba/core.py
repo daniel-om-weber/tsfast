@@ -12,9 +12,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from . import scan
-from .backends import warn_fallback
-from .scan import _diagonal_recurrence_sequential, selective_recurrence
+from ..._core import scan
+from ..._core.dispatch import warn_fallback
+from ..._core.scan import _diagonal_recurrence_sequential, selective_recurrence
 
 
 def _fused_conv(x, tail, weight, bias):
@@ -29,7 +29,7 @@ def _fused_conv(x, tail, weight, bias):
     if scan.backend == "auto" and x.device.type != "cuda":
         return None
     try:
-        mod = importlib.import_module(".scan_backends.conv_triton", __package__)
+        mod = importlib.import_module(".conv_triton", __package__)
     except Exception as e:  # pragma: no cover - triton import failure
         reason = f"backend import failed ({e!r})"
     else:
@@ -46,7 +46,7 @@ def _fused_conv(x, tail, weight, bias):
 def _fused_ssm(draw, A, B_t, C_t, u, z, Dp, h0):
     """Dispatch the fused Mamba SSM kernel; None means run the generic scan path.
 
-    Honors ``tsfast.models.scan.backend``: the fused kernel serves "auto" (CUDA only)
+    Honors ``tsfast.models._core.scan.backend``: the fused kernel serves "auto" (CUDA only)
     and "triton"; "doubling"/"c" force the generic path. Missing module or unsupported
     inputs warn once per process, except on non-CUDA devices under "auto", where the
     generic C/doubling path is the intended backend and silence is correct.
@@ -56,7 +56,7 @@ def _fused_ssm(draw, A, B_t, C_t, u, z, Dp, h0):
     if scan.backend == "auto" and draw.device.type != "cuda":
         return None
     try:
-        mod = importlib.import_module(".scan_backends.mamba_triton", __package__)
+        mod = importlib.import_module(".mamba_triton", __package__)
     except Exception as e:  # pragma: no cover - triton import failure
         reason = f"backend import failed ({e!r})"
     else:
@@ -99,7 +99,7 @@ class MambaLayer(nn.Module):
         dt_max: upper bound of the timestep initialization.
         backend: ``"scan"`` (fused Triton kernels for the convolution and the selective
             scan on CUDA float32, otherwise the eager convolution and the generic
-            parallel scan resolved by ``tsfast.models.scan.backend``) or ``"eager"``
+            parallel scan resolved by ``tsfast.models._core.scan.backend``) or ``"eager"``
             (sequential loop).
     """
 

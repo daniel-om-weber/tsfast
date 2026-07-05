@@ -12,7 +12,7 @@ import time
 
 import torch
 
-from tsfast.models.phnn import PHNN
+from tsfast.models.architectures.phnn import PHNN
 
 
 def make_model(backend):

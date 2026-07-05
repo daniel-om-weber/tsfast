@@ -1,4 +1,4 @@
-"""Tests for tsfast.models.ssm (NeuralStateSpace and its execution backends)."""
+"""Tests for tsfast.models.architectures.ssm (NeuralStateSpace and its execution backends)."""
 
 import pytest
 import torch
@@ -22,7 +22,7 @@ def _rel(a, b):
 
 
 def _assert_backend_parity(backend, device, hidden=(48, 32), act="tanh", tol=5e-4):
-    from tsfast.models.ssm import NeuralStateSpace
+    from tsfast.models.architectures.ssm import NeuralStateSpace
 
     torch.manual_seed(0)
     m = NeuralStateSpace(3, 2, n_state=4, hidden_size=list(hidden), act=act, backend="eager").to(device)
@@ -42,7 +42,7 @@ def _assert_backend_parity(backend, device, hidden=(48, 32), act="tanh", tol=5e-
 
 class TestNeuralStateSpace:
     def test_eager_shapes(self):
-        from tsfast.models.ssm import NeuralStateSpace
+        from tsfast.models.architectures.ssm import NeuralStateSpace
 
         m = NeuralStateSpace(3, 2, n_state=5, hidden_size=16, num_layers=1, backend="eager")
         u = torch.randn(4, 25, 3)
@@ -51,7 +51,7 @@ class TestNeuralStateSpace:
         assert m(u, torch.randn(4, 1, 5)).shape == (4, 25, 2)  # [B,1,NX] x0 accepted
 
     def test_arbitrary_layers(self):
-        from tsfast.models.ssm import NeuralStateSpace
+        from tsfast.models.architectures.ssm import NeuralStateSpace
 
         m = NeuralStateSpace(1, 2, n_state=3, hidden_size=[8, 16, 8], act="relu", backend="eager")
         assert m(torch.randn(2, 10, 1)).shape == (2, 10, 2)
@@ -59,7 +59,7 @@ class TestNeuralStateSpace:
         assert linear(torch.randn(2, 10, 1)).shape == (2, 10, 2)
 
     def test_unknown_activation_raises(self):
-        from tsfast.models.ssm import NeuralStateSpace
+        from tsfast.models.architectures.ssm import NeuralStateSpace
 
         with pytest.raises(ValueError):
             NeuralStateSpace(1, 2, act="gelu")
@@ -69,14 +69,14 @@ class TestNeuralStateSpace:
         _assert_backend_parity("compiled", "cpu", hidden=(16,))
 
     def test_c_parity(self):
-        from tsfast.models.ssm import backend_c as ssm_c
+        from tsfast.models.architectures.ssm import backend_c as ssm_c
 
         if not ssm_c.is_available():
             pytest.skip("no C++ toolchain / ninja")
         _assert_backend_parity("c", "cpu")
 
     def test_c_parity_linear_and_acts(self):
-        from tsfast.models.ssm import backend_c as ssm_c
+        from tsfast.models.architectures.ssm import backend_c as ssm_c
 
         if not ssm_c.is_available():
             pytest.skip("no C++ toolchain / ninja")
@@ -85,7 +85,7 @@ class TestNeuralStateSpace:
         _assert_backend_parity("c", "cpu", hidden=(24,), act="relu")
 
     def test_triton_parity(self):
-        from tsfast.models.ssm import backend_triton as ssm_triton
+        from tsfast.models.architectures.ssm import backend_triton as ssm_triton
 
         if not ssm_triton.is_available():
             pytest.skip("no CUDA/triton")
@@ -99,7 +99,7 @@ class TestNeuralStateSpace:
             torch.backends.cuda.matmul.allow_tf32 = prev
 
     def test_metal_parity(self):
-        from tsfast.models.ssm import backend_metal as ssm_metal
+        from tsfast.models.architectures.ssm import backend_metal as ssm_metal
 
         if not ssm_metal.is_available():
             pytest.skip("no MPS / shader compilation")
@@ -110,11 +110,11 @@ class TestNeuralStateSpace:
 
     def test_metal_scan_backward_parity(self):
         # long sequence at small batch engages the sequence-parallel adjoint scan
-        from tsfast.models.ssm import backend_metal as ssm_metal
+        from tsfast.models.architectures.ssm import backend_metal as ssm_metal
 
         if not ssm_metal.is_available():
             pytest.skip("no MPS / shader compilation")
-        from tsfast.models.ssm import NeuralStateSpace
+        from tsfast.models.architectures.ssm import NeuralStateSpace
 
         torch.manual_seed(0)
         m = NeuralStateSpace(3, 2, n_state=4, hidden_size=[48, 32], backend="eager").to("mps")
@@ -128,23 +128,23 @@ class TestNeuralStateSpace:
         assert _rel(du_b, du_e) < 5e-4 and _rel(dx0_b, dx0_e) < 5e-4
 
     def test_metal_fit_envelope(self):
-        from tsfast.models.ssm.backend_metal import fits
-        from tsfast.models.ssm import SSMSpec
+        from tsfast.models.architectures.ssm.backend_metal import fits
+        from tsfast.models.architectures.ssm import SSMSpec
 
         assert fits(SSMSpec(10, 10, (128, 128), "tanh"))
         assert not fits(SSMSpec(10, 10, (256,), "tanh"))
         assert not fits(SSMSpec(120, 10, (64,), "tanh"))
 
     def test_triton_fit_envelope(self):
-        from tsfast.models.ssm.backend_triton import fits
-        from tsfast.models.ssm import SSMSpec
+        from tsfast.models.architectures.ssm.backend_triton import fits
+        from tsfast.models.architectures.ssm import SSMSpec
 
         assert fits(SSMSpec(10, 10, (128, 128), "tanh"))
         assert not fits(SSMSpec(10, 10, (256,), "tanh"))
         assert not fits(SSMSpec(200, 10, (64,), "tanh"))
 
     def test_stateful_chunked_equivalence(self):
-        from tsfast.models.ssm import NeuralStateSpace
+        from tsfast.models.architectures.ssm import NeuralStateSpace
 
         torch.manual_seed(0)
         m = NeuralStateSpace(2, 1, n_state=3, hidden_size=16, num_layers=1, backend="eager", return_state=True)
@@ -157,8 +157,8 @@ class TestNeuralStateSpace:
         assert _rel(chunked, full) < 1e-6  # the physical state fully captures the dynamics
 
     def test_graphed_stateful_model(self):
-        from tsfast.models.cudagraph import GraphedStatefulModel
-        from tsfast.models.ssm import NeuralStateSpace
+        from tsfast.models._core.cudagraph import GraphedStatefulModel
+        from tsfast.models.architectures.ssm import NeuralStateSpace
 
         if not torch.cuda.is_available():
             pytest.skip("no CUDA")

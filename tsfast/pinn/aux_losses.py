@@ -12,7 +12,7 @@ from collections.abc import Callable
 import torch
 import torch.nn.functional as F
 
-from ..models.state import unflatten_state
+from ..models._core.state import unflatten_state
 from .differentiation import diff2_forward
 from .signals import generate_random_states
 
@@ -126,7 +126,7 @@ class CollocationLoss:
     def setup(self, trainer):
         """Resolve model references from the trainer."""
         self.model = trainer.model
-        from ..models.scaling import unwrap_model
+        from ..models._core.scaling import unwrap_model
 
         self.inner_model = unwrap_model(trainer.model)
 
@@ -241,7 +241,7 @@ class ConsistencyLoss:
 
     def setup(self, trainer):
         """Register forward hook on diagnosis if model supports it."""
-        from ..models.scaling import unwrap_model
+        from ..models._core.scaling import unwrap_model
 
         self.inner_model = unwrap_model(trainer.model)
         if hasattr(self.inner_model, "diagnosis") and hasattr(self.inner_model, "encode_single_state"):

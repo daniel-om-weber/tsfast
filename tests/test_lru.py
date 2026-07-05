@@ -1,4 +1,4 @@
-"""Tests for tsfast.models.lru (LRU, DeepLRU)."""
+"""Tests for tsfast.models.architectures.lru (LRU, DeepLRU)."""
 
 import math
 
@@ -6,7 +6,7 @@ import pytest
 import torch
 from torch import nn
 
-from tsfast.models.lru import LRU, DeepLRU
+from tsfast.models.architectures.lru import LRU, DeepLRU
 
 
 def _rel(a, b):

@@ -1,5 +1,5 @@
 # CNN / TCN Models
 
-::: tsfast.models.cnn
+::: tsfast.models.architectures.cnn
     options:
       members_order: source

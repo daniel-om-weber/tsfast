@@ -7,7 +7,7 @@ import torch
 class TestFranSys:
     def test_fransys_forward_shape(self, dls_prediction):
         from tsfast.prediction.fransys import FranSys
-        from tsfast.models.rnn import RNN
+        from tsfast.models.architectures.rnn import RNN
         batch = dls_prediction.one_batch()
         device = batch[0].device
         # FranSys expects [u, y] concatenated input
@@ -46,7 +46,7 @@ class TestFranSys:
 class TestFranSysRegularization:
     def _get_model(self, lrn):
         """Unwrap ScaledModel to access FranSys internals."""
-        from tsfast.models.scaling import unwrap_model
+        from tsfast.models._core.scaling import unwrap_model
         return unwrap_model(lrn.model)
 
     @pytest.mark.slow
@@ -117,7 +117,7 @@ class TestFranSysRegularization:
         """Verify diag_loss denormalizes predictions when output_norm is used."""
         from tsfast.prediction.fransys import FranSysLearner
         from tsfast.training import FranSysRegularizer
-        from tsfast.models.scaling import StandardScaler
+        from tsfast.models._core.scaling import StandardScaler
         lrn = FranSysLearner(
             dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1,
             attach_output=True, output_norm=StandardScaler,
@@ -135,7 +135,7 @@ class TestFranSysRegularization:
         """Verify osp_loss denormalizes predictions when output_norm is used."""
         from tsfast.prediction.fransys import FranSysLearner
         from tsfast.training import FranSysRegularizer
-        from tsfast.models.scaling import StandardScaler
+        from tsfast.models._core.scaling import StandardScaler
         lrn = FranSysLearner(
             dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1,
             attach_output=True, output_norm=StandardScaler,
@@ -152,7 +152,7 @@ class TestFranSysRegularization:
         """Verify FranSysRegularizer detects output_norm from ScaledModel."""
         from tsfast.prediction.fransys import FranSysLearner
         from tsfast.training import FranSysRegularizer
-        from tsfast.models.scaling import ScaledModel, StandardScaler
+        from tsfast.models._core.scaling import ScaledModel, StandardScaler
 
         lrn = FranSysLearner(
             dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1,
@@ -176,7 +176,7 @@ class TestFranSysRegularization:
         """Verify output_norm is None when ScaledModel has no output scaler."""
         from tsfast.prediction.fransys import FranSysLearner
         from tsfast.training import FranSysRegularizer
-        from tsfast.models.scaling import ScaledModel
+        from tsfast.models._core.scaling import ScaledModel
 
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
         assert isinstance(lrn.model, ScaledModel)
@@ -195,7 +195,7 @@ class TestFranSysRegularization:
     def test_fransys_variable_init_writes_through_unwrap(self, dls_prediction):
         """Verify that unwrap_model returns the inner model and writes reach forward()."""
         from tsfast.prediction.fransys import FranSysLearner
-        from tsfast.models.scaling import ScaledModel, unwrap_model
+        from tsfast.models._core.scaling import ScaledModel, unwrap_model
 
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
         wrapper = lrn.model
@@ -227,8 +227,8 @@ class TestDDPUnwrap:
     def test_unwrap_model_through_ddp(self):
         """unwrap_model returns the inner FranSys model through a DDP-like wrapper."""
         from tsfast.prediction.fransys import FranSys
-        from tsfast.models.scaling import ScaledModel, StandardScaler, unwrap_model
-        from tsfast.models.rnn import RNN
+        from tsfast.models._core.scaling import ScaledModel, StandardScaler, unwrap_model
+        from tsfast.models.architectures.rnn import RNN
         import numpy as np
 
         prognosis = RNN(1, hidden_size=10, num_layers=1, ret_full_hidden=True)
@@ -246,9 +246,9 @@ class TestDDPUnwrap:
 
     def test_unwrap_ddp_finds_normalized_model(self):
         """_unwrap_ddp + isinstance check finds ScaledModel through DDP wrapper."""
-        from tsfast.models.scaling import ScaledModel, StandardScaler, _unwrap_ddp
+        from tsfast.models._core.scaling import ScaledModel, StandardScaler, _unwrap_ddp
         from tsfast.prediction.fransys import FranSys
-        from tsfast.models.rnn import RNN
+        from tsfast.models.architectures.rnn import RNN
         import numpy as np
 
         prognosis = RNN(1, hidden_size=10, num_layers=1, ret_full_hidden=True)
@@ -269,8 +269,8 @@ class TestDDPUnwrap:
     def test_unwrap_model_no_ddp(self):
         """unwrap_model still works when there is no DDP wrapper."""
         from tsfast.prediction.fransys import FranSys
-        from tsfast.models.scaling import ScaledModel, StandardScaler, unwrap_model
-        from tsfast.models.rnn import RNN
+        from tsfast.models._core.scaling import ScaledModel, StandardScaler, unwrap_model
+        from tsfast.models.architectures.rnn import RNN
         import numpy as np
 
         prognosis = RNN(1, hidden_size=10, num_layers=1, ret_full_hidden=True)

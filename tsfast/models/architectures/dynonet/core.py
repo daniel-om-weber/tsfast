@@ -13,9 +13,9 @@ import torch.nn.functional as F
 from torch import nn
 from torch.autograd.function import once_differentiable
 
-from . import scan
-from .backends import warn_fallback
-from .layers import SeqLinear
+from ..._core import scan
+from ..._core.dispatch import warn_fallback
+from ..._core.layers import SeqLinear
 
 
 def _doubling_scan(A: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
@@ -80,7 +80,7 @@ def _fused_allpole(a, w, y0):
     if scan.backend == "auto" and w.device.type != "cuda":
         return None
     try:
-        mod = importlib.import_module(".scan_backends.allpole_triton", __package__)
+        mod = importlib.import_module(".allpole_triton", __package__)
     except Exception as e:  # pragma: no cover - triton import failure
         reason = f"backend import failed ({e!r})"
     else:
@@ -153,7 +153,7 @@ class LinearDynamicalOperator(nn.Module):
         nb: number of numerator (FIR) taps per filter.
         na: denominator order per filter; ``0`` gives a pure FIR operator.
         backend: ``"scan"`` (parallel; on CUDA float32 the fused all-pole Triton kernel,
-            honoring ``tsfast.models.scan.backend``, else the log-doubling matrix scan)
+            honoring ``tsfast.models._core.scan.backend``, else the log-doubling matrix scan)
             or ``"eager"`` (sequential loop).
     """
 

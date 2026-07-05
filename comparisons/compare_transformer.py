@@ -40,7 +40,7 @@ from pathlib import Path
 
 import torch
 
-from tsfast.models.transformer import TSTransformer
+from tsfast.models.architectures.transformer import TSTransformer
 
 TOL = 1e-12
 REF_COMMIT = "8ee7d17f09156b0103efb7f70d104b29914011fd"

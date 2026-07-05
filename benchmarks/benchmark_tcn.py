@@ -16,7 +16,7 @@ import time
 
 import torch
 
-from tsfast.models.cnn import TCN
+from tsfast.models.architectures.cnn import TCN
 
 # ── Configuration ────────────────────────────────────────────────────────────
 

@@ -23,7 +23,7 @@ import hashlib
 
 import torch
 
-from ..ssm.backend_c import _build_flags, is_available  # toolchain probe + flags shared
+from ..._core.kernel_c import _build_flags, is_available  # toolchain probe + flags shared
 from .common import PHNNSpec, bound_value, params_of
 
 _EXTENSION = None

@@ -1,10 +1,10 @@
-"""Tests for tsfast.models.s5 (make_dplr_hippo, S5, DeepS5)."""
+"""Tests for tsfast.models.architectures.s5 (make_dplr_hippo, S5, DeepS5)."""
 
 import numpy as np
 import pytest
 import torch
 
-from tsfast.models.s5 import S5, DeepS5, make_dplr_hippo
+from tsfast.models.architectures.s5 import S5, DeepS5, make_dplr_hippo
 
 
 def _rel(a, b):

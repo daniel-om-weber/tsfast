@@ -25,7 +25,7 @@ import sys
 import torch
 import torch.nn.functional as F
 
-from tsfast.models.mamba import MambaLayer
+from tsfast.models.architectures.mamba import MambaLayer
 
 TOL = 1e-12
 

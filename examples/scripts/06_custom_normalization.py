@@ -34,7 +34,7 @@
 import torch
 
 from tsfast.tsdata.benchmark import create_dls_silverbox
-from tsfast.models.scaling import Scaler, StandardScaler, MinMaxScaler, MaxAbsScaler
+from tsfast.models._core.scaling import Scaler, StandardScaler, MinMaxScaler, MaxAbsScaler
 from tsfast.training import RNNLearner, fun_rmse
 
 # %% [markdown]

@@ -25,20 +25,20 @@ from .aux_losses import ActivationRegularizer, TemporalActivationRegularizer
 from .learner import Learner, TbpttLearner
 from .losses import fun_rmse
 from .transforms import prediction_concat
-from ..models.cudagraph import GraphedStatefulModel
-from ..models.cnn import CRNN, TCN
-from ..models.dynonet import DynoNet
-from ..models.layers import AR_Model
-from ..models.lru import DeepLRU
-from ..models.mamba import DeepMamba
-from ..models.s5 import DeepS5
-from ..models.narx import NarxMLP
-from ..models.rnn import SimpleRNN
-from ..models.ssm import NeuralStateSpace
-from ..models.subnet import SubnetSSM
-from ..models.phnn import PHNN
-from ..models.transformer import TSTransformer
-from ..models.scaling import ScaledModel, Scaler, StandardScaler
+from ..models._core.cudagraph import GraphedStatefulModel
+from ..models.architectures.cnn import CRNN, TCN
+from ..models.architectures.dynonet import DynoNet
+from ..models._core.layers import AR_Model
+from ..models.architectures.lru import DeepLRU
+from ..models.architectures.mamba import DeepMamba
+from ..models.architectures.s5 import DeepS5
+from ..models.architectures.narx import NarxMLP
+from ..models.architectures.rnn import SimpleRNN
+from ..models.architectures.ssm import NeuralStateSpace
+from ..models.architectures.subnet import SubnetSSM
+from ..models.architectures.phnn import PHNN
+from ..models.architectures.transformer import TSTransformer
+from ..models._core.scaling import ScaledModel, Scaler, StandardScaler
 from ..tsdata import get_io_size
 
 

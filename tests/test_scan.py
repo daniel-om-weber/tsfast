@@ -1,9 +1,9 @@
-"""Tests for tsfast.models.scan (diagonal_recurrence, selective_recurrence)."""
+"""Tests for tsfast.models._core.scan (diagonal_recurrence, selective_recurrence)."""
 
 import pytest
 import torch
 
-from tsfast.models.scan import (
+from tsfast.models._core.scan import (
     _diagonal_recurrence_sequential,
     diagonal_recurrence,
     selective_recurrence,

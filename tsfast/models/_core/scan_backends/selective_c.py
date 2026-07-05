@@ -24,7 +24,7 @@ import sys
 
 import torch
 
-from ..ssm.backend_c import _BATCH_PARALLEL_ATEN, _BATCH_PARALLEL_GCD, _build_flags, is_available
+from ..kernel_c import _BATCH_PARALLEL_ATEN, _BATCH_PARALLEL_GCD, _build_flags, is_available
 
 _EXTENSION = None
 

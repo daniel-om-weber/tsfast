@@ -4,7 +4,7 @@ Reference: the ``dynonet`` package by M. Forgione and D. Piga (``pip install dyn
 the implementation published with "dynoNet: A neural network architecture for learning
 dynamical systems" (Int. J. Adapt. Control Signal Process., 2021, arXiv:2006.02250).
 
-Compared: ``tsfast.models.dynonet.LinearDynamicalOperator`` (the G-block, a MIMO bank of
+Compared: ``tsfast.models.architectures.dynonet.LinearDynamicalOperator`` (the G-block, a MIMO bank of
 rational transfer functions) against ``dynonet.lti.MimoLinearDynamicalOperator``. The
 parameterizations are identical (``b_coeff`` numerator taps, ``a_coeff`` monic-denominator
 coefficients), so parameters are copied 1:1 and the comparison isolates the execution
@@ -26,7 +26,7 @@ import sys
 import numpy as np
 import torch
 
-from tsfast.models.dynonet import LinearDynamicalOperator
+from tsfast.models.architectures.dynonet import LinearDynamicalOperator
 
 TOL = 1e-10
 

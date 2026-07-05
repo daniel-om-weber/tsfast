@@ -13,13 +13,13 @@ initialization or precision noise (the one exception is noted inside `compare_ma
 
 | Script | tsfast model | Reference |
 |---|---|---|
-| `compare_dynonet.py` | `tsfast.models.dynonet` | authors' `dynonet` package (PyPI) |
-| `compare_lru.py` | `tsfast.models.lru` | Forgione et al., `lru-reduction` (transcribed, MIT) |
-| `compare_s5.py` | `tsfast.models.s5` | official JAX S5 (transcribed, MIT) + `s5-pytorch` (PyPI) |
-| `compare_mamba.py` | `tsfast.models.mamba` | official `selective_scan_ref` (transcribed, Apache-2.0) + `mambapy` (PyPI) |
-| `compare_subnet.py` | `tsfast.models.subnet` | deepSI `SS_encoder_general` (transcribed, BSD-3-Clause) |
-| `compare_phnn.py` | `tsfast.models.phnn` | OE-pHNN paper equations, autograd-based (authors' repo is unlicensed; formulation separately verified against their released trained models) |
-| `compare_transformer.py` | `tsfast.models.transformer` | Rufolo et al., `sysid-prob-transformer` (unlicensed, so downloaded at run time from a pinned commit rather than transcribed) |
+| `compare_dynonet.py` | `tsfast.models.architectures.dynonet` | authors' `dynonet` package (PyPI) |
+| `compare_lru.py` | `tsfast.models.architectures.lru` | Forgione et al., `lru-reduction` (transcribed, MIT) |
+| `compare_s5.py` | `tsfast.models.architectures.s5` | official JAX S5 (transcribed, MIT) + `s5-pytorch` (PyPI) |
+| `compare_mamba.py` | `tsfast.models.architectures.mamba` | official `selective_scan_ref` (transcribed, Apache-2.0) + `mambapy` (PyPI) |
+| `compare_subnet.py` | `tsfast.models.architectures.subnet` | deepSI `SS_encoder_general` (transcribed, BSD-3-Clause) |
+| `compare_phnn.py` | `tsfast.models.architectures.phnn` | OE-pHNN paper equations, autograd-based (authors' repo is unlicensed; formulation separately verified against their released trained models) |
+| `compare_transformer.py` | `tsfast.models.architectures.transformer` | Rufolo et al., `sysid-prob-transformer` (unlicensed, so downloaded at run time from a pinned commit rather than transcribed) |
 
 Run from the repository root:
 

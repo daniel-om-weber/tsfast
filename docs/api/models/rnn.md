@@ -1,5 +1,5 @@
 # RNN Models
 
-::: tsfast.models.rnn
+::: tsfast.models.architectures.rnn
     options:
       members_order: source

@@ -1,4 +1,4 @@
-"""Tests for tsfast.models.transformer (TSTransformer)."""
+"""Tests for tsfast.models.architectures.transformer (TSTransformer)."""
 
 import sys
 from pathlib import Path
@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from tsfast.models.transformer import TSTransformer
+from tsfast.models.architectures.transformer import TSTransformer
 
 
 def _model(**kwargs):

@@ -1,10 +1,10 @@
-"""Tests for tsfast.models.subnet (ResMLP, SubnetEncoder, SubnetSSM)."""
+"""Tests for tsfast.models.architectures.subnet (ResMLP, SubnetEncoder, SubnetSSM)."""
 
 import pytest
 import torch
 from torch import nn
 
-from tsfast.models.subnet import ResMLP, SubnetEncoder, SubnetSSM
+from tsfast.models.architectures.subnet import ResMLP, SubnetEncoder, SubnetSSM
 
 
 def _rel(a, b):

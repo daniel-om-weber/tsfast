@@ -11,7 +11,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from .scan import _diagonal_recurrence_sequential, complex_in_proj, diagonal_recurrence, real_out_proj
+from .._core.scan import _diagonal_recurrence_sequential, complex_in_proj, diagonal_recurrence, real_out_proj
 
 
 class LRU(nn.Module):

@@ -188,7 +188,7 @@ class FranSysRegularizer:
         self._output_norm = None
 
     def setup(self, trainer):
-        from ..models.scaling import ScaledModel, _unwrap_ddp, unwrap_model
+        from ..models._core.scaling import ScaledModel, _unwrap_ddp, unwrap_model
 
         wrapper = _unwrap_ddp(trainer.model)
         self._output_norm = wrapper.output_norm if isinstance(wrapper, ScaledModel) else None

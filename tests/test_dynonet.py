@@ -1,4 +1,4 @@
-"""Tests for tsfast.models.dynonet (linear_recurrence, LinearDynamicalOperator, DynoNet)."""
+"""Tests for tsfast.models.architectures.dynonet (linear_recurrence, LinearDynamicalOperator, DynoNet)."""
 
 import numpy as np
 import pytest
@@ -42,7 +42,7 @@ def _lfilter_reference(op, u):
 
 class TestLinearRecurrence:
     def test_scan_matches_sequential(self):
-        from tsfast.models.dynonet import _linear_recurrence_sequential, linear_recurrence
+        from tsfast.models.architectures.dynonet import _linear_recurrence_sequential, linear_recurrence
 
         torch.manual_seed(0)
         for L in (1, 7, 100):
@@ -55,7 +55,7 @@ class TestLinearRecurrence:
                 assert (x_scan - x_seq).abs().max() < 1e-10
 
     def test_scan_gradcheck(self):
-        from tsfast.models.dynonet import linear_recurrence
+        from tsfast.models.architectures.dynonet import linear_recurrence
 
         torch.manual_seed(0)
         A = (torch.randn(2, 2, 2, dtype=torch.float64) * 0.5).requires_grad_()
@@ -66,7 +66,7 @@ class TestLinearRecurrence:
 
 class TestLinearDynamicalOperator:
     def test_matches_lfilter_siso(self):
-        from tsfast.models.dynonet import LinearDynamicalOperator
+        from tsfast.models.architectures.dynonet import LinearDynamicalOperator
 
         torch.manual_seed(0)
         op = LinearDynamicalOperator(1, 1, nb=4, na=3).double()
@@ -78,7 +78,7 @@ class TestLinearDynamicalOperator:
         assert np.abs(op(u).detach().numpy() - ref).max() < 1e-12
 
     def test_matches_lfilter_mimo(self):
-        from tsfast.models.dynonet import LinearDynamicalOperator
+        from tsfast.models.architectures.dynonet import LinearDynamicalOperator
 
         torch.manual_seed(1)
         op = LinearDynamicalOperator(2, 3, nb=3, na=2).double()
@@ -90,7 +90,7 @@ class TestLinearDynamicalOperator:
         assert np.abs(op(u).detach().numpy() - ref).max() < 1e-12
 
     def test_shapes_and_edges(self):
-        from tsfast.models.dynonet import LinearDynamicalOperator
+        from tsfast.models.architectures.dynonet import LinearDynamicalOperator
 
         torch.manual_seed(0)
         op = LinearDynamicalOperator(2, 3, nb=4, na=2)
@@ -109,7 +109,7 @@ class TestLinearDynamicalOperator:
         pytest.importorskip("dynonet")
         from dynonet.lti import MimoLinearDynamicalOperator
 
-        from tsfast.models.dynonet import LinearDynamicalOperator
+        from tsfast.models.architectures.dynonet import LinearDynamicalOperator
 
         torch.manual_seed(0)
         np.random.seed(0)
@@ -141,7 +141,7 @@ class TestLinearDynamicalOperator:
         assert _rel(u_ours.grad, u_ref.grad) < 1e-12
 
     def test_backend_parity(self):
-        from tsfast.models.dynonet import DynoNet
+        from tsfast.models.architectures.dynonet import DynoNet
 
         torch.manual_seed(0)
         m = DynoNet(3, 2, n_channels=4, nb=4, na=2)
@@ -156,14 +156,14 @@ class TestLinearDynamicalOperator:
         assert _rel(du_s, du_e) < 5e-5
 
     def test_unknown_backend_raises(self):
-        from tsfast.models.dynonet import LinearDynamicalOperator
+        from tsfast.models.architectures.dynonet import LinearDynamicalOperator
 
         op = LinearDynamicalOperator(1, 1, backend="fft")
         with pytest.raises(ValueError):
             op(torch.randn(1, 10, 1))
 
     def test_unstable_poles_overflow_to_nonfinite(self):
-        from tsfast.models.dynonet import LinearDynamicalOperator
+        from tsfast.models.architectures.dynonet import LinearDynamicalOperator
 
         op = LinearDynamicalOperator(1, 1, nb=2, na=1)
         with torch.no_grad():
@@ -176,7 +176,7 @@ class TestLinearDynamicalOperator:
 
 class TestDynoNet:
     def test_shapes(self):
-        from tsfast.models.dynonet import DynoNet
+        from tsfast.models.architectures.dynonet import DynoNet
 
         u = torch.randn(4, 25, 3)
         assert DynoNet(3, 2)(u).shape == (4, 25, 2)
@@ -184,7 +184,7 @@ class TestDynoNet:
         assert DynoNet(3, 2, hidden_layers=0)(u).shape == (4, 25, 2)
 
     def test_stateful_chunked_equivalence(self):
-        from tsfast.models.dynonet import DynoNet
+        from tsfast.models.architectures.dynonet import DynoNet
 
         torch.manual_seed(0)
         # chunk lengths indivisible by nb, one chunk (2) shorter than the FIR tail nb-1
@@ -202,7 +202,7 @@ class TestDynoNet:
         assert _rel(chunked, full) < 1e-12  # FIR tail + IIR states fully capture the dynamics
 
     def test_cuda_parity(self):
-        from tsfast.models.dynonet import DynoNet
+        from tsfast.models.architectures.dynonet import DynoNet
 
         if not torch.cuda.is_available():
             pytest.skip("no CUDA")

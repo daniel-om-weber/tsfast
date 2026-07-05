@@ -16,11 +16,11 @@ import torch.nn.functional as F
 from torch import nn
 
 from ..training import Learner, fun_rmse, prediction_concat, truncate_sequence
-from ..models.cnn import TCN
-from ..models.layers import AR_Model, SeqLinear
-from ..models.scaling import ScaledModel, StandardScaler
-from ..models.state import discover_state_spec, unflatten_state
-from ..models.rnn import RNN, SimpleRNN
+from ..models.architectures.cnn import TCN
+from ..models._core.layers import AR_Model, SeqLinear
+from ..models._core.scaling import ScaledModel, StandardScaler
+from ..models._core.state import discover_state_spec, unflatten_state
+from ..models.architectures.rnn import RNN, SimpleRNN
 
 
 class Diag_RNN(nn.Module):

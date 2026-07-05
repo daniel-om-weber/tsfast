@@ -9,9 +9,9 @@ whole DeepMamba parameter-gradient set backend-vs-doubling on the real model.
 import pytest
 import torch
 
-import tsfast.models.scan as scan
-from tsfast.models.mamba import DeepMamba
-from tsfast.models.scan_backends import selective_c, selective_triton
+import tsfast.models._core.scan as scan
+from tsfast.models.architectures.mamba import DeepMamba
+from tsfast.models._core.scan_backends import selective_c, selective_triton
 
 SHAPES = [(2, 7, 3), (4, 257, 8), (2, 1, 3)]
 

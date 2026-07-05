@@ -11,7 +11,7 @@ import time
 
 import torch
 
-import tsfast.models.scan as scan
+import tsfast.models._core.scan as scan
 
 
 def _bench(shape, device, iters=8, warmup=3):

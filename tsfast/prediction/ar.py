@@ -7,8 +7,8 @@ import random
 import torch
 from torch import Tensor, nn
 
-from ..models.layers import AR_Model
-from ..models.rnn import SimpleRNN
+from ..models._core.layers import AR_Model
+from ..models.architectures.rnn import SimpleRNN
 
 
 class ARProg(nn.Module):

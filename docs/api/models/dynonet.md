@@ -1,5 +1,5 @@
 # DynoNet Models
 
-::: tsfast.models.dynonet
+::: tsfast.models.architectures.dynonet
     options:
       members_order: source

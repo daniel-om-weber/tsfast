@@ -17,7 +17,7 @@ import time
 import torch
 import torch.nn.functional as F
 
-from tsfast.models.ssm import NeuralStateSpace
+from tsfast.models.architectures.ssm import NeuralStateSpace
 
 N_STATE = 10
 N_INPUT = 10
@@ -59,17 +59,17 @@ def backends_for(device: torch.device, include_compiled: bool) -> list[str]:
     if include_compiled:
         names.append("compiled")
     if device.type == "cuda":
-        from tsfast.models.ssm import backend_triton as ssm_triton
+        from tsfast.models.architectures.ssm import backend_triton as ssm_triton
 
         if ssm_triton.is_available():
             names.append("triton")
     elif device.type == "mps":
-        from tsfast.models.ssm import backend_metal as ssm_metal
+        from tsfast.models.architectures.ssm import backend_metal as ssm_metal
 
         if ssm_metal.is_available():
             names.append("metal")
     else:
-        from tsfast.models.ssm import backend_c as ssm_c
+        from tsfast.models.architectures.ssm import backend_c as ssm_c
 
         if ssm_c.is_available():
             names.append("c")
@@ -82,7 +82,7 @@ def make_train_step(name, device, hidden, B, seq_len):
     m = NeuralStateSpace(N_INPUT, N_OUTPUT, N_STATE, hidden, backend=backend, return_state=bool(graphed)).to(device)
     model = m
     if graphed:
-        from tsfast.models.cudagraph import GraphedStatefulModel
+        from tsfast.models._core.cudagraph import GraphedStatefulModel
 
         model = GraphedStatefulModel(m)
     u = torch.randn(B, seq_len, N_INPUT, device=device)

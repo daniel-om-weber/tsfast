@@ -15,11 +15,11 @@ import torch
 from torch import Tensor, nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from tsfast.models.layers import SeqLinear
-from tsfast.models.rnn import SimpleRNN
+from tsfast.models._core.layers import SeqLinear
+from tsfast.models.architectures.rnn import SimpleRNN
 from tsfast.training import TbpttLearner
-from tsfast.models.cudagraph import GraphedStatefulModel
-from tsfast.models.state import detach_state
+from tsfast.models._core.cudagraph import GraphedStatefulModel
+from tsfast.models._core.state import detach_state
 
 # ── Configuration ────────────────────────────────────────────────────────────
 

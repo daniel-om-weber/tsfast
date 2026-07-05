@@ -1,7 +1,7 @@
 # PHNN fused rollout: forward and BPTT math
 
 This is the correctness contract for the fused C++ and Triton rollout backends of
-`tsfast.models.phnn.PHNNCore`. It derives the exact per-step update and its full
+`tsfast.models.architectures.phnn.PHNNCore`. It derives the exact per-step update and its full
 backpropagation-through-time (BPTT) gradient, **including** the second-order terms
 that arise because the forward step already contains the state gradient `dH/dx` of the
 Hamiltonian network (computed in closed form, not by autograd — so it is ordinary

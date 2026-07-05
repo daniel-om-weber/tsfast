@@ -45,9 +45,9 @@ from tsfast.tsdata import (
     WindowedDataset, HDF5Signals, HDF5Attrs, SourceEntry,
     DataLoaders, get_hdf_files, split_by_parent,
 )
-from tsfast.models.rnn import SimpleRNN
-from tsfast.models.layers import SeqAggregation
-from tsfast.models.scaling import ScaledModel, StandardScaler
+from tsfast.models.architectures.rnn import SimpleRNN
+from tsfast.models._core.layers import SeqAggregation
+from tsfast.models._core.scaling import ScaledModel, StandardScaler
 from tsfast.training import Learner, fun_rmse
 
 # %% [markdown]

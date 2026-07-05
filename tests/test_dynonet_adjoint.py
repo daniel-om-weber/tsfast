@@ -18,7 +18,7 @@ class TestAdjointGradcheck:
     @pytest.mark.parametrize("L", [1, 7, 64])
     @pytest.mark.parametrize("with_x0", [False, True])
     def test_batched(self, L, with_x0):
-        from tsfast.models.dynonet import linear_recurrence
+        from tsfast.models.architectures.dynonet import linear_recurrence
 
         torch.manual_seed(L + int(with_x0))
         n_batch, n = 3, 2
@@ -32,7 +32,7 @@ class TestAdjointGradcheck:
     @pytest.mark.parametrize("with_x0", [False, True])
     def test_broadcast_A_no_batch(self, L, with_x0):
         """A carries no batch dims and must broadcast against a batched v (grad_A folds the batch)."""
-        from tsfast.models.dynonet import linear_recurrence
+        from tsfast.models.architectures.dynonet import linear_recurrence
 
         torch.manual_seed(100 + L + int(with_x0))
         n_batch, n = 4, 3
@@ -44,7 +44,7 @@ class TestAdjointGradcheck:
 
     def test_broadcast_x0_no_batch(self):
         """x0 without batch dims broadcasts across a batched v; grad_x0 folds the batch."""
-        from tsfast.models.dynonet import linear_recurrence
+        from tsfast.models.architectures.dynonet import linear_recurrence
 
         torch.manual_seed(7)
         n_batch, n, L = 4, 2, 9
@@ -57,7 +57,7 @@ class TestAdjointGradcheck:
 class TestAdjointMatchesEager:
     def test_recurrence_grads_match_sequential(self):
         """Param/input grads of the scan adjoint match autograd through the sequential loop."""
-        from tsfast.models.dynonet import _linear_recurrence_sequential, linear_recurrence
+        from tsfast.models.architectures.dynonet import _linear_recurrence_sequential, linear_recurrence
 
         torch.manual_seed(0)
         n_batch, n, L = 5, 3, 64
@@ -78,7 +78,7 @@ class TestAdjointMatchesEager:
 
     def test_model_param_grads_scan_vs_eager(self):
         """Full DynoNet: every parameter grad from the scan backend matches the eager backend (fp64)."""
-        from tsfast.models.dynonet import DynoNet
+        from tsfast.models.architectures.dynonet import DynoNet
 
         torch.manual_seed(0)
         m = DynoNet(3, 2, n_channels=4, nb=4, na=2).double()

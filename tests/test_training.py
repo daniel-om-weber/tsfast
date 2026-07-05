@@ -41,7 +41,7 @@ class _SyntheticDls:
 class TestFlattenState:
     def test_roundtrip_gru(self):
         """GRU state: list[Tensor[1,B,H]] roundtrips through flatten/unflatten."""
-        from tsfast.models.state import build_spec_from_state, flatten_state, unflatten_state
+        from tsfast.models._core.state import build_spec_from_state, flatten_state, unflatten_state
 
         state = [torch.randn(1, 4, 20), torch.randn(1, 4, 30)]
         spec = build_spec_from_state(state, batch_size=4)
@@ -54,7 +54,7 @@ class TestFlattenState:
 
     def test_roundtrip_lstm(self):
         """LSTM state: list[tuple[Tensor, Tensor]] roundtrips through flatten/unflatten."""
-        from tsfast.models.state import build_spec_from_state, flatten_state, unflatten_state
+        from tsfast.models._core.state import build_spec_from_state, flatten_state, unflatten_state
 
         state = [
             (torch.randn(1, 4, 20), torch.randn(1, 4, 20)),
@@ -73,7 +73,7 @@ class TestFlattenState:
 
     def test_roundtrip_mixed(self):
         """Mixed state: some layers plain tensor, some tuple."""
-        from tsfast.models.state import build_spec_from_state, flatten_state, unflatten_state
+        from tsfast.models._core.state import build_spec_from_state, flatten_state, unflatten_state
 
         state = [
             torch.randn(1, 4, 10),
@@ -90,7 +90,7 @@ class TestFlattenState:
 
     def test_roundtrip_plain_2d(self):
         """Plain [B, H] state without leading singleton dims."""
-        from tsfast.models.state import build_spec_from_state, flatten_state, unflatten_state
+        from tsfast.models._core.state import build_spec_from_state, flatten_state, unflatten_state
 
         state = [torch.randn(4, 20), torch.randn(4, 30)]
         spec = build_spec_from_state(state, batch_size=4)
@@ -103,7 +103,7 @@ class TestFlattenState:
 
     def test_spec_is_immutable(self):
         """StateSpec widths should be an immutable tuple."""
-        from tsfast.models.state import build_spec_from_state
+        from tsfast.models._core.state import build_spec_from_state
 
         state = [torch.randn(1, 4, 20)]
         spec = build_spec_from_state(state, batch_size=4)
@@ -111,7 +111,7 @@ class TestFlattenState:
 
     def test_roundtrip_dict(self):
         """Dict state roundtrips through flatten/unflatten."""
-        from tsfast.models.state import build_spec_from_state, flatten_state, unflatten_state
+        from tsfast.models._core.state import build_spec_from_state, flatten_state, unflatten_state
 
         state = {"h": [torch.randn(1, 4, 20)], "y_init": torch.randn(4, 1, 3)}
         spec = build_spec_from_state(state, batch_size=4)
@@ -124,7 +124,7 @@ class TestFlattenState:
 
     def test_roundtrip_ssm_3d(self):
         """SSM state [B, D, N] roundtrips correctly (batch dim preserved)."""
-        from tsfast.models.state import build_spec_from_state, flatten_state, unflatten_state
+        from tsfast.models._core.state import build_spec_from_state, flatten_state, unflatten_state
 
         state = [torch.randn(4, 16, 8), torch.randn(4, 32, 4)]
         spec = build_spec_from_state(state, batch_size=4)
@@ -136,7 +136,7 @@ class TestFlattenState:
 
     def test_roundtrip_4d_attention(self):
         """4D attention state [B, nH, dK, dV] roundtrips correctly."""
-        from tsfast.models.state import build_spec_from_state, flatten_state, unflatten_state
+        from tsfast.models._core.state import build_spec_from_state, flatten_state, unflatten_state
 
         state = [torch.randn(4, 8, 64, 64)]
         spec = build_spec_from_state(state, batch_size=4)
@@ -147,8 +147,8 @@ class TestFlattenState:
 
     def test_discover_state_spec(self):
         """discover_state_spec correctly identifies batch dim in RNN state."""
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.state import discover_state_spec
+        from tsfast.models.architectures.rnn import SimpleRNN
+        from tsfast.models._core.state import discover_state_spec
 
         model = SimpleRNN(2, 1, hidden_size=20, return_state=True)
         spec = discover_state_spec(model, n_in=2)
@@ -156,8 +156,8 @@ class TestFlattenState:
 
     def test_cross_batch_unflatten(self):
         """Spec discovered at one batch size works at another."""
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.state import discover_state_spec, flatten_state, unflatten_state
+        from tsfast.models.architectures.rnn import SimpleRNN
+        from tsfast.models._core.state import discover_state_spec, flatten_state, unflatten_state
 
         model = SimpleRNN(2, 1, hidden_size=20, return_state=True)
         spec = discover_state_spec(model, n_in=2)
@@ -174,7 +174,7 @@ class TestFlattenState:
 
     def test_state_spec_state_size(self):
         """StateSpec.state_size equals sum of widths."""
-        from tsfast.models.state import build_spec_from_state
+        from tsfast.models._core.state import build_spec_from_state
 
         state = [torch.randn(1, 4, 20), torch.randn(1, 4, 30)]
         spec = build_spec_from_state(state, batch_size=4)
@@ -544,7 +544,7 @@ class TestAuxLosses:
 
 class TestLearner:
     def test_learner_smoke(self):
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import Learner
 
         dls = _SyntheticDls(n_u=1, n_y=1)
@@ -555,7 +555,7 @@ class TestLearner:
         assert math.isfinite(final_valid_loss)
 
     def test_learner_with_metrics(self):
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import Learner
         from tsfast.training.losses import fun_rmse
 
@@ -566,7 +566,7 @@ class TestLearner:
         assert len(lrn.recorder[-1]) == 3  # train_loss, val_loss, metric
 
     def test_learner_with_transforms(self):
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import Learner, prediction_concat
 
         dls = _SyntheticDls(n_u=1, n_y=1)
@@ -583,7 +583,7 @@ class TestLearner:
         assert math.isfinite(lrn.recorder[-1][1])
 
     def test_learner_augmentations_train_only(self):
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import Learner
         from tsfast.training.transforms import noise
 
@@ -607,7 +607,7 @@ class TestLearner:
         assert val1 == val2
 
     def test_learner_aux_losses(self):
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import AuxiliaryLoss, Learner
 
         dls = _SyntheticDls(n_u=1, n_y=1)
@@ -628,7 +628,7 @@ class TestLearner:
         assert math.isfinite(lrn_aux.recorder[-1][1])
 
     def test_learner_n_skip(self):
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import Learner
 
         dls = _SyntheticDls(n_u=1, n_y=1)
@@ -638,7 +638,7 @@ class TestLearner:
         assert math.isfinite(lrn.recorder[-1][1])
 
     def test_learner_grad_clip(self):
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import Learner
 
         dls = _SyntheticDls(n_u=1, n_y=1)
@@ -648,7 +648,7 @@ class TestLearner:
         assert math.isfinite(lrn.recorder[-1][1])
 
     def test_learner_fit_flat_cos(self):
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import Learner
 
         dls = _SyntheticDls(n_u=1, n_y=1)
@@ -658,7 +658,7 @@ class TestLearner:
         assert len(lrn.recorder) == 2
 
     def test_get_preds(self):
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import Learner
 
         dls = _SyntheticDls(n_u=1, n_y=1, n_valid=8, bs=4)
@@ -673,7 +673,7 @@ class TestLearner:
     def test_get_preds_chunked_rnn(self):
         import warnings
 
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import Learner
 
         dls = _SyntheticDls(n_u=2, n_y=1, seq_len=200, n_valid=4, bs=2)
@@ -691,7 +691,7 @@ class TestLearner:
     def test_get_preds_chunked_tcn(self):
         import warnings
 
-        from tsfast.models.cnn import TCN
+        from tsfast.models.architectures.cnn import TCN
         from tsfast.training import Learner
 
         dls = _SyntheticDls(n_u=2, n_y=1, seq_len=200, n_valid=4, bs=2)
@@ -710,7 +710,7 @@ class TestLearner:
         """RNN without return_state=True should warn when chunking."""
         import warnings
 
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import Learner
 
         dls = _SyntheticDls(n_u=2, n_y=1, seq_len=200, n_valid=4, bs=2)
@@ -727,7 +727,7 @@ class TestLearner:
         """Chunked-equivalence warning fires only on the first call (cached)."""
         import warnings
 
-        from tsfast.models.cnn import TCN
+        from tsfast.models.architectures.cnn import TCN
         from tsfast.training import Learner
 
         dls = _SyntheticDls(n_u=2, n_y=1, seq_len=200, n_valid=4, bs=2)
@@ -747,7 +747,7 @@ class TestLearner:
             )
 
     def test_validate_chunked(self):
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import Learner
 
         dls = _SyntheticDls(n_u=1, n_y=1, seq_len=200, n_valid=4, bs=2)
@@ -760,7 +760,7 @@ class TestLearner:
     def test_show_batch_show_results(self):
         import matplotlib.pyplot as plt
 
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import Learner
 
         dls = _SyntheticDls(n_u=1, n_y=1)
@@ -772,7 +772,7 @@ class TestLearner:
         plt.close("all")
 
     def test_no_bar(self):
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import Learner
 
         dls = _SyntheticDls(n_u=1, n_y=1)
@@ -783,7 +783,7 @@ class TestLearner:
         assert math.isfinite(lrn.recorder[-1][1])
 
     def test_activation_regularizers(self):
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import ActivationRegularizer, Learner, TemporalActivationRegularizer
 
         dls = _SyntheticDls(n_u=1, n_y=1)
@@ -804,7 +804,7 @@ class TestSaveLoad:
     def test_save_load_model(self, tmp_path):
         """save_model / load_model roundtrip: predictions match."""
         from tsfast.inference import load_model
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import Learner
 
         dls = _SyntheticDls(n_u=1, n_y=1)
@@ -837,7 +837,7 @@ class TestSaveLoad:
 
     def test_save_load_learner(self, tmp_path):
         """save / load roundtrip: model, optimizer, recorder all restored."""
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import Learner
 
         dls = _SyntheticDls(n_u=1, n_y=1)
@@ -862,7 +862,7 @@ class TestSaveLoad:
 
     def test_save_load_learner_resume_training(self, tmp_path):
         """Resumed training appends to loaded recorder."""
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import Learner
 
         dls = _SyntheticDls(n_u=1, n_y=1)
@@ -880,7 +880,7 @@ class TestSaveLoad:
 
     def test_save_after_fit_flat_cos(self, tmp_path):
         """save works after fit_flat_cos: the scheduler must be picklable (no closures)."""
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import Learner
 
         dls = _SyntheticDls(n_u=1, n_y=1)
@@ -896,7 +896,7 @@ class TestSaveLoad:
 
     def test_save_load_tbptt_learner(self, tmp_path):
         """save / load preserves TbpttLearner subclass and sub_seq_len."""
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import TbpttLearner
 
         dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
@@ -914,7 +914,7 @@ class TestSaveLoad:
 
     def test_save_load_checkpoint(self, tmp_path):
         """save_checkpoint / load_checkpoint roundtrip."""
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import Learner
 
         dls = _SyntheticDls(n_u=1, n_y=1)
@@ -939,7 +939,7 @@ class TestSaveLoad:
 
     def test_save_load_checkpoint_resume_training(self, tmp_path):
         """load_checkpoint + fit resumes with optimizer state and recorder."""
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import Learner
 
         dls = _SyntheticDls(n_u=1, n_y=1)
@@ -966,7 +966,7 @@ class TestSaveLoad:
 
 class TestTbpttLearner:
     def test_tbptt_smoke(self):
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import TbpttLearner
 
         dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
@@ -976,7 +976,7 @@ class TestTbpttLearner:
         assert math.isfinite(lrn.recorder[-1][1])
 
     def test_tbptt_n_skip_first_chunk_only(self):
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import TbpttLearner
 
         dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
@@ -990,7 +990,7 @@ class TestTbpttLearner:
         assert lrn.n_skip == 10
 
     def test_tbptt_with_augmentations(self):
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import TbpttLearner
         from tsfast.training.transforms import noise
 
@@ -1013,7 +1013,7 @@ class TestTbpttLearner:
         Per-chunk application double-augments the data and diverges from
         CUDA-graphed training, which applies augmentations once per batch.
         """
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import TbpttLearner
 
         call_count = 0
@@ -1043,7 +1043,7 @@ class TestTbpttLearner:
 
     def test_tbptt_get_preds_defaults_to_chunked(self):
         """TbpttLearner.get_preds() defaults chunk_sz to sub_seq_len."""
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import TbpttLearner
 
         dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100, n_valid=4, bs=2)
@@ -1056,7 +1056,7 @@ class TestTbpttLearner:
 
     def test_tbptt_get_preds_explicit_override(self):
         """Explicit chunk_sz overrides the sub_seq_len default."""
-        from tsfast.models.rnn import SimpleRNN
+        from tsfast.models.architectures.rnn import SimpleRNN
         from tsfast.training import TbpttLearner
 
         dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100, n_valid=4, bs=2)
@@ -1077,8 +1077,8 @@ class TestTbpttLearner:
 class TestGraphedStatefulModel:
     def test_smoke(self):
         """Wrap SimpleRNN, call forward, check output shapes."""
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.cudagraph import GraphedStatefulModel
+        from tsfast.models.architectures.rnn import SimpleRNN
+        from tsfast.models._core.cudagraph import GraphedStatefulModel
 
         model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
         graphed = GraphedStatefulModel(model)
@@ -1089,8 +1089,8 @@ class TestGraphedStatefulModel:
 
     def test_interface_without_state(self):
         """forward(x) without state returns (pred, state) tuple."""
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.cudagraph import GraphedStatefulModel
+        from tsfast.models.architectures.rnn import SimpleRNN
+        from tsfast.models._core.cudagraph import GraphedStatefulModel
 
         model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
         graphed = GraphedStatefulModel(model)
@@ -1100,8 +1100,8 @@ class TestGraphedStatefulModel:
 
     def test_interface_with_state(self):
         """forward(x, state=state) with explicit state works."""
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.cudagraph import GraphedStatefulModel
+        from tsfast.models.architectures.rnn import SimpleRNN
+        from tsfast.models._core.cudagraph import GraphedStatefulModel
 
         model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
         graphed = GraphedStatefulModel(model)
@@ -1113,8 +1113,8 @@ class TestGraphedStatefulModel:
 
     def test_with_tbptt_learner(self):
         """GraphedStatefulModel works transparently with TbpttLearner."""
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.cudagraph import GraphedStatefulModel
+        from tsfast.models.architectures.rnn import SimpleRNN
+        from tsfast.models._core.cudagraph import GraphedStatefulModel
         from tsfast.training import TbpttLearner
 
         dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
@@ -1126,8 +1126,8 @@ class TestGraphedStatefulModel:
 
     def test_with_basic_learner(self):
         """GraphedStatefulModel works transparently with basic Learner."""
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.cudagraph import GraphedStatefulModel
+        from tsfast.models.architectures.rnn import SimpleRNN
+        from tsfast.models._core.cudagraph import GraphedStatefulModel
         from tsfast.training import Learner
 
         dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
@@ -1142,8 +1142,8 @@ class TestGraphedStatefulModel:
         """Graphed wrapper + TbpttLearner matches plain TbpttLearner."""
         import copy
 
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.cudagraph import GraphedStatefulModel
+        from tsfast.models.architectures.rnn import SimpleRNN
+        from tsfast.models._core.cudagraph import GraphedStatefulModel
         from tsfast.training import TbpttLearner
 
         seq_len, n_u, n_y, n_train, bs = 100, 1, 1, 8, 4
@@ -1186,8 +1186,8 @@ class TestGraphedStatefulModel:
 
     def test_with_n_skip(self):
         """GraphedStatefulModel works with TbpttLearner's n_skip."""
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.cudagraph import GraphedStatefulModel
+        from tsfast.models.architectures.rnn import SimpleRNN
+        from tsfast.models._core.cudagraph import GraphedStatefulModel
         from tsfast.training import TbpttLearner
 
         dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
@@ -1199,8 +1199,8 @@ class TestGraphedStatefulModel:
 
     def test_reset_graph(self):
         """reset_graph() clears state, next forward re-captures."""
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.cudagraph import GraphedStatefulModel
+        from tsfast.models.architectures.rnn import SimpleRNN
+        from tsfast.models._core.cudagraph import GraphedStatefulModel
 
         model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
         graphed = GraphedStatefulModel(model)
@@ -1223,8 +1223,8 @@ class TestGraphedStatefulModel:
 
     def test_eager_fallback_different_batch(self):
         """Falls back to eager when batch size differs from captured shape."""
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.cudagraph import GraphedStatefulModel
+        from tsfast.models.architectures.rnn import SimpleRNN
+        from tsfast.models._core.cudagraph import GraphedStatefulModel
 
         model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
         graphed = GraphedStatefulModel(model)
@@ -1242,8 +1242,8 @@ class TestGraphedStatefulModel:
 
     def test_tbptt_cudagraph_validation_reuses_graph(self):
         """TbpttLearner + GraphedStatefulModel: validation chunks match captured graph shape."""
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.cudagraph import GraphedStatefulModel
+        from tsfast.models.architectures.rnn import SimpleRNN
+        from tsfast.models._core.cudagraph import GraphedStatefulModel
         from tsfast.training import TbpttLearner
 
         seq_len, sub_seq_len = 100, 25
@@ -1262,8 +1262,8 @@ class TestGraphedStatefulModel:
 
     def test_eager_fallback_different_seq_len(self):
         """Falls back to eager when sequence length differs from captured shape."""
-        from tsfast.models.rnn import SimpleRNN
-        from tsfast.models.cudagraph import GraphedStatefulModel
+        from tsfast.models.architectures.rnn import SimpleRNN
+        from tsfast.models._core.cudagraph import GraphedStatefulModel
 
         model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
         graphed = GraphedStatefulModel(model)

@@ -17,7 +17,7 @@ import time
 import torch
 import torch.nn.functional as F
 
-from tsfast.models.narx import NarxMLP
+from tsfast.models.architectures.narx import NarxMLP
 
 N_U = 2
 N_Y = 2
@@ -51,12 +51,12 @@ def backends_for(device: torch.device, include_compiled: bool) -> list[str]:
     if include_compiled:
         names.append("compiled")
     if device.type == "cuda":
-        from tsfast.models.narx import backend_triton
+        from tsfast.models.architectures.narx import backend_triton
 
         if backend_triton.is_available():
             names.append("triton")
     else:
-        from tsfast.models.narx import backend_c
+        from tsfast.models.architectures.narx import backend_c
 
         if backend_c.is_available():
             names.append("c")

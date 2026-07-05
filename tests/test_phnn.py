@@ -1,10 +1,10 @@
-"""Tests for tsfast.models.phnn (HamiltonianMLP, PHNNCore, PHNN)."""
+"""Tests for tsfast.models.architectures.phnn (HamiltonianMLP, PHNNCore, PHNN)."""
 
 import pytest
 import torch
 from torch import nn
 
-from tsfast.models.phnn import PHNN, HamiltonianMLP, PHNNCore
+from tsfast.models.architectures.phnn import PHNN, HamiltonianMLP, PHNNCore
 
 
 def _rel(a, b):

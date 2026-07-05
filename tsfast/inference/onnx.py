@@ -8,8 +8,8 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from ..models.layers import AR_Model
-from ..models.rnn import WeightDropout
+from ..models._core.layers import AR_Model
+from ..models.architectures.rnn import WeightDropout
 
 
 def _check_no_ar(model):

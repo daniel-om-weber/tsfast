@@ -19,7 +19,7 @@ from torch.nn import functional as F
 from torch.nn import Mish
 from torch.nn.utils.parametrizations import weight_norm
 
-from .layers import SeqLinear
+from .._core.layers import SeqLinear
 from .rnn import SimpleRNN
 
 

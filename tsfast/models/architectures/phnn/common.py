@@ -3,7 +3,7 @@
 The fused backends receive the component-net weights as flat lists in a fixed
 canonical order (``params_of``) and a static :class:`PHNNSpec` describing the shapes
 and step structure. The eager and compiled paths in ``phnn.py`` are untouched; these
-helpers only read the existing submodules of a :class:`~tsfast.models.phnn.PHNNCore`.
+helpers only read the existing submodules of a :class:`~tsfast.models.architectures.phnn.PHNNCore`.
 """
 
 __all__ = [
@@ -47,7 +47,7 @@ def _linears(seq: nn.Module) -> list[nn.Linear]:
 
 
 def spec_of(core) -> PHNNSpec:
-    """Build the :class:`PHNNSpec` for a :class:`~tsfast.models.phnn.PHNNCore`."""
+    """Build the :class:`PHNNSpec` for a :class:`~tsfast.models.architectures.phnn.PHNNCore`."""
     lin = _linears(core.hamiltonian.net)
     hidden = lin[0].out_features
     num_layers = len(lin) - 1

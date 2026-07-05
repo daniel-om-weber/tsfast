@@ -7,8 +7,8 @@ import warnings
 import pytest
 import torch
 
-import tsfast.models.backends as backends
-import tsfast.models.scan as scan
+import tsfast.models._core.dispatch as backends
+import tsfast.models._core.scan as scan
 
 
 @pytest.fixture(autouse=True)
@@ -36,7 +36,7 @@ def test_auto_without_backend_modules_is_silent():
 def test_explicit_missing_backend_warns_once_and_falls_back(monkeypatch):
     # Force the backend module to be genuinely absent (real c/triton backends exist
     # now): a None entry in sys.modules makes the import raise ImportError.
-    monkeypatch.setitem(sys.modules, "tsfast.models.scan_backends.diagonal_c", None)
+    monkeypatch.setitem(sys.modules, "tsfast.models._core.scan_backends.diagonal_c", None)
     monkeypatch.setattr(scan, "backend", "c")
     with pytest.warns(RuntimeWarning, match="falling back"):
         out1 = _run()
@@ -49,10 +49,10 @@ def test_explicit_missing_backend_warns_once_and_falls_back(monkeypatch):
 def test_fake_backend_is_used_and_unsupported_reason_warns(monkeypatch):
     calls = {}
 
-    fake = types.ModuleType("tsfast.models.scan_backends.diagonal_c")
+    fake = types.ModuleType("tsfast.models._core.scan_backends.diagonal_c")
     fake.supports = lambda lam, v, x0: None if v.shape[-2] > 4 else "sequence too short"
     fake.run = lambda lam, v, x0: calls.setdefault("out", torch.zeros(v.shape))
-    monkeypatch.setitem(sys.modules, "tsfast.models.scan_backends.diagonal_c", fake)
+    monkeypatch.setitem(sys.modules, "tsfast.models._core.scan_backends.diagonal_c", fake)
     monkeypatch.setattr(scan, "backend", "c")
 
     out = _run()  # L=8 -> supported -> fake backend result
@@ -65,13 +65,13 @@ def test_fake_backend_is_used_and_unsupported_reason_warns(monkeypatch):
 
 
 def test_forced_doubling_never_touches_backends(monkeypatch):
-    boom = types.ModuleType("tsfast.models.scan_backends.diagonal_c")
+    boom = types.ModuleType("tsfast.models._core.scan_backends.diagonal_c")
 
     def _explode(*a):
         raise AssertionError("backend must not be probed when backend='doubling'")
 
     boom.supports = _explode
     boom.run = _explode
-    monkeypatch.setitem(sys.modules, "tsfast.models.scan_backends.diagonal_c", boom)
+    monkeypatch.setitem(sys.modules, "tsfast.models._core.scan_backends.diagonal_c", boom)
     monkeypatch.setattr(scan, "backend", "doubling")
     _run()

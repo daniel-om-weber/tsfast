@@ -1,6 +1,6 @@
 """Persistent-Triton backend for the selective (time-varying diagonal) recurrence.
 
-The doubling scan in ``tsfast.models.scan`` re-reads the full ``[B, L, N]`` coefficient
+The doubling scan in ``tsfast.models._core.scan`` re-reads the full ``[B, L, N]`` coefficient
 and input tensors ~log2(L) times. This backend instead runs the recurrence as a single
 sequential-in-time persistent kernel: the grid covers ``(batch x N-chunks)`` and each
 program streams over ``L`` once, loading ``a_t`` and ``v_t`` and writing ``x_t`` per step

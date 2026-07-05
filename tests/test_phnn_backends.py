@@ -8,10 +8,10 @@ import pytest
 import torch
 from torch import nn
 
-from tsfast.models.phnn import PHNN, PHNNCore
-from tsfast.models.phnn_backends import spec_of, supports
-from tsfast.models.phnn_backends.backend_c import c_rollout, is_available
-from tsfast.models.phnn_backends.common import flat_params
+from tsfast.models.architectures.phnn import PHNN, PHNNCore
+from tsfast.models.architectures.phnn import spec_of, supports
+from tsfast.models.architectures.phnn.backend_c import c_rollout, is_available
+from tsfast.models.architectures.phnn.common import flat_params
 
 pytestmark = pytest.mark.skipif(not is_available(), reason="no C++ toolchain")
 
@@ -93,7 +93,7 @@ class TestTritonBackend:
     def test_matches_c_forward_and_grads(self, nl, n, m, ny, out, bnd):
         core = _randn_core(n, m, ny, 16, nl, out, bnd, seed=3, dtype=torch.float64)
         spec = spec_of(core)
-        from tsfast.models.phnn_backends.backend_triton import triton_rollout
+        from tsfast.models.architectures.phnn.backend_triton import triton_rollout
 
         x0 = torch.randn(3, n, dtype=torch.float64)
         u = torch.randn(3, 12, m, dtype=torch.float64)

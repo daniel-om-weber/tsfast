@@ -1,5 +1,5 @@
 # CUDA Graphs
 
-::: tsfast.models.cudagraph
+::: tsfast.models._core.cudagraph
     options:
       members_order: source

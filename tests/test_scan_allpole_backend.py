@@ -13,9 +13,9 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-import tsfast.models.scan as scan
-from tsfast.models.dynonet import DynoNet, linear_recurrence
-from tsfast.models.scan_backends import allpole_triton
+import tsfast.models._core.scan as scan
+from tsfast.models.architectures.dynonet import DynoNet, linear_recurrence
+from tsfast.models.architectures.dynonet import allpole_triton
 
 # (B, n_pairs, L, na): dynoNet-realistic lane counts and orders, plus edges
 _SHAPES = [

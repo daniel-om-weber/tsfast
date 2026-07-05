@@ -40,7 +40,7 @@
 
 # %%
 from tsfast.tsdata.benchmark import create_dls_silverbox
-from tsfast.models.scaling import unwrap_model
+from tsfast.models._core.scaling import unwrap_model
 from tsfast.training import (
     RNNLearner,
     fun_rmse,

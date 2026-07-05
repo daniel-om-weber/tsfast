@@ -141,7 +141,7 @@ def norm_loss(fn: Callable, norm_stats, scaler_cls: type | None = None) -> Calla
         norm_stats: normalization statistics used to build the scaler
         scaler_cls: scaler class to use (defaults to StandardScaler)
     """
-    from ..models.scaling import StandardScaler
+    from ..models._core.scaling import StandardScaler
 
     if scaler_cls is None:
         scaler_cls = StandardScaler

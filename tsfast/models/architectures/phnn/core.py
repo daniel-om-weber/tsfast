@@ -32,7 +32,7 @@ __all__ = [
 import torch
 from torch import nn
 
-from .subnet import ResMLP, SubnetEncoder, _mlp
+from ..subnet import ResMLP, SubnetEncoder, _mlp
 
 
 class HamiltonianMLP(nn.Module):
@@ -179,7 +179,7 @@ class PHNNCore(nn.Module):
 class PHNN(nn.Module):
     """OE-pHNN sequence model: SUBNET encoder + pH rollout over ``[u, y]`` input channels.
 
-    Same input contract as :class:`~tsfast.models.subnet.SubnetSSM`: the input
+    Same input contract as :class:`~tsfast.models.architectures.subnet.SubnetSSM`: the input
     tensor carries ``n_input`` input channels then ``n_output`` measured-output
     channels, of which only the first ``n_init`` steps are read (encoder
     warm-up). Predictions start at ``n_init``; earlier positions are zero and
@@ -192,7 +192,7 @@ class PHNN(nn.Module):
     step into one graph, which exhausted memory on long free runs); ``"c"`` and
     ``"triton"`` fuse the whole section rollout and its BPTT into one call (batch-
     parallel C++ on CPU, a persistent per-lane kernel on CUDA — see
-    :mod:`tsfast.models.phnn_backends`); ``"auto"`` picks ``triton`` on CUDA (else
+    :mod:`tsfast.models.architectures.phnn`); ``"auto"`` picks ``triton`` on CUDA (else
     ``compiled``) and ``c`` on CPU (else ``eager``), within the config caps.
 
     Args:
@@ -281,13 +281,13 @@ class PHNN(nn.Module):
         on CUDA and ``eager`` on CPU. An explicit fused backend that does not apply falls
         back the same way with a once-per-process warning.
         """
-        from . import backends as _b
-        from .phnn_backends import spec_of, supports
+        from ..._core import dispatch as _b
+        from .common import spec_of, supports
 
         backend = self.backend
         spec = spec_of(self.core)
         if backend in ("auto", "triton") and u_future.is_cuda:
-            from .phnn_backends import backend_triton
+            from . import backend_triton
 
             if u_future.dtype == torch.float32 and backend_triton.is_available() and supports(spec, "triton"):
                 return "triton"
@@ -295,7 +295,7 @@ class PHNN(nn.Module):
                 _b.warn_fallback("phnn.triton", "PHNN triton backend unavailable for this config; using compiled")
             return "compiled"
         if backend in ("auto", "c") and not u_future.is_cuda:
-            from .phnn_backends import backend_c
+            from . import backend_c
 
             if u_future.dtype in (torch.float32, torch.float64) and backend_c.is_available() and supports(spec, "c"):
                 return "c"
@@ -318,7 +318,7 @@ class PHNN(nn.Module):
             raise ValueError(f"sequence length {x.shape[1]} too short for encoder warm-up n_init={self.n_init}")
         x0 = self.encode(x)
         u_future = x[:, self.n_init :, : self.n_input]
-        from .phnn_backends import spec_of
+        from .common import spec_of
 
         match self._resolve_backend(u_future):
             case "eager":
@@ -326,11 +326,11 @@ class PHNN(nn.Module):
             case "compiled":
                 out = self._rollout_compiled(u_future, x0)
             case "c":
-                from .phnn_backends.backend_c import c_rollout
+                from .backend_c import c_rollout
 
                 out = c_rollout(self.core, spec_of(self.core), u_future.contiguous(), x0.contiguous())
             case "triton":
-                from .phnn_backends.backend_triton import triton_rollout
+                from .backend_triton import triton_rollout
 
                 out = triton_rollout(self.core, spec_of(self.core), u_future.contiguous(), x0.contiguous())
             case unknown:

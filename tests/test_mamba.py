@@ -1,10 +1,10 @@
-"""Tests for tsfast.models.mamba (MambaLayer, DeepMamba)."""
+"""Tests for tsfast.models.architectures.mamba (MambaLayer, DeepMamba)."""
 
 import pytest
 import torch
 import torch.nn.functional as F
 
-from tsfast.models.mamba import DeepMamba, MambaLayer
+from tsfast.models.architectures.mamba import DeepMamba, MambaLayer
 
 
 def _rel(a, b):
@@ -194,7 +194,7 @@ class TestDeepMamba:
         """Gradients through the carried state (conv tail and h0 in, h_last out) match the generic path."""
         if not torch.cuda.is_available():
             pytest.skip("no CUDA")
-        import tsfast.models.scan as scan
+        import tsfast.models._core.scan as scan
 
         torch.manual_seed(0)
         layer = MambaLayer(4, d_state=8).cuda()

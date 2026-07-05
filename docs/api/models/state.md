@@ -1,5 +1,5 @@
 # State Management
 
-::: tsfast.models.state
+::: tsfast.models._core.state
     options:
       members_order: source

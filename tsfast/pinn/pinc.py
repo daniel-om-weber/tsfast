@@ -10,7 +10,7 @@ import torch.autograd.forward_ad as fwAD
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from ..models.layers import SeqLinear
+from ..models._core.layers import SeqLinear
 from .ddpinn import SurrogatePINNLearner
 
 
@@ -88,7 +88,7 @@ class PINC(nn.Module):
         hidden_layer: number of hidden layers in the MLP.
         act: activation function class; defaults to ``Tanh`` — smooth (so the autograd derivative is
             well-behaved), matching the DD-PINN trunk and the standard PINN choice, since
-            :class:`~tsfast.models.layers.SeqLinear` otherwise defaults to ``Mish``.
+            :class:`~tsfast.models._core.layers.SeqLinear` otherwise defaults to ``Mish``.
         ic_mode: ``"soft"`` (default; IC enforced by a :class:`PINCLearner` penalty) or ``"hard"``
             (IC exact by construction, no IC loss; train with the base
             :class:`~tsfast.pinn.ddpinn.SurrogatePINNLearner`).

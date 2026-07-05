@@ -12,8 +12,8 @@ from collections.abc import Callable
 import torch
 from torch import Tensor, nn
 
-from ..models.layers import SeqLinear
-from ..models.scaling import MinMaxScaler
+from ..models._core.layers import SeqLinear
+from ..models._core.scaling import MinMaxScaler
 from ..training.learner import Learner
 from ..tsdata.pipeline import DataLoaders
 
@@ -119,8 +119,8 @@ class DDPINNRollout(nn.Module):
 
     Args:
         model: a trained :class:`DampedAnsatzPINN` (called without the derivative at inference).
-        state_scaler: the :class:`~tsfast.models.scaling.MinMaxScaler` for the state channels.
-        cond_scaler: the :class:`~tsfast.models.scaling.MinMaxScaler` for the conditioning channels (may be empty).
+        state_scaler: the :class:`~tsfast.models._core.scaling.MinMaxScaler` for the state channels.
+        cond_scaler: the :class:`~tsfast.models._core.scaling.MinMaxScaler` for the conditioning channels (may be empty).
         t_sample: physical step size per autoregressive step; must be ``<= t_max``.
         t_max: physical horizon defining the ``[0, t_max] -> [-1, 1]`` time map.
     """

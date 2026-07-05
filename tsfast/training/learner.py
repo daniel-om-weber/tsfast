@@ -17,7 +17,7 @@ import torch
 from torch import Tensor, nn
 from tqdm import tqdm
 
-from ..models.state import detach_state
+from ..models._core.state import detach_state
 from ..tsdata.pipeline import DataLoaders, get_signal_names
 from . import viz
 from .schedulers import flat_cos_scheduler

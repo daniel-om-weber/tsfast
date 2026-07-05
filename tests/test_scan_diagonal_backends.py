@@ -9,8 +9,8 @@ to the sequential loop is covered in test_scan.py).
 import pytest
 import torch
 
-import tsfast.models.scan as scan
-from tsfast.models.scan_backends import diagonal_c, diagonal_triton
+import tsfast.models._core.scan as scan
+from tsfast.models._core.scan_backends import diagonal_c, diagonal_triton
 
 # (v_shape, lam_shape): model-realistic (LRU d_state=64 -> n=64; lam broadcast over batch/time),
 # a per-batch lam, tiny shapes, and the L=1 edge.

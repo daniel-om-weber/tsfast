@@ -29,7 +29,7 @@ import sys
 import torch
 from torch import nn
 
-from tsfast.models.phnn import PHNN
+from tsfast.models.architectures.phnn import PHNN
 
 TOL = 1e-12
 

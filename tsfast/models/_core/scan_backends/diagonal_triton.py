@@ -33,7 +33,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..ssm.backend_triton import is_available
+from ..kernel_triton import is_available
 from .diagonal_c import _prep, _reduce
 
 _DTYPES = (torch.float32, torch.complex64)

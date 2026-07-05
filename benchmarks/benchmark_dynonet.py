@@ -18,7 +18,7 @@ import time
 import torch
 import torch.nn.functional as F
 
-from tsfast.models.dynonet import DynoNet
+from tsfast.models.architectures.dynonet import DynoNet
 
 N_INPUT = 1
 N_OUTPUT = 1

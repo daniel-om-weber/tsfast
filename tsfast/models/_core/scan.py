@@ -22,7 +22,7 @@ import importlib
 import torch
 from torch.autograd.function import once_differentiable
 
-from .backends import warn_fallback
+from .dispatch import warn_fallback
 
 # Process-wide backend override for both scan functions: "auto" resolves to the
 # fastest kernel available for the input's device ("triton" on CUDA, "c" on CPU),

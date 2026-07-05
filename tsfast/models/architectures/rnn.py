@@ -17,7 +17,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from .layers import SeqLinear
+from .._core.layers import SeqLinear
 
 
 def _dropout_mask(x: Tensor, sz: list, p: float) -> Tensor:

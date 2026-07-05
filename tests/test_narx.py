@@ -7,7 +7,7 @@ import pytest
 import numpy as np
 import torch
 
-from tsfast.models.narx import NarxMLP
+from tsfast.models.architectures.narx import NarxMLP
 from tsfast.training import NarxMLPLearner
 
 
@@ -118,7 +118,7 @@ def _rel(a, b):
 
 
 def _assert_backend_parity(backend, device, act="tanh", num_layers=2, washout=7, tol=2e-3):
-    from tsfast.models.narx import NarxMLP
+    from tsfast.models.architectures.narx import NarxMLP
 
     torch.manual_seed(0)
     m = NarxMLP(2, 3, na=3, nb=4, hidden_size=24, num_layers=num_layers, act=act, washout=washout).to(device)
@@ -137,7 +137,7 @@ def _assert_backend_parity(backend, device, act="tanh", num_layers=2, washout=7,
 
 class TestNarxBackends:
     def test_c_parity(self):
-        from tsfast.models.narx import backend_c
+        from tsfast.models.architectures.narx import backend_c
 
         if not backend_c.is_available():
             pytest.skip("no C++ toolchain")
@@ -146,14 +146,14 @@ class TestNarxBackends:
     @pytest.mark.parametrize("act", ["tanh", "sigmoid", "relu"])
     @pytest.mark.parametrize("washout", [0, 7, 100])
     def test_c_parity_acts_and_washouts(self, act, washout):
-        from tsfast.models.narx import backend_c
+        from tsfast.models.architectures.narx import backend_c
 
         if not backend_c.is_available():
             pytest.skip("no C++ toolchain")
         _assert_backend_parity("c", "cpu", act=act, washout=washout)
 
     def test_c_parity_single_layer(self):
-        from tsfast.models.narx import backend_c
+        from tsfast.models.architectures.narx import backend_c
 
         if not backend_c.is_available():
             pytest.skip("no C++ toolchain")
@@ -161,7 +161,7 @@ class TestNarxBackends:
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
     def test_triton_parity(self):
-        from tsfast.models.narx import backend_triton
+        from tsfast.models.architectures.narx import backend_triton
 
         if not backend_triton.is_available():
             pytest.skip("triton unavailable")
@@ -171,14 +171,14 @@ class TestNarxBackends:
     @pytest.mark.parametrize("act", ["tanh", "sigmoid", "relu"])
     @pytest.mark.parametrize("washout", [0, 7, 100])
     def test_triton_parity_acts_and_washouts(self, act, washout):
-        from tsfast.models.narx import backend_triton
+        from tsfast.models.architectures.narx import backend_triton
 
         if not backend_triton.is_available():
             pytest.skip("triton unavailable")
         _assert_backend_parity("triton", "cuda", act=act, washout=washout)
 
     def test_triton_fit_envelope(self):
-        from tsfast.models.narx import NarxSpec, backend_triton
+        from tsfast.models.architectures.narx import NarxSpec, backend_triton
 
         assert backend_triton.fits(NarxSpec(1, 32, (64, 64), "tanh"))
         assert not backend_triton.fits(NarxSpec(6, 32, (64, 64), "tanh"))  # padded buffer 256

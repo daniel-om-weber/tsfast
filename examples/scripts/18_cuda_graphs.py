@@ -46,9 +46,9 @@ import warnings
 
 import torch
 
-from tsfast.models.cnn import TCN
-from tsfast.models.cudagraph import GraphedStatefulModel
-from tsfast.models.rnn import SimpleRNN
+from tsfast.models.architectures.cnn import TCN
+from tsfast.models._core.cudagraph import GraphedStatefulModel
+from tsfast.models.architectures.rnn import SimpleRNN
 
 # %%
 if not torch.cuda.is_available():

@@ -10,10 +10,10 @@ import torch.nn.functional as F
 from collections.abc import Callable
 
 from ..training import Learner, fun_rmse, prediction_concat, truncate_sequence
-from ..models.layers import SeqLinear
-from ..models.scaling import ScaledModel, StandardScaler
-from ..models.state import discover_state_spec, unflatten_state
-from ..models.rnn import RNN
+from ..models._core.layers import SeqLinear
+from ..models._core.scaling import ScaledModel, StandardScaler
+from ..models._core.state import discover_state_spec, unflatten_state
+from ..models.architectures.rnn import RNN
 from ..prediction.fransys import Diag_RNN
 
 
