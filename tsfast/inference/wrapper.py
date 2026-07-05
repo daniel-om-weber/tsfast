@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from ..models.scaling import ScaledModel
+from ..models.scaling import ScaledModel, unwrap_model
 from ..training.transforms import prediction_concat
 
 
@@ -53,12 +53,19 @@ class InferenceWrapper:
     Args:
         learner: trained Learner with model and dls
         device: device for inference ('cpu', 'cuda')
+        max_seq_len: chunk length for long-sequence inference. Defaults to ``None``
+            (no chunking — a single full forward pass, the previous behaviour). Set to a
+            positive int to split sequences longer than it along time and forward them
+            with exact hidden-state carry, keeping memory bounded and staying under
+            cuDNN's ~64k-step RNN limit. Only sound for stateful, *causal* recurrences
+            (unidirectional RNNs), so it is opt-in: callers that need it pass it explicitly.
     """
 
     def __init__(
         self,
         learner,
         device: str | torch.device = "cpu",
+        max_seq_len: int | None = None,
     ):
         if not hasattr(learner, "model") or not hasattr(learner, "dls"):
             raise TypeError("Input 'learner' must be a valid Learner with model and dls.")
@@ -66,6 +73,16 @@ class InferenceWrapper:
         self.model = learner.model.to(self.device).eval()
         self._pred_cb = _find_prediction_concat(learner)
         self._n_model_inputs = _get_n_model_inputs(self.model)
+        # Long test signals (identibench feeds the whole signal in one call) can exceed
+        # cuDNN's ~64k-step RNN limit. Stateful models are then evaluated in chunks along
+        # time, threading (output, state) across boundaries — exact, not an approximation.
+        self.max_seq_len = max_seq_len
+        self._stateful = False
+        if max_seq_len is not None:
+            inner = unwrap_model(self.model)
+            if hasattr(inner, "return_state"):
+                inner.return_state = True  # so chunks can carry hidden state across boundaries
+                self._stateful = True
 
     def _prepare_tensor(self, np_array: np.ndarray, name: str) -> torch.Tensor:
         "Converts numpy array to a 3D tensor [batch, seq_len, features] on the correct device."
@@ -94,6 +111,39 @@ class InferenceWrapper:
         if self._n_model_inputs is None:
             return False
         return self._n_model_inputs > u_tensor.shape[-1]
+
+    def _forward_model(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass, chunking long sequences with exact hidden-state carry.
+
+        Sequences longer than ``max_seq_len`` are split along time and forwarded
+        sequentially, threading the model's ``(output, state)`` across chunk
+        boundaries so the result matches a single forward pass while staying under
+        cuDNN's long-sequence RNN limit and bounding memory. Must run under
+        ``no_grad`` so the carried state does not accumulate a cross-chunk graph.
+        """
+        if self.max_seq_len is None or x.shape[1] <= self.max_seq_len:
+            out = self.model(x)
+            return out[0] if isinstance(out, tuple) else out
+        if not self._stateful:
+            warnings.warn(
+                f"Sequence length {x.shape[1]} exceeds max_seq_len={self.max_seq_len} but the "
+                "model is not stateful (no return_state); running a single forward pass, which "
+                "may exceed cuDNN's ~64k-step RNN limit on GPU. Pass max_seq_len=None to silence.",
+                UserWarning,
+                stacklevel=2,
+            )
+            out = self.model(x)
+            return out[0] if isinstance(out, tuple) else out
+        outs: list[torch.Tensor] = []
+        state = None
+        for x_sub in x.split(self.max_seq_len, dim=1):
+            result = self.model(x_sub, state=state) if state is not None else self.model(x_sub)
+            if isinstance(result, tuple):
+                p, state = result
+            else:
+                p, state = result, None
+            outs.append(p)
+        return torch.cat(outs, dim=1)
 
     @torch.no_grad()
     def inference(
@@ -143,8 +193,7 @@ class InferenceWrapper:
         else:
             final_input = u_tensor
 
-        model_output = self.model(final_input)
-        output_tensor = model_output[0] if isinstance(model_output, tuple) else model_output
+        output_tensor = self._forward_model(final_input)
         if not isinstance(output_tensor, torch.Tensor):
             raise RuntimeError(f"Model output is not a tensor. Type: {type(output_tensor)}")
 
