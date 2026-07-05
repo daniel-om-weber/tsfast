@@ -30,12 +30,18 @@ from ..ssm.backend_triton import is_available
 from .diagonal_c import _prep, _reduce
 
 _DTYPES = (torch.float32, torch.complex64)
-_BLOCK = 128
+# The recurrence is sequential in time, so a lane's throughput is memory-latency bound; with only
+# B*n independent lanes at model-realistic batch sizes there are too few warps to hide that latency
+# by occupancy alone. Software-pipelining the loop (num_stages) prefetches the independent per-step
+# input loads several iterations ahead, which is what recovers most of the speedup at small batch.
+_BLOCK = 32
+_NUM_STAGES = 8
 
 
 @triton.jit
 def _diag_fwd_kernel(
-    lam_ptr, v_ptr, x0_ptr, out_ptr, M, L, N, BLOCK: tl.constexpr, STR: tl.constexpr, HAS_X0: tl.constexpr
+    lam_ptr, v_ptr, x0_ptr, out_ptr, M, L, N,
+    BLOCK: tl.constexpr, STR: tl.constexpr, HAS_X0: tl.constexpr, NUM_STAGES: tl.constexpr,
 ):
     pid = tl.program_id(0)
     lane = pid * BLOCK + tl.arange(0, BLOCK)
@@ -53,7 +59,7 @@ def _diag_fwd_kernel(
         xr = tl.zeros([BLOCK], dtype=tl.float32)
         xi = tl.zeros([BLOCK], dtype=tl.float32)
 
-    for t in tl.range(0, L):
+    for t in tl.range(0, L, num_stages=NUM_STAGES):
         off = base + t * N * STR
         vr = tl.load(v_ptr + off, mask=mask)
         if STR == 2:
@@ -71,7 +77,7 @@ def _diag_fwd_kernel(
 @triton.jit
 def _diag_bwd_kernel(
     g_ptr, lam_ptr, out_ptr, x0_ptr, gv_ptr, glam_ptr, gx0_ptr, M, L, N,
-    BLOCK: tl.constexpr, STR: tl.constexpr, HAS_X0: tl.constexpr,
+    BLOCK: tl.constexpr, STR: tl.constexpr, HAS_X0: tl.constexpr, NUM_STAGES: tl.constexpr,
 ):
     pid = tl.program_id(0)
     lane = pid * BLOCK + tl.arange(0, BLOCK)
@@ -95,7 +101,7 @@ def _diag_bwd_kernel(
     glr = tl.zeros([BLOCK], dtype=tl.float32)
     gli = tl.zeros([BLOCK], dtype=tl.float32)
 
-    for ti in tl.range(0, L):
+    for ti in tl.range(0, L, num_stages=NUM_STAGES):
         t = L - 1 - ti
         off = base + t * N * STR
         gr = tl.load(g_ptr + off, mask=mask)
@@ -169,7 +175,7 @@ def _forward(lam_lane, v_flat, x0_lane, meta):
     grid = (triton.cdiv(lanes, _BLOCK),)
     _diag_fwd_kernel[grid](
         _as_real(lam_lane), _as_real(v_flat), x0v, _as_real(out), m, L, n,
-        BLOCK=_BLOCK, STR=str_, HAS_X0=has_x0, num_warps=_num_warps(_BLOCK),
+        BLOCK=_BLOCK, STR=str_, HAS_X0=has_x0, NUM_STAGES=_NUM_STAGES, num_warps=_num_warps(_BLOCK),
     )
     return out
 
@@ -200,7 +206,7 @@ class _TritonDiagonal(torch.autograd.Function):
         _diag_bwd_kernel[grid](
             _as_real(g), _as_real(lam_lane), _as_real(out), x0v,
             _as_real(gv), _as_real(glam), _as_real(gx0) if has_x0 else dummy, m, L, n,
-            BLOCK=_BLOCK, STR=str_, HAS_X0=has_x0, num_warps=_num_warps(_BLOCK),
+            BLOCK=_BLOCK, STR=str_, HAS_X0=has_x0, NUM_STAGES=_NUM_STAGES, num_warps=_num_warps(_BLOCK),
         )
         needs = (ctx.needs_input_grad[0], ctx.needs_input_grad[1], ctx.needs_input_grad[2])
         return _reduce(gv, glam, gx0, ctx.lam, ctx.v, ctx.x0, ctx.meta, needs)
