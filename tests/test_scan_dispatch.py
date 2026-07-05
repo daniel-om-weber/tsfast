@@ -34,6 +34,9 @@ def test_auto_without_backend_modules_is_silent():
 
 
 def test_explicit_missing_backend_warns_once_and_falls_back(monkeypatch):
+    # Force the backend module to be genuinely absent (real c/triton backends exist
+    # now): a None entry in sys.modules makes the import raise ImportError.
+    monkeypatch.setitem(sys.modules, "tsfast.models.scan_backends.diagonal_c", None)
     monkeypatch.setattr(scan, "backend", "c")
     with pytest.warns(RuntimeWarning, match="falling back"):
         out1 = _run()
