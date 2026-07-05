@@ -29,12 +29,21 @@ class TestDiagonalRecurrence:
                 x_seq = _diagonal_recurrence_sequential(lam, v, init)
                 assert (x_scan - x_seq).abs().max() < 1e-10
 
-    def test_gradcheck(self):
+    @pytest.mark.parametrize("dtype", [torch.float64, torch.complex128])
+    @pytest.mark.parametrize("with_x0", [True, False])
+    def test_gradcheck(self, dtype, with_x0):
         torch.manual_seed(0)
-        lam = (torch.rand(2, 3, dtype=torch.complex128) * 0.8).requires_grad_()
-        v = torch.randn(2, 9, 3, dtype=torch.complex128, requires_grad=True)
-        x0 = torch.randn(2, 3, dtype=torch.complex128, requires_grad=True)
+        lam = (torch.rand(2, 3).to(dtype) * 0.8).requires_grad_()
+        v = torch.randn(2, 9, 3, dtype=dtype, requires_grad=True)
+        x0 = torch.randn(2, 3, dtype=dtype, requires_grad=True) if with_x0 else None
         assert torch.autograd.gradcheck(diagonal_recurrence, (lam, v, x0))
+
+    def test_gradcheck_broadcast_lam(self):
+        # lam without batch dims, broadcast against a batched v: grads must reduce correctly
+        torch.manual_seed(0)
+        lam = (torch.rand(3, dtype=torch.complex128) * 0.8).requires_grad_()
+        v = torch.randn(2, 5, 9, 3, dtype=torch.complex128, requires_grad=True)
+        assert torch.autograd.gradcheck(diagonal_recurrence, (lam, v, None))
 
 
 class TestSelectiveRecurrence:
@@ -50,12 +59,21 @@ class TestSelectiveRecurrence:
                 x_seq = _diagonal_recurrence_sequential(lam, v, init)
                 assert (x_scan - x_seq).abs().max() < 1e-10
 
-    def test_gradcheck(self):
+    @pytest.mark.parametrize("dtype", [torch.float64, torch.complex128])
+    @pytest.mark.parametrize("with_x0", [True, False])
+    def test_gradcheck(self, dtype, with_x0):
         torch.manual_seed(0)
-        lam = (torch.rand(2, 9, 3, dtype=torch.float64) * 0.9).requires_grad_()
-        v = torch.randn(2, 9, 3, dtype=torch.float64, requires_grad=True)
-        x0 = torch.randn(2, 3, dtype=torch.float64, requires_grad=True)
+        lam = (torch.rand(2, 9, 3).to(dtype) * 0.9).requires_grad_()
+        v = torch.randn(2, 9, 3, dtype=dtype, requires_grad=True)
+        x0 = torch.randn(2, 3, dtype=dtype, requires_grad=True) if with_x0 else None
         assert torch.autograd.gradcheck(selective_recurrence, (lam, v, x0))
+
+    def test_gradcheck_broadcast_lam(self):
+        # lam missing the leading batch dim, as in the constant-specialization test
+        torch.manual_seed(0)
+        lam = (torch.rand(5, 9, 3, dtype=torch.complex128) * 0.9).requires_grad_()
+        v = torch.randn(2, 5, 9, 3, dtype=torch.complex128, requires_grad=True)
+        assert torch.autograd.gradcheck(selective_recurrence, (lam, v, None))
 
     def test_matches_constant_specialization(self):
         torch.manual_seed(0)
