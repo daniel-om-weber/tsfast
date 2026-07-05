@@ -189,8 +189,11 @@ class PHNN(nn.Module):
     but routes each transition through a ``torch.compile``d ``core.step`` — the
     traced graph covers a single step, so graph size and compile time are
     independent of sequence length (compiling the whole rollout unrolled every
-    step into one graph, which exhausted memory on long free runs); ``"auto"``
-    picks ``compiled`` on CUDA and ``eager`` otherwise.
+    step into one graph, which exhausted memory on long free runs); ``"c"`` and
+    ``"triton"`` fuse the whole section rollout and its BPTT into one call (batch-
+    parallel C++ on CPU, a persistent per-lane kernel on CUDA — see
+    :mod:`tsfast.models.phnn_backends`); ``"auto"`` picks ``triton`` on CUDA (else
+    ``compiled``) and ``c`` on CPU (else ``eager``), within the config caps.
 
     Args:
         n_input: exogenous input dimension.
