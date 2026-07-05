@@ -76,7 +76,7 @@ def _prep(core, spec: PHNNSpec):
     # Hamiltonian: scalar output; last weight -> [ph] vector, last bias scalar
     mlp("h", p["hw"], p["hb"])
     d["h_wout"] = _pad2(p["hw"][-1].reshape(1, nh).t(), ph, 1).reshape(ph).contiguous()  # [ph]
-    d["h_bout"] = p["hb"][-1].reshape(()).float().contiguous()
+    d["h_bout"] = p["hb"][-1].detach().reshape(()).float().contiguous()
     # J, R: last weight [n*n, nh] -> tile [ph, pn, pn] indexed [k, i, j]
     for pre in ("j", "r"):
         mlp(pre, p[f"{pre}w"], p[f"{pre}b"])
