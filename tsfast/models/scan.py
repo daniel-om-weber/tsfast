@@ -13,6 +13,8 @@ long sequences at large batch sizes.
 __all__ = [
     "diagonal_recurrence",
     "selective_recurrence",
+    "complex_in_proj",
+    "real_out_proj",
 ]
 
 import importlib
@@ -204,6 +206,50 @@ def selective_recurrence(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | 
     """
     out = _dispatch("selective", lam, v, x0)
     return out if out is not None else _SelectiveRecurrence.apply(lam, v, x0)
+
+
+def complex_in_proj(u: torch.Tensor, W_re: torch.Tensor, W_im: torch.Tensor) -> torch.Tensor:
+    """Project a real sequence into complex state space, ``u @ (W_re + i W_im).mT``, as one real GEMM.
+
+    Interleaving the real and imaginary rows of ``W`` into a real ``[d, 2n]`` weight makes the
+    GEMM output contiguous in exactly ``torch.view_as_real``'s layout, so the complex result is
+    a free view. Compared to ``torch.complex(u @ W_re.mT, u @ W_im.mT)`` this saves a GEMM call
+    and the sequence-sized complex packing kernel (plus its unpacking in backward) — for the
+    diagonal-recurrence layers these boundary projections otherwise rival the scan itself in
+    memory traffic.
+
+    Args:
+        u: real input sequence ``[..., d]``.
+        W_re: real part of the projection ``[n, d]``.
+        W_im: imaginary part of the projection ``[n, d]``.
+
+    Returns:
+        Complex sequence ``[..., n]``.
+    """
+    n, d = W_re.shape
+    W = torch.stack((W_re, W_im), dim=-1).permute(1, 0, 2).reshape(d, 2 * n)
+    return torch.view_as_complex((u @ W).unflatten(-1, (n, 2)))
+
+
+def real_out_proj(x: torch.Tensor, W_re: torch.Tensor, W_im: torch.Tensor) -> torch.Tensor:
+    """Read a real sequence out of complex state space, ``Re(x @ (W_re + i W_im).mT)``, as one real GEMM.
+
+    The counterpart of ``complex_in_proj``: ``view_as_real`` of the (contiguous) scan output is
+    a free view whose last axis folds into an interleaved real ``[out, 2n]`` weight. Compared to
+    ``x.real @ W_re.mT - x.imag @ W_im.mT`` this saves a GEMM call, the strided ``.real`` /
+    ``.imag`` extraction copies, the subtraction, and the complex gradient repacking in backward.
+
+    Args:
+        x: complex sequence ``[..., n]``.
+        W_re: real part of the readout ``[out, n]``.
+        W_im: imaginary part of the readout ``[out, n]``.
+
+    Returns:
+        Real sequence ``[..., out]``.
+    """
+    out, n = W_re.shape
+    W = torch.stack((W_re, -W_im), dim=-1).reshape(out, 2 * n)
+    return torch.view_as_real(x).flatten(-2) @ W.mT
 
 
 def _diagonal_recurrence_sequential(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None = None) -> torch.Tensor:

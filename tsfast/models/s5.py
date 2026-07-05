@@ -13,7 +13,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from .scan import _diagonal_recurrence_sequential, diagonal_recurrence
+from .scan import _diagonal_recurrence_sequential, complex_in_proj, diagonal_recurrence, real_out_proj
 
 
 def make_dplr_hippo(n: int) -> tuple[np.ndarray, np.ndarray]:
@@ -182,7 +182,7 @@ class S5(nn.Module):
             Output sequence ``[batch, seq, d_model]``, optionally with the new state.
         """
         lam_bar, B_bar = self.discretize()
-        v = torch.complex(u @ B_bar.real.mT, u @ B_bar.imag.mT)
+        v = complex_in_proj(u, B_bar.real, B_bar.imag)
         match self.backend:
             case "scan":
                 x = diagonal_recurrence(lam_bar, v, state)
@@ -190,10 +190,9 @@ class S5(nn.Module):
                 x = _diagonal_recurrence_sequential(lam_bar, v, state)
             case unknown:
                 raise ValueError(f"unknown backend {unknown!r}, expected 'scan' or 'eager'")
-        y = x.real @ self.C_re.mT - x.imag @ self.C_im.mT
-        if self.conj_sym:
-            y = 2 * y
-        y = y + self.D * u
+        # under conj_sym the output is 2 * Re(C x); the factor folds into the readout weights
+        C_re, C_im = (2 * self.C_re, 2 * self.C_im) if self.conj_sym else (self.C_re, self.C_im)
+        y = real_out_proj(x, C_re, C_im) + self.D * u
         if not return_state:
             return y
         return y, x[..., -1, :]

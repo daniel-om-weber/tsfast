@@ -11,7 +11,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from .scan import _diagonal_recurrence_sequential, diagonal_recurrence
+from .scan import _diagonal_recurrence_sequential, complex_in_proj, diagonal_recurrence, real_out_proj
 
 
 class LRU(nn.Module):
@@ -96,7 +96,7 @@ class LRU(nn.Module):
         """
         lam = self.eigenvalues()
         gamma = torch.exp(self.gamma_log).unsqueeze(-1)
-        v = torch.complex(u @ (gamma * self.B_re).mT, u @ (gamma * self.B_im).mT)
+        v = complex_in_proj(u, gamma * self.B_re, gamma * self.B_im)
         match self.backend:
             case "scan":
                 x = diagonal_recurrence(lam, v, state)
@@ -104,7 +104,7 @@ class LRU(nn.Module):
                 x = _diagonal_recurrence_sequential(lam, v, state)
             case unknown:
                 raise ValueError(f"unknown backend {unknown!r}, expected 'scan' or 'eager'")
-        y = x.real @ self.C_re.mT - x.imag @ self.C_im.mT + u @ self.D.mT
+        y = real_out_proj(x, self.C_re, self.C_im) + u @ self.D.mT
         if not return_state:
             return y
         return y, x[..., -1, :]
