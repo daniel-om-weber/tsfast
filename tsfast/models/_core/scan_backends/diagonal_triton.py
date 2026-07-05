@@ -66,7 +66,7 @@ def _combine_c(a1r, a1i, b1r, b1i, a2r, a2i, b2r, b2i):
     return ar, ai, br, bi
 
 
-@triton.autotune(configs=_configs(), key=["M", "L", "N", "STR", "HAS_X0"])
+@triton.autotune(configs=_configs(), key=["M", "N", "STR", "HAS_X0"])  # L excluded: L-independent grid; best config L-stable to a near-tie (<=9% at L=5000, measured) — no re-autotune per horizon length
 @triton.jit
 def _diag_fwd_kernel(
     lam_ptr,
@@ -123,7 +123,7 @@ def _diag_fwd_kernel(
         xr = tl.sum(tl.where(last, xr_c, 0.0), axis=0)
 
 
-@triton.autotune(configs=_configs(), key=["M", "L", "N", "STR", "HAS_X0"])
+@triton.autotune(configs=_configs(), key=["M", "N", "STR", "HAS_X0"])  # L excluded: L-independent grid; best config L-stable to a near-tie (<=9% at L=5000, measured) — no re-autotune per horizon length
 @triton.jit
 def _diag_bwd_kernel(
     g_ptr,

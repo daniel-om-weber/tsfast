@@ -75,7 +75,10 @@ if _HAVE_TRITON:
         # matches F.softplus's overflow threshold of 20
         return tl.where(x > 20.0, x, tl.log(1.0 + tl.exp(tl.minimum(x, 20.0))))
 
-    @triton.autotune(configs=_fwd_configs(), key=["L", "D", "N", "STORE_CHK", "BLOCK_D"])
+    # L is intentionally NOT an autotune key: the launch grid is B*cdiv(D, BLOCK_D)
+    # (L is only the inner tile-loop trip count), so the optimal (BLOCK_T, num_warps)
+    # is L-invariant. Keying on L would re-search on every horizon-schedule length.
+    @triton.autotune(configs=_fwd_configs(), key=["D", "N", "STORE_CHK", "BLOCK_D"])
     @triton.jit
     def _mamba_fwd(
         draw_ptr,  # [B, L, D] dt_proj output, pre-softplus
@@ -151,7 +154,7 @@ if _HAVE_TRITON:
             h = tl.sum(tl.where(rows[:, None, None] == BLOCK_T - 1, h_c, 0.0), axis=0)
         tl.store(hlast_ptr + b * D * N + dn_off, h, mask=mask_dn)
 
-    @triton.autotune(configs=_bwd_configs(), key=["L", "D", "N", "BLOCK_D"])
+    @triton.autotune(configs=_bwd_configs(), key=["D", "N", "BLOCK_D"])  # L-invariant, see fwd
     @triton.jit
     def _mamba_bwd(
         draw_ptr,  # [B, L, D]

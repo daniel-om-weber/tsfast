@@ -71,7 +71,7 @@ if _HAVE_TRITON:
         )
         return xv + tv
 
-    @triton.autotune(configs=_fwd_configs(), key=["L", "D", "K"])
+    @triton.autotune(configs=_fwd_configs(), key=["D", "K"])  # L excluded: config stable across length
     @triton.jit
     def _conv_fwd(
         x_ptr,  # [B, L, D] strided (chunk view of in_proj)
@@ -113,7 +113,7 @@ if _HAVE_TRITON:
         m_td = (offs_t < L)[:, None] & m_d[None, :]
         tl.store(out_ptr + b * L * D + offs_t[:, None] * D + offs_d[None, :], out, mask=m_td)
 
-    @triton.autotune(configs=_bwd_configs(), key=["L", "D", "K"])
+    @triton.autotune(configs=_bwd_configs(), key=["D", "K"])  # L excluded: config stable across length
     @triton.jit
     def _conv_bwd(
         x_ptr,  # [B, L, D] strided
