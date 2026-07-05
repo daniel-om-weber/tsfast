@@ -6,11 +6,15 @@ __all__ = [
     "DynoNet",
 ]
 
+import importlib
+
 import torch
 import torch.nn.functional as F
 from torch import nn
 from torch.autograd.function import once_differentiable
 
+from . import scan
+from .backends import warn_fallback
 from .layers import SeqLinear
 
 
@@ -62,6 +66,32 @@ class _MatrixRecurrence(torch.autograd.Function):
         if x0 is not None and ctx.needs_input_grad[2]:
             grad_x0 = (G[..., :1, :] @ A).squeeze(-2).sum_to_size(x0.shape)  # (A^T G_1) as a row vector
         return grad_A, grad_v, grad_x0
+
+
+def _fused_allpole(a, w, y0):
+    """Dispatch the fused all-pole Triton kernel; None means run the matrix doubling scan.
+
+    Same backend policy as Mamba's ``_fused_ssm``: serves ``scan.backend`` "auto"
+    (CUDA only) and "triton"; silent on non-CUDA devices under "auto", warns once
+    per process otherwise.
+    """
+    if scan.backend not in ("auto", "triton"):
+        return None
+    if scan.backend == "auto" and w.device.type != "cuda":
+        return None
+    try:
+        mod = importlib.import_module(".scan_backends.allpole_triton", __package__)
+    except Exception as e:  # pragma: no cover - triton import failure
+        reason = f"backend import failed ({e!r})"
+    else:
+        reason = mod.supports(a, w, y0)
+        if reason is None:
+            return mod.run(a, w, y0)
+    warn_fallback(
+        "scan.allpole.triton",
+        f"fused all-pole triton kernel unusable: {reason}; falling back to the matrix doubling scan",
+    )
+    return None
 
 
 def linear_recurrence(A: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None = None) -> torch.Tensor:
@@ -122,7 +152,9 @@ class LinearDynamicalOperator(nn.Module):
         out_channels: number of output signals.
         nb: number of numerator (FIR) taps per filter.
         na: denominator order per filter; ``0`` gives a pure FIR operator.
-        backend: ``"scan"`` (log-doubling, parallel) or ``"eager"`` (sequential loop).
+        backend: ``"scan"`` (parallel; on CUDA float32 the fused all-pole Triton kernel,
+            honoring ``tsfast.models.scan.backend``, else the log-doubling matrix scan)
+            or ``"eager"`` (sequential loop).
     """
 
     def __init__(self, in_channels: int, out_channels: int, nb: int = 8, na: int = 2, backend: str = "scan"):
@@ -174,16 +206,29 @@ class LinearDynamicalOperator(nn.Module):
         w = F.conv1d(u_buf.transpose(1, 2), weight, groups=self.in_channels)
 
         if self.na > 0:
-            v = F.pad(w.unsqueeze(-1), (0, self.na - 1))
+            y_pairs = x_last = None
             match self.backend:
                 case "scan":
-                    x = linear_recurrence(self._companion(), v, x0)
+                    # the companion state is a shift register of past outputs, so the fused
+                    # kernel runs the scalar all-pole form y_t = w_t - sum_i a_i y_{t-i}
+                    a = self.a_coeff.permute(1, 0, 2).reshape(self.n_pairs, self.na)
+                    y_pairs = _fused_allpole(a, w, x0)
+                    if y_pairs is None:
+                        x = linear_recurrence(self._companion(), F.pad(w.unsqueeze(-1), (0, self.na - 1)), x0)
                 case "eager":
-                    x = _linear_recurrence_sequential(self._companion(), v, x0)
+                    x = _linear_recurrence_sequential(self._companion(), F.pad(w.unsqueeze(-1), (0, self.na - 1)), x0)
                 case unknown:
                     raise ValueError(f"unknown backend {unknown!r}, expected 'scan' or 'eager'")
-            y_pairs = x[..., 0]
-            x_last = x[..., -1, :]
+            if y_pairs is None:
+                y_pairs = x[..., 0]
+                x_last = x[..., -1, :]
+            else:
+                # x_last[j] = y_{L-1-j}, drawing from x0 when the chunk is shorter than na
+                x_last = (
+                    y_pairs[..., L - self.na :].flip(-1)
+                    if L >= self.na
+                    else torch.cat((y_pairs.flip(-1), x0[..., : self.na - L]), dim=-1)
+                )
         else:
             y_pairs = w
             x_last = u.new_zeros(B, self.n_pairs, 0)

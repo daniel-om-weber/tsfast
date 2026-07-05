@@ -1,7 +1,7 @@
 """Kernel backends for the scan recurrences, one module per (op, backend) pair.
 
-Module naming: ``{op}_{backend}.py`` with ``op`` in ``{"selective", "diagonal"}``
-and ``backend`` in ``{"triton", "c"}``. Each module exposes:
+Module naming: ``{op}_{backend}.py`` with ``op`` in ``{"selective", "diagonal",
+"allpole"}`` and ``backend`` in ``{"triton", "c"}``. Each module exposes:
 
 - ``supports(lam, v, x0) -> str | None`` — None when the backend can handle these
   tensors (device, dtype, shape limits); otherwise a short reason used in the
