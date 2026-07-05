@@ -15,8 +15,53 @@ __all__ = [
     "selective_recurrence",
 ]
 
+import importlib
+
 import torch
 from torch.autograd.function import once_differentiable
+
+from .backends import warn_fallback
+
+# Process-wide backend override for both scan functions: "auto" resolves to the
+# fastest kernel available for the input's device ("triton" on CUDA, "c" on CPU),
+# falling back to the pure-PyTorch doubling scan with a once-per-process warning.
+# "doubling" forces the fallback; explicit "triton"/"c" warn whenever unusable.
+backend: str = "auto"
+
+_AUTO_ORDER = {"cuda": ("triton",), "cpu": ("c",)}
+
+
+def _dispatch(op: str, lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None):
+    """Try the resolved kernel backends for ``op``; None means run the doubling scan.
+
+    Backend modules live in ``scan_backends/{op}_{name}.py`` and expose
+    ``supports(lam, v, x0) -> str | None`` (a reason string when unusable) and
+    ``run(lam, v, x0) -> Tensor`` (autograd-capable). A backend module that does
+    not exist is skipped silently under "auto" (not implemented is not an error);
+    any other failure warns once per process.
+    """
+    if backend == "doubling":
+        return None
+    names = _AUTO_ORDER.get(v.device.type, ()) if backend == "auto" else (backend,)
+    for name in names:
+        try:
+            mod = importlib.import_module(f".scan_backends.{op}_{name}", __package__)
+        except ModuleNotFoundError as e:
+            reason = f"backend module not available ({e})"
+            if backend == "auto" and e.name and e.name.rsplit(".", 1)[-1] == f"{op}_{name}":
+                continue
+        except Exception as e:  # a backend that exists but fails to load is worth a warning
+            reason = f"backend import failed ({e!r})"
+        else:
+            reason = mod.supports(lam, v, x0)
+            if reason is None:
+                return mod.run(lam, v, x0)
+        warn_fallback(
+            f"scan.{op}.{name}",
+            f"scan backend {name!r} unusable for {op} recurrence: {reason}; "
+            "falling back to the pure-PyTorch doubling scan",
+        )
+    return None
 
 
 def _scan_diagonal_(x: torch.Tensor, lam: torch.Tensor) -> torch.Tensor:
@@ -135,7 +180,8 @@ def diagonal_recurrence(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | N
     Returns:
         States ``x_1 .. x_L`` as ``[..., L, n]``.
     """
-    return _DiagonalRecurrence.apply(lam, v, x0)
+    out = _dispatch("diagonal", lam, v, x0)
+    return out if out is not None else _DiagonalRecurrence.apply(lam, v, x0)
 
 
 def selective_recurrence(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None = None) -> torch.Tensor:
@@ -156,7 +202,8 @@ def selective_recurrence(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | 
     Returns:
         States ``x_1 .. x_L`` as ``[..., L, n]``.
     """
-    return _SelectiveRecurrence.apply(lam, v, x0)
+    out = _dispatch("selective", lam, v, x0)
+    return out if out is not None else _SelectiveRecurrence.apply(lam, v, x0)
 
 
 def _diagonal_recurrence_sequential(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None = None) -> torch.Tensor:
