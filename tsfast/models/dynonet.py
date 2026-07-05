@@ -9,8 +9,59 @@ __all__ = [
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torch.autograd.function import once_differentiable
 
 from .layers import SeqLinear
+
+
+def _doubling_scan(A: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+    """Log-doubling scan ``x_t = A x_{t-1} + v_t`` (cold start ``x_0 = 0``) for constant ``A``.
+
+    Each doubling step extends the summation window by a factor of two with one batched matmul
+    over the whole sequence, so the sequential depth is ``ceil(log2(L))``. Purely functional
+    (no in-place mutation), so it never touches its arguments; the output aliases no input.
+    """
+    L, s, Ap = v.shape[-2], 1, A
+    x = v if L > 1 else v.clone()  # the loop below rebinds x on its first pass; clone guards L == 1
+    while s < L:
+        shifted = F.pad(x[..., :-s, :], (0, 0, s, 0))
+        x = x + shifted @ Ap.transpose(-1, -2)
+        Ap = Ap @ Ap
+        s *= 2
+    return x
+
+
+def _x_prev(x: torch.Tensor, x0: torch.Tensor | None) -> torch.Tensor:
+    """States ``x_0 .. x_{L-1}`` aligned with steps ``1 .. L`` (zeros for a cold start)."""
+    first = torch.zeros_like(x[..., :1, :]) if x0 is None else x0.unsqueeze(-2).expand_as(x[..., :1, :])
+    return torch.cat((first, x[..., :-1, :]), dim=-2)
+
+
+class _MatrixRecurrence(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, A, v, x0):
+        ctx.v_shape = v.shape  # captured before the x0 injection, which may broadcast v's leading dims
+        if x0 is not None:
+            v = torch.cat((v[..., :1, :] + x0.unsqueeze(-2) @ A.transpose(-1, -2), v[..., 1:, :]), dim=-2)
+        x = _doubling_scan(A, v)
+        ctx.save_for_backward(A, x, x0)
+        return x
+
+    @staticmethod
+    @once_differentiable
+    def backward(ctx, g):
+        A, x, x0 = ctx.saved_tensors
+        # G_t = A^T G_{t+1} + g_t: the same constant-matrix doubling scan with A transposed, run
+        # time-reversed. torch.flip copies, so the flipped gradient never aliases the saved output.
+        G = _doubling_scan(A.transpose(-1, -2), g.flip(-2)).flip(-2)
+        grad_A = grad_v = grad_x0 = None
+        if ctx.needs_input_grad[0]:
+            grad_A = torch.einsum("...ti,...tj->...ij", G, _x_prev(x, x0)).sum_to_size(A.shape)
+        if ctx.needs_input_grad[1]:
+            grad_v = G.sum_to_size(ctx.v_shape)
+        if x0 is not None and ctx.needs_input_grad[2]:
+            grad_x0 = (G[..., :1, :] @ A).squeeze(-2).sum_to_size(x0.shape)  # (A^T G_1) as a row vector
+        return grad_A, grad_v, grad_x0
 
 
 def linear_recurrence(A: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None = None) -> torch.Tensor:
@@ -19,8 +70,10 @@ def linear_recurrence(A: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None 
     Because ``A`` is constant along the sequence, the recurrence is a prefix sum
     ``x_t = A^t x_0 + sum_k A^(t-k) v_k`` that parallelizes exactly: each doubling step extends
     the summation window by a factor of two using one batched matmul over the whole sequence,
-    so the sequential depth is ``ceil(log2(L))`` instead of ``L``. Exact for any spectral
-    radius of ``A`` and differentiable by plain autograd on any device.
+    so the sequential depth is ``ceil(log2(L))`` instead of ``L``. Exact for any spectral radius
+    of ``A``. Gradients come from the analytic matrix adjoint (the reverse-time scan
+    ``G_t = A^T G_{t+1} + g_t``) rather than autograd replay through the doubling levels, so
+    backward memory is O(L) instead of the O(L log L) the levels would retain. Real dtypes only.
 
     Args:
         A: transition matrices ``[..., n, n]``, broadcast against the leading dims of ``v``.
@@ -30,16 +83,7 @@ def linear_recurrence(A: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None 
     Returns:
         States ``x_1 .. x_L`` as ``[..., L, n]``.
     """
-    L = v.shape[-2]
-    if x0 is not None:
-        v = torch.cat((v[..., :1, :] + x0.unsqueeze(-2) @ A.transpose(-1, -2), v[..., 1:, :]), dim=-2)
-    x, Ap, s = v, A, 1
-    while s < L:
-        shifted = F.pad(x[..., :-s, :], (0, 0, s, 0))
-        x = x + shifted @ Ap.transpose(-1, -2)
-        Ap = Ap @ Ap
-        s *= 2
-    return x
+    return _MatrixRecurrence.apply(A, v, x0)
 
 
 def _linear_recurrence_sequential(A: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None = None) -> torch.Tensor:
