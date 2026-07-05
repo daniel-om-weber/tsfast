@@ -5,13 +5,43 @@ __all__ = [
     "DeepMamba",
 ]
 
+import importlib
 import math
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
+from . import scan
+from .backends import warn_fallback
 from .scan import _diagonal_recurrence_sequential, selective_recurrence
+
+
+def _fused_ssm(draw, A, B_t, C_t, u, z, Dp, h0):
+    """Dispatch the fused Mamba SSM kernel; None means run the generic scan path.
+
+    Honors ``tsfast.models.scan.backend``: the fused kernel serves "auto" (CUDA only)
+    and "triton"; "doubling"/"c" force the generic path. Missing module or unsupported
+    inputs warn once per process, except on non-CUDA devices under "auto", where the
+    generic C/doubling path is the intended backend and silence is correct.
+    """
+    if scan.backend not in ("auto", "triton"):
+        return None
+    if scan.backend == "auto" and draw.device.type != "cuda":
+        return None
+    try:
+        mod = importlib.import_module(".scan_backends.mamba_triton", __package__)
+    except Exception as e:  # pragma: no cover - triton import failure
+        reason = f"backend import failed ({e!r})"
+    else:
+        reason = mod.supports(draw, A, B_t, C_t, u, z, Dp, h0)
+        if reason is None:
+            return mod.run(draw, A, B_t, C_t, u, z, Dp, h0)
+    warn_fallback(
+        "scan.mamba.triton",
+        f"fused mamba triton kernel unusable: {reason}; falling back to the generic selective scan",
+    )
+    return None
 
 
 class MambaLayer(nn.Module):
@@ -41,7 +71,9 @@ class MambaLayer(nn.Module):
         dt_rank: rank of the ``Delta`` projection bottleneck; ``ceil(d_model / 16)`` if None.
         dt_min: lower bound of the timestep initialization.
         dt_max: upper bound of the timestep initialization.
-        backend: ``"scan"`` (parallel Hillis-Steele) or ``"eager"`` (sequential loop).
+        backend: ``"scan"`` (fused Triton kernel on CUDA float32, otherwise the generic
+            parallel scan resolved by ``tsfast.models.scan.backend``) or ``"eager"``
+            (sequential loop).
     """
 
     def __init__(
@@ -83,12 +115,19 @@ class MambaLayer(nn.Module):
         self.A_log = nn.Parameter(torch.log(A).contiguous())
         self.D = nn.Parameter(torch.ones(self.d_inner))
 
-    def _ssm(self, x: torch.Tensor, h0: torch.Tensor | None):
-        """Selective scan over the convolved signal ``x [batch, seq, d_inner]``."""
+    def _ssm(self, x: torch.Tensor, z: torch.Tensor, h0: torch.Tensor | None):
+        """Selective scan over the convolved signal ``x [batch, seq, d_inner]``, gated by ``z``."""
         B_sz, L, _ = x.shape
         dt, B_t, C_t = self.x_proj(x).split([self.dt_rank, self.d_state, self.d_state], dim=-1)
-        delta = F.softplus(self.dt_proj(dt))  # [batch, seq, d_inner]
+        draw = self.dt_proj(dt)  # [batch, seq, d_inner], pre-softplus
         A = -torch.exp(self.A_log)  # [d_inner, d_state]
+        if self.backend == "scan":
+            h0_dn = h0.view(B_sz, self.d_inner, self.d_state) if h0 is not None else None
+            fused = _fused_ssm(draw, A, B_t, C_t, x, z, self.D, h0_dn)
+            if fused is not None:
+                out, h_last = fused
+                return out, h_last.flatten(-2)
+        delta = F.softplus(draw)
         lam = torch.exp(delta.unsqueeze(-1) * A)  # [batch, seq, d_inner, d_state]
         v = (delta * x).unsqueeze(-1) * B_t.unsqueeze(-2)  # [batch, seq, d_inner, d_state]
         match self.backend:
@@ -99,7 +138,7 @@ class MambaLayer(nn.Module):
             case unknown:
                 raise ValueError(f"unknown backend {unknown!r}, expected 'scan' or 'eager'")
         y = (h.view(B_sz, L, self.d_inner, self.d_state) @ C_t.unsqueeze(-1)).squeeze(-1)
-        return y + self.D * x, h[..., -1, :]
+        return (y + self.D * x) * F.silu(z), h[..., -1, :]
 
     def forward(self, u: torch.Tensor, state: dict | None = None, return_state: bool = False):
         """Run the mixer over an input sequence.
@@ -129,8 +168,8 @@ class MambaLayer(nn.Module):
         # the carried tail replaces the zero left-padding of a cold-started causal convolution
         x_buf = torch.cat((conv_tail, x), dim=-1)
         x_conv = F.silu(F.conv1d(x_buf, self.conv1d.weight, self.conv1d.bias, groups=self.d_inner))
-        y, h_last = self._ssm(x_conv.transpose(1, 2), h0)
-        out = self.out_proj(y * F.silu(z))
+        y, h_last = self._ssm(x_conv.transpose(1, 2), z, h0)
+        out = self.out_proj(y)
         if not return_state:
             return out
         new_state = {"conv": x_buf[..., x_buf.shape[-1] - (self.d_conv - 1) :], "ssm": h_last}

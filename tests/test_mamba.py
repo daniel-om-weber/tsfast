@@ -176,6 +176,57 @@ class TestDeepMamba:
         finally:
             torch.backends.cuda.matmul.allow_tf32 = prev
 
+    def test_fused_stateful_chunked_cuda(self):
+        """Chunked rollouts through the fused kernel's h0/h_last path match the full pass."""
+        if not torch.cuda.is_available():
+            pytest.skip("no CUDA")
+        torch.manual_seed(0)
+        m = DeepMamba(2, 1, d_model=8, d_state=4, n_layers=2, return_state=True).cuda()
+        u = torch.randn(4, 70, 2, device="cuda")
+        with torch.no_grad():
+            full, _ = m(u)
+            out1, state = m(u[:, :17])
+            out2, state = m(u[:, 17:19], state=state)
+            out3, _ = m(u[:, 19:], state=state)
+        assert _rel(torch.cat((out1, out2, out3), dim=1), full) < 1e-5
+
+    def test_fused_grad_through_state_cuda(self):
+        """Gradients through the carried state (h0 in, h_last out) match the doubling scan."""
+        if not torch.cuda.is_available():
+            pytest.skip("no CUDA")
+        import tsfast.models.scan as scan
+
+        torch.manual_seed(0)
+        layer = MambaLayer(4, d_state=8).cuda()
+        u = torch.randn(3, 40, 4, device="cuda")
+        state0 = {
+            "conv": torch.randn(3, 8, layer.d_conv - 1, device="cuda"),
+            "ssm": torch.randn(3, 8 * 8, device="cuda"),
+        }
+        results = {}
+        try:
+            for backend in ("auto", "doubling"):
+                scan.backend = backend
+                for p in layer.parameters():
+                    p.grad = None
+                state = {"conv": state0["conv"].clone(), "ssm": state0["ssm"].clone().requires_grad_()}
+                out, new_state = layer(u, state=state, return_state=True)
+                (out.square().mean() + new_state["ssm"].square().mean()).backward()
+                results[backend] = (
+                    out.detach(),
+                    new_state["ssm"].detach(),
+                    state["ssm"].grad.clone(),
+                    [p.grad.clone() for p in layer.parameters()],
+                )
+        finally:
+            scan.backend = "auto"
+        out_f, hl_f, gh0_f, g_f = results["auto"]
+        out_d, hl_d, gh0_d, g_d = results["doubling"]
+        assert _rel(out_f, out_d) < 5e-5
+        assert _rel(hl_f, hl_d) < 5e-5
+        assert _rel(gh0_f, gh0_d) < 5e-5
+        assert max(_rel(a, b) for a, b in zip(g_f, g_d)) < 5e-5
+
     @pytest.mark.slow
     def test_mamba_learner_fit(self, dls_simulation):
         from tsfast.training import MambaLearner
