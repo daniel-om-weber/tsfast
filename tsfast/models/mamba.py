@@ -17,6 +17,32 @@ from .backends import warn_fallback
 from .scan import _diagonal_recurrence_sequential, selective_recurrence
 
 
+def _fused_conv(x, tail, weight, bias):
+    """Dispatch the fused causal conv + SiLU kernel; None means run the eager conv path.
+
+    Same backend policy as ``_fused_ssm``: serves ``scan.backend`` "auto" (CUDA only)
+    and "triton"; silent on non-CUDA devices under "auto", warns once per process
+    otherwise.
+    """
+    if scan.backend not in ("auto", "triton"):
+        return None
+    if scan.backend == "auto" and x.device.type != "cuda":
+        return None
+    try:
+        mod = importlib.import_module(".scan_backends.conv_triton", __package__)
+    except Exception as e:  # pragma: no cover - triton import failure
+        reason = f"backend import failed ({e!r})"
+    else:
+        reason = mod.supports(x, tail, weight, bias)
+        if reason is None:
+            return mod.run(x, tail, weight, bias)
+    warn_fallback(
+        "mamba.conv.triton",
+        f"fused conv triton kernel unusable: {reason}; falling back to the eager convolution",
+    )
+    return None
+
+
 def _fused_ssm(draw, A, B_t, C_t, u, z, Dp, h0):
     """Dispatch the fused Mamba SSM kernel; None means run the generic scan path.
 
@@ -71,7 +97,8 @@ class MambaLayer(nn.Module):
         dt_rank: rank of the ``Delta`` projection bottleneck; ``ceil(d_model / 16)`` if None.
         dt_min: lower bound of the timestep initialization.
         dt_max: upper bound of the timestep initialization.
-        backend: ``"scan"`` (fused Triton kernel on CUDA float32, otherwise the generic
+        backend: ``"scan"`` (fused Triton kernels for the convolution and the selective
+            scan on CUDA float32, otherwise the eager convolution and the generic
             parallel scan resolved by ``tsfast.models.scan.backend``) or ``"eager"``
             (sequential loop).
     """
@@ -164,16 +191,22 @@ class MambaLayer(nn.Module):
                 raise TypeError(f"expected state dict {{'conv': tensor, 'ssm': tensor}}, got {type(state)}")
 
         x, z = self.in_proj(u).chunk(2, dim=-1)
-        x = x.transpose(1, 2)  # [batch, d_inner, seq]
         # the carried tail replaces the zero left-padding of a cold-started causal convolution
-        x_buf = torch.cat((conv_tail, x), dim=-1)
-        x_conv = F.silu(F.conv1d(x_buf, self.conv1d.weight, self.conv1d.bias, groups=self.d_inner))
-        y, h_last = self._ssm(x_conv.transpose(1, 2), z, h0)
+        x_conv = _fused_conv(x, conv_tail, self.conv1d.weight, self.conv1d.bias) if self.backend == "scan" else None
+        if x_conv is None:
+            x_buf = torch.cat((conv_tail, x.transpose(1, 2)), dim=-1)
+            x_conv = F.silu(F.conv1d(x_buf, self.conv1d.weight, self.conv1d.bias, groups=self.d_inner)).transpose(1, 2)
+        y, h_last = self._ssm(x_conv, z, h0)
         out = self.out_proj(y)
         if not return_state:
             return out
-        new_state = {"conv": x_buf[..., x_buf.shape[-1] - (self.d_conv - 1) :], "ssm": h_last}
-        return out, new_state
+        tail_len = self.d_conv - 1
+        if L >= tail_len:
+            # contiguous copy so the carried tail does not pin the in_proj buffer alive
+            new_tail = x[:, L - tail_len :].mT.contiguous()
+        else:
+            new_tail = torch.cat((conv_tail[..., L:], x.mT), dim=-1)
+        return out, {"conv": new_tail, "ssm": h_last}
 
 
 class MambaResidualBlock(nn.Module):
