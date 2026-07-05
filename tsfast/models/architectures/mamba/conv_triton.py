@@ -106,7 +106,9 @@ if _HAVE_TRITON:
             p = tl.zeros([BLOCK_T, BLOCK_D], dtype=tl.float32)
         for k in tl.static_range(K):
             w_k = tl.load(w_ptr + offs_d * K + k, mask=m_d, other=0.0)
-            p += w_k[None, :] * _load_xbuf(x_ptr, tail_ptr, b, offs_t - (K - 1) + k, offs_d, m_d, L, D, sxb, sxl, sxd, K)
+            p += w_k[None, :] * _load_xbuf(
+                x_ptr, tail_ptr, b, offs_t - (K - 1) + k, offs_d, m_d, L, D, sxb, sxl, sxd, K
+            )
         out = p * tl.sigmoid(p)
         m_td = (offs_t < L)[:, None] & m_d[None, :]
         tl.store(out_ptr + b * L * D + offs_t[:, None] * D + offs_d[None, :], out, mask=m_td)

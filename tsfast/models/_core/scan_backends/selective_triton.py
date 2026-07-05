@@ -31,10 +31,7 @@ except ImportError:  # pragma: no cover - environment without triton
 
 def _configs():
     return [
-        triton.Config({"BLOCK_N": bn}, num_warps=w, num_stages=s)
-        for bn in (64, 128)
-        for w in (1, 2, 4)
-        for s in (1, 2)
+        triton.Config({"BLOCK_N": bn}, num_warps=w, num_stages=s) for bn in (64, 128) for w in (1, 2, 4) for s in (1, 2)
     ]
 
 
@@ -137,9 +134,7 @@ class _SelectiveTriton(torch.autograd.Function):
         gv = torch.empty_like(lam)
         gx0 = torch.empty(B, N, device=lam.device, dtype=lam.dtype) if need_x0 else lam
         x0_arg = x0 if has_x0 else lam
-        _sel_bwd[_grid(B, N)](
-            lam, out, g, x0_arg, glam, gv, gx0, B, L, N, HAS_X0=has_x0, NEED_X0=need_x0
-        )
+        _sel_bwd[_grid(B, N)](lam, out, g, x0_arg, glam, gv, gx0, B, L, N, HAS_X0=has_x0, NEED_X0=need_x0)
         grad_lam = glam if need_lam else None
         grad_v = gv if need_v else None
         grad_x0 = gx0 if need_x0 else None

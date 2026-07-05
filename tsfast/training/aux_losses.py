@@ -84,9 +84,7 @@ class ActivationRegularizer(_ActivationHookMixin):
         dim: time axis index; auto-detected from the hooked layer output if None
     """
 
-    def __init__(
-        self, modules: list[nn.Module], alpha: float = 1.0, dim: int | None = None, capture: str = "output"
-    ):
+    def __init__(self, modules: list[nn.Module], alpha: float = 1.0, dim: int | None = None, capture: str = "output"):
         self.modules = modules
         self.alpha = alpha
         self.dim = dim
@@ -111,9 +109,7 @@ class TemporalActivationRegularizer(_ActivationHookMixin):
         dim: time axis index; auto-detected from the hooked layer output if None
     """
 
-    def __init__(
-        self, modules: list[nn.Module], beta: float = 1.0, dim: int | None = None, capture: str = "output"
-    ):
+    def __init__(self, modules: list[nn.Module], beta: float = 1.0, dim: int | None = None, capture: str = "output"):
         self.modules = modules
         self.beta = beta
         self.dim = dim
