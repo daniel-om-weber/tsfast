@@ -110,6 +110,23 @@ def _prep(core, spec: PHNNSpec):
     if spec.output == "linear":
         d["o_w"] = _pad2(p["ow"].t(), pn, pny).contiguous()  # [pn, pny]
         d["o_b"] = _pad2(p["ob"].reshape(1, -1), 1, pny).reshape(pny).contiguous()
+    # Paired forward tiles: the H+G and J+R chains run lane-paired in the forward
+    # kernel (trailing dim 2), halving its sequential GEMV count. The backward keeps
+    # the per-net tiles above.
+    def pair(a_key, b_key, name):
+        d[name] = torch.stack((d[a_key], d[b_key]), dim=-1).contiguous()
+
+    pair("h_win", "g_win", "hg_win")    # [pn, ph, 2]
+    pair("h_bin", "g_bin", "hg_bin")    # [ph, 2]
+    pair("j_win", "r_win", "jr_win")
+    pair("j_bin", "r_bin", "jr_bin")
+    pair("j_wout", "r_wout", "jr_wout")  # [ph, pn, pn, 2]
+    pair("j_bout", "r_bout", "jr_bout")  # [pn, pn, 2]
+    if mid:
+        pair("h_wmid", "g_wmid", "hg_wmid")  # [ph, ph, 2]
+        pair("h_bmid", "g_bmid", "hg_bmid")
+        pair("j_wmid", "r_wmid", "jr_wmid")
+        pair("j_bmid", "r_bmid", "jr_bmid")
     return d, (pn, pm, pny, ph, mid)
 
 
@@ -182,58 +199,94 @@ def _build_kernels():
                 rwin, rbin, rwmid, rbmid, rwout, rbout, gwin, gbin, gwmid, gbmid, gwout, gbout, glw, glb)
 
     @triton.jit
+    def load_fwd_tiles(hgwin_p, hgbin_p, hgwmid_p, hgbmid_p, hwout_p,
+                       jrwin_p, jrbin_p, jrwmid_p, jrbmid_p, jrwout_p, jrbout_p,
+                       gwout_p, gbout_p, glw_p, glb_p,
+                       PN: tl.constexpr, PM: tl.constexpr, PH: tl.constexpr):
+        rn = tl.arange(0, PN)
+        rm = tl.arange(0, PM)
+        rh = tl.arange(0, PH)
+        r2 = tl.arange(0, 2)
+        m2p = rn[:, None, None] * (PH * 2) + rh[None, :, None] * 2 + r2[None, None, :]  # [PN,PH,2]
+        mbp = rh[:, None] * 2 + r2[None, :]                                             # [PH,2]
+        mhp = rh[:, None, None] * (PH * 2) + rh[None, :, None] * 2 + r2[None, None, :]  # [PH,PH,2]
+        m4p = (rh[:, None, None, None] * (PN * PN * 2) + rn[None, :, None, None] * (PN * 2)
+               + rn[None, None, :, None] * 2 + r2[None, None, None, :])                 # [PH,PN,PN,2]
+        mnnp = rn[:, None, None] * (PN * 2) + rn[None, :, None] * 2 + r2[None, None, :]  # [PN,PN,2]
+        m3m = rh[:, None, None] * (PN * PM) + rn[None, :, None] * PM + rm[None, None, :]  # [PH,PN,PM]
+        mgl = rn[:, None, None] * (PN * PM) + rn[None, :, None] * PM + rm[None, None, :]  # [PN,PN,PM]
+        mnm = rn[:, None] * PM + rm[None, :]                                             # [PN,PM]
+        hgwin = tl.load(hgwin_p + m2p)
+        hgbin = tl.load(hgbin_p + mbp)
+        hgwmid = tl.load(hgwmid_p + mhp)
+        hgbmid = tl.load(hgbmid_p + mbp)
+        hwout = tl.load(hwout_p + rh)
+        jrwin = tl.load(jrwin_p + m2p)
+        jrbin = tl.load(jrbin_p + mbp)
+        jrwmid = tl.load(jrwmid_p + mhp)
+        jrbmid = tl.load(jrbmid_p + mbp)
+        jrwout = tl.load(jrwout_p + m4p)
+        jrbout = tl.load(jrbout_p + mnnp)
+        gwout = tl.load(gwout_p + m3m)
+        gbout = tl.load(gbout_p + mnm)
+        glw = tl.load(glw_p + mgl)
+        glb = tl.load(glb_p + mnm)
+        return (hgwin, hgbin, hgwmid, hgbmid, hwout,
+                jrwin, jrbin, jrwmid, jrbmid, jrwout, jrbout, gwout, gbout, glw, glb)
+
+    @triton.jit
     def fields(a, tiles, hbout, jr_scale, g_scale, bound,
                HAS_BOUND: tl.constexpr, HAS_MID: tl.constexpr,
                PN: tl.constexpr, PM: tl.constexpr, PH: tl.constexpr):
         """Full field evaluation at ``a``: returns everything the forward and the
-        activation stores need. ``sval`` is the ELU argument ``H_raw - b`` (0 without
-        bound); z1 duplicates z0 when there is no mid layer."""
-        (hwin, hbin, hwmid, hbmid, hwout, jwin, jbin, jwmid, jbmid, jwout, jbout,
-         rwin, rbin, rwmid, rbmid, rwout, rbout, gwin, gbin, gwmid, gbmid, gwout, gbout, glw, glb) = tiles
-        # ---- Hamiltonian value + gradient tape ----
-        hz0 = _tanh(tl.sum(a[:, None] * hwin, axis=0) + hbin)  # [PH]
-        hz1 = hz0
+        activation stores need. The H+G and J+R chains run lane-paired (trailing dim
+        2, lanes (H,G)/(J,R)); the Hamiltonian tape contractions reuse the paired
+        tiles with a zeroed second lane. ``sval`` is the ELU argument ``H_raw - b``
+        (0 without bound); z1 duplicates z0 when there is no mid layer."""
+        (hgwin, hgbin, hgwmid, hgbmid, hwout,
+         jrwin, jrbin, jrwmid, jrbmid, jrwout, jrbout, gwout, gbout, glw, glb) = tiles
+        # ---- H+G hidden chain ----
+        z0_hg = _tanh(tl.sum(a[:, None, None] * hgwin, axis=0) + hgbin)  # [PH,2]
+        z1_hg = z0_hg
         if HAS_MID:
-            hz1 = _tanh(tl.sum(hz0[:, None] * hwmid, axis=0) + hbmid)
-        zl = hz1 if HAS_MID else hz0
-        h_raw = tl.sum(zl * hwout) + hbout  # scalar
-        gp_last = hwout * (1.0 - zl * zl)
+            z1_hg = _tanh(tl.sum(z0_hg[:, None, :] * hgwmid, axis=0) + hgbmid)
+        hz0, gz0 = tl.split(z0_hg)
+        hz1, gz1 = tl.split(z1_hg)
+        hzl = hz1 if HAS_MID else hz0
+        gzl = gz1 if HAS_MID else gz0
+        # ---- Hamiltonian value + gradient tape (lane-paired contractions, lane 1 zero) ----
+        h_raw = tl.sum(hzl * hwout) + hbout  # scalar
+        gp_last = hwout * (1.0 - hzl * hzl)
         if HAS_MID:
-            gz0 = tl.sum(hwmid * gp_last[None, :], axis=1)  # [PH]
-            gp0 = gz0 * (1.0 - hz0 * hz0)
-            dhdx_raw = tl.sum(hwin * gp0[None, :], axis=1)  # [PN]
+            gp_pair = tl.join(gp_last, gp_last * 0.0)  # [PH,2]
+            gz0h, _ = tl.split(tl.sum(hgwmid * gp_pair[None, :, :], axis=1))  # [PH]
+            gp0 = gz0h * (1.0 - hz0 * hz0)
+            dhdx_raw, _ = tl.split(tl.sum(hgwin * tl.join(gp0, gp0 * 0.0)[None, :, :], axis=1))  # [PN]
         else:
-            dhdx_raw = tl.sum(hwin * gp_last[None, :], axis=1)
+            gp_pair = tl.join(gp_last, gp_last * 0.0)
+            dhdx_raw, _ = tl.split(tl.sum(hgwin * gp_pair[None, :, :], axis=1))
         mv = 1.0
         sval = 0.0
         if HAS_BOUND:
             sval = h_raw - bound
             mv = tl.where(sval > 0, 1.0, tl.exp(sval))
         dhdx = mv * dhdx_raw  # [PN]
-        # ---- J, R ----
-        jz0 = _tanh(tl.sum(a[:, None] * jwin, axis=0) + jbin)
-        jz1 = jz0
+        # ---- J+R chain and paired structure-matrix output ----
+        z0_jr = _tanh(tl.sum(a[:, None, None] * jrwin, axis=0) + jrbin)  # [PH,2]
+        z1_jr = z0_jr
         if HAS_MID:
-            jz1 = _tanh(tl.sum(jz0[:, None] * jwmid, axis=0) + jbmid)
-        jl = jz1 if HAS_MID else jz0
-        B = (tl.sum(jl[:, None, None] * jwout, axis=0) + jbout) * jr_scale  # [PN,PN]
-        rz0 = _tanh(tl.sum(a[:, None] * rwin, axis=0) + rbin)
-        rz1 = rz0
-        if HAS_MID:
-            rz1 = _tanh(tl.sum(rz0[:, None] * rwmid, axis=0) + rbmid)
-        rl = rz1 if HAS_MID else rz0
-        A = (tl.sum(rl[:, None, None] * rwout, axis=0) + rbout) * jr_scale  # [PN,PN]
+            z1_jr = _tanh(tl.sum(z0_jr[:, None, :] * jrwmid, axis=0) + jrbmid)
+        zjr = z1_jr if HAS_MID else z0_jr
+        BA = (tl.sum(zjr[:, None, None, :] * jrwout, axis=0) + jrbout) * jr_scale  # [PN,PN,2]
+        B, A = tl.split(BA)
         Jm = B - tl.trans(B)
         Rm = tl.sum(A[:, None, :] * A[None, :, :], axis=2)  # A A^T
         JR = Jm - Rm  # [PN,PN]
         drift = tl.sum(JR * dhdx[None, :], axis=1)  # [PN]
-        # ---- G ----
-        gz0 = _tanh(tl.sum(a[:, None] * gwin, axis=0) + gbin)
-        gz1 = gz0
-        if HAS_MID:
-            gz1 = _tanh(tl.sum(gz0[:, None] * gwmid, axis=0) + gbmid)
-        gl = gz1 if HAS_MID else gz0
-        Gm = tl.sum(gl[:, None, None] * gwout, axis=0) + gbout  # [PN,PM]
+        jz0, rz0 = tl.split(z0_jr)
+        jz1, rz1 = tl.split(z1_jr)
+        # ---- G output ----
+        Gm = tl.sum(gzl[:, None, None] * gwout, axis=0) + gbout  # [PN,PM]
         Glin = tl.sum(a[:, None, None] * glw, axis=0) + glb  # [PN,PM]
         G = (Gm + Glin) * g_scale
         return G, dhdx, drift, hz0, hz1, jz0, jz1, rz0, rz1, gz0, gz1, sval
@@ -258,10 +311,9 @@ def _build_kernels():
     @triton.jit
     def phnn_fwd(u_ptr, x0_ptr, out_ptr, xs_ptr, qs_ptr,
                  zh0_p, zh1_p, zj0_p, zj1_p, zr0_p, zr1_p, zg0_p, zg1_p, sv_p,
-                 hwin_p, hbin_p, hwmid_p, hbmid_p, hwout_p, hbout,
-                 jwin_p, jbin_p, jwmid_p, jbmid_p, jwout_p, jbout_p,
-                 rwin_p, rbin_p, rwmid_p, rbmid_p, rwout_p, rbout_p,
-                 gwin_p, gbin_p, gwmid_p, gbmid_p, gwout_p, gbout_p, glw_p, glb_p, ow_p, ob_p,
+                 hgwin_p, hgbin_p, hgwmid_p, hgbmid_p, hwout_p, hbout,
+                 jrwin_p, jrbin_p, jrwmid_p, jrbmid_p, jrwout_p, jrbout_p,
+                 gwout_p, gbout_p, glw_p, glb_p, ow_p, ob_p,
                  jr_scale, g_scale, dt, bound, L,
                  STORE: tl.constexpr, HAS_BOUND: tl.constexpr, HAS_MID: tl.constexpr, OUT_LINEAR: tl.constexpr,
                  N: tl.constexpr, M: tl.constexpr, NY: tl.constexpr,
@@ -271,9 +323,9 @@ def _build_kernels():
         rm = tl.arange(0, PM)
         rny = tl.arange(0, PNY)
         rh = tl.arange(0, PH)
-        tiles = load_tiles(hwin_p, hbin_p, hwmid_p, hbmid_p, hwout_p, jwin_p, jbin_p, jwmid_p, jbmid_p, jwout_p,
-                           jbout_p, rwin_p, rbin_p, rwmid_p, rbmid_p, rwout_p, rbout_p, gwin_p, gbin_p, gwmid_p,
-                           gbmid_p, gwout_p, gbout_p, glw_p, glb_p, PN, PM, PH)
+        tiles = load_fwd_tiles(hgwin_p, hgbin_p, hgwmid_p, hgbmid_p, hwout_p,
+                               jrwin_p, jrbin_p, jrwmid_p, jrbmid_p, jrwout_p, jrbout_p,
+                               gwout_p, gbout_p, glw_p, glb_p, PN, PM, PH)
         ow = tl.load(ow_p + rn[:, None] * PNY + rny[None, :])
         ob = tl.load(ob_p + rny)
         x = tl.load(x0_ptr + pid * N + rn, mask=rn < N, other=0.0)  # [PN]
@@ -323,7 +375,7 @@ def _build_kernels():
             x = x + (k1 + 2 * k2 + 2 * k3 + k4) / 6
 
     _KERNELS = dict(tl=tl, triton=triton, fields=fields, _tanh=_tanh,
-                    load_tiles=load_tiles, phnn_fwd=phnn_fwd)
+                    load_tiles=load_tiles, load_fwd_tiles=load_fwd_tiles, phnn_fwd=phnn_fwd)
     _build_bwd()
     return _KERNELS
 
@@ -535,7 +587,7 @@ _ARG_KEYS = [
 
 
 def _weight_args(d, ph):
-    """Ordered weight tensors for the kernels; fill absent mid layers with dummies."""
+    """Ordered weight tensors for the backward kernel; fill absent mid layers with dummies."""
     dev = d["h_win"].device
     dummy_v = torch.zeros(ph, device=dev)
     dummy_m = torch.zeros(ph, ph, device=dev)
@@ -548,10 +600,35 @@ def _weight_args(d, ph):
     return [get(k) for k in _ARG_KEYS]
 
 
-def _num_warps(spec):
+_FWD_ARG_KEYS = [
+    "hg_win", "hg_bin", "hg_wmid", "hg_bmid", "h_wout",
+    "jr_win", "jr_bin", "jr_wmid", "jr_bmid", "jr_wout", "jr_bout",
+    "g_wout", "g_bout", "gl_w", "gl_b",
+]
+
+
+def _fwd_weight_args(d, ph):
+    """Ordered paired tensors for the forward kernel; fill absent mid layers with dummies."""
+    dev = d["h_win"].device
+    dummy_vp = torch.zeros(ph, 2, device=dev)
+    dummy_mp = torch.zeros(ph, ph, 2, device=dev)
+
+    def get(k):
+        if k in d:
+            return d[k]
+        return dummy_mp if k.endswith("wmid") else dummy_vp
+
+    return [get(k) for k in _FWD_ARG_KEYS]
+
+
+def _num_warps(spec, batch):
     # Weight tiles are the register-pressure driver; the reverse kernel carries no
-    # gradient tiles anymore, so one heuristic serves both kernels (re-tuned on a 4090).
-    return 2 if spec.hidden <= 64 else 4
+    # gradient tiles anymore, so one heuristic serves both kernels (re-tuned on a
+    # 4090 with the lane-paired forward). 4 warps win up to ~1 program per SM; at
+    # larger grids they oversubscribe the SMs and 2 warps are markedly faster.
+    if spec.hidden <= 64:
+        return 4 if batch <= 128 else 2
+    return 4
 
 
 def _zeros(*shape, dev):
@@ -577,18 +654,18 @@ def _run_fwd(core, spec, u, x0, store: bool, num_warps: int | None = None):
         z0 = [dummy] * 4
         z1 = [dummy] * 4
         sv = dummy
-    wargs = _weight_args(d, ph)
+    fargs = _fwd_weight_args(d, ph)
     hbout = float(d["h_bout"])
     ow = d.get("o_w", torch.zeros(pn, pny, device=dev))
     ob = d.get("o_b", torch.zeros(pny, device=dev))
     K["phnn_fwd"][(B,)](
         u.contiguous(), x0.contiguous(), out, xs, qs,
         z0[0], z1[0], z0[1], z1[1], z0[2], z1[2], z0[3], z1[3], sv,
-        wargs[0], wargs[1], wargs[2], wargs[3], wargs[4], hbout, *wargs[5:], ow, ob,
+        fargs[0], fargs[1], fargs[2], fargs[3], fargs[4], hbout, *fargs[5:], ow, ob,
         sc["jr_scale"], sc["g_scale"], sc["dt"], sc["bound"], L,
         store, sc["has_bound"], mid, sc["out_linear"],
         sc["n"], sc["m"], sc["ny"], pn, pm, pny, ph,
-        num_warps=_num_warps(spec) if num_warps is None else num_warps,
+        num_warps=_num_warps(spec, B) if num_warps is None else num_warps,
     )
     saved = (xs, qs, *z0, *z1, sv) if store else None
     return out, saved
@@ -619,7 +696,7 @@ def _run_bwd(core, spec, u, saved, grad_out, num_warps: int | None = None):
         sc["jr_scale"], sc["g_scale"], sc["dt"], L,
         sc["has_bound"], mid, sc["out_linear"],
         sc["n"], sc["m"], sc["ny"], pn, pm, pny, ph,
-        num_warps=_num_warps(spec) if num_warps is None else num_warps,
+        num_warps=_num_warps(spec, B) if num_warps is None else num_warps,
     )
     grads = _param_grads(core, spec, saved, grad_out, (bj, br, bg, bhd, bhr))
     return grads, du, gx0
