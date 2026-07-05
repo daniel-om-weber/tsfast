@@ -270,20 +270,66 @@ class PHNN(nn.Module):
             self._compiled_step = torch.compile(self.core.step, dynamic=False)
         return self._rollout(u_future, x0, step=self._compiled_step)
 
+    def _resolve_backend(self, u_future: torch.Tensor) -> str:
+        """Map ``"auto"`` to a concrete backend and downgrade unavailable fused backends.
+
+        ``auto`` picks the fused ``triton`` kernel on CUDA and the fused ``c`` kernel on
+        CPU when they apply (float32/float64, config within caps), otherwise ``compiled``
+        on CUDA and ``eager`` on CPU. An explicit fused backend that does not apply falls
+        back the same way with a once-per-process warning.
+        """
+        from . import backends as _b
+        from .phnn_backends import spec_of, supports
+
+        backend = self.backend
+        spec = spec_of(self.core)
+        if backend in ("auto", "triton") and u_future.is_cuda:
+            from .phnn_backends import backend_triton
+
+            if u_future.dtype == torch.float32 and backend_triton.is_available() and supports(spec, "triton"):
+                return "triton"
+            if backend == "triton":
+                _b.warn_fallback("phnn.triton", "PHNN triton backend unavailable for this config; using compiled")
+            return "compiled"
+        if backend in ("auto", "c") and not u_future.is_cuda:
+            from .phnn_backends import backend_c
+
+            if u_future.dtype in (torch.float32, torch.float64) and backend_c.is_available() and supports(spec, "c"):
+                return "c"
+            if backend == "c":
+                _b.warn_fallback("phnn.c", "PHNN c backend unavailable for this config; using eager")
+            return "eager"
+        if backend == "auto":
+            return "compiled" if u_future.is_cuda else "eager"
+        if backend == "triton":  # requested on CPU
+            _b.warn_fallback("phnn.triton", "PHNN triton backend requires CUDA; using eager")
+            return "eager"
+        if backend == "c":  # requested on CUDA
+            _b.warn_fallback("phnn.c", "PHNN c backend requires CPU; using compiled")
+            return "compiled"
+        return backend
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Simulate from the encoder state; returns ``[B, L, n_output]`` with zeros before ``n_init``."""
         if x.shape[1] <= self.n_init:
             raise ValueError(f"sequence length {x.shape[1]} too short for encoder warm-up n_init={self.n_init}")
         x0 = self.encode(x)
         u_future = x[:, self.n_init :, : self.n_input]
-        backend = self.backend
-        if backend == "auto":
-            backend = "compiled" if u_future.is_cuda else "eager"
-        match backend:
+        from .phnn_backends import spec_of
+
+        match self._resolve_backend(u_future):
             case "eager":
                 out = self._rollout(u_future, x0)
             case "compiled":
                 out = self._rollout_compiled(u_future, x0)
+            case "c":
+                from .phnn_backends.backend_c import c_rollout
+
+                out = c_rollout(self.core, spec_of(self.core), u_future.contiguous(), x0.contiguous())
+            case "triton":
+                from .phnn_backends.backend_triton import triton_rollout
+
+                out = triton_rollout(self.core, spec_of(self.core), u_future.contiguous(), x0.contiguous())
             case unknown:
                 raise ValueError(f"unknown backend {unknown!r}")
         warmup = x.new_zeros(x.shape[0], self.n_init, self.n_output)
