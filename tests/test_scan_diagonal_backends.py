@@ -20,6 +20,8 @@ _SHAPES = [
     ((4, 257, 8), (4, 8)),  # lam carries a batch axis
     ((2, 7, 3), (3,)),
     ((3, 1, 6), (6,)),  # L = 1 edge
+    ((1, 8192, 24), (24,)),  # single row, long L: exercises the C backend's time-chunked passes
+    ((2, 300, 100), (100,)),  # state dim above the C backend's block width: ragged tail block
 ]
 
 
