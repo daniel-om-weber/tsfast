@@ -41,6 +41,7 @@ onnx = [
 ]
 tune = [
     "ray[tune]",
+    "nvidia-ml-py",
 ]
 cpp = [
     "ninja",
@@ -56,6 +57,7 @@ dev = [
     "jupytext",
     "pre-commit",
     "ray[tune]",
+    "nvidia-ml-py",
     "onnx>=1.14",
     "onnxscript>=0.1",
     "onnxruntime>=1.16,<1.24; python_version == '3.10'",

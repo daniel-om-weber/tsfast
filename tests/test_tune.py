@@ -342,3 +342,26 @@ def test_learner_freed_by_refcount(dls_silverbox):
         assert ref() is None, "Learner not freed by refcount — cycle exists after fit()"
     finally:
         gc.enable()
+
+
+class TestPackingHelpers:
+    def test_trial_resources(self):
+        from tsfast.tune import trial_resources
+
+        assert trial_resources(4) == {"cpu": 1.0, "gpu": 0.25}
+        assert trial_resources(1, n_cpus=2) == {"cpu": 2, "gpu": 1.0}
+
+    def test_apply_gpu_quota(self):
+        import torch
+
+        from tsfast.tune import apply_gpu_quota
+
+        if not torch.cuda.is_available():
+            pytest.skip("needs CUDA")
+        total = torch.cuda.get_device_properties(0).total_memory
+        # full share with margin 1.0 and no context is a no-op cap at 100%
+        apply_gpu_quota(1.0, margin=1.0, device=0)
+        # a context bigger than the whole slice must be rejected
+        with pytest.raises(ValueError, match="no allocator budget"):
+            apply_gpu_quota(1 / 64, context_bytes=total, device=0)
+        torch.cuda.set_per_process_memory_fraction(1.0, 0)

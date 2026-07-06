@@ -1,6 +1,13 @@
 """Ray Tune integration — bridge between Learner and Ray Tune's training API."""
 
-__all__ = ["LearnerTrainable", "ray_device", "report_metrics", "resume_checkpoint"]
+__all__ = [
+    "LearnerTrainable",
+    "ray_device",
+    "report_metrics",
+    "resume_checkpoint",
+    "trial_resources",
+    "apply_gpu_quota",
+]
 
 import os
 import tempfile
@@ -124,3 +131,49 @@ class LearnerTrainable(ray.tune.Trainable):
     def cleanup(self):
         if hasattr(self, "lrn"):
             self.lrn._teardown_composables()
+
+
+def trial_resources(k: int, n_cpus: float = 1.0) -> dict:
+    """Ray Tune resources dict packing *k* trials per GPU: ``{"cpu": n_cpus, "gpu": 1/k}`` (packing step 4: enforce).
+
+    *k* comes from the measure → decide → verify workflow in
+    :mod:`tsfast.training.profiling` (``probe_gpu_saturation`` →
+    ``recommend_trials_per_gpu`` → ``measure_packing_curve``).
+
+    Fractional GPUs are a purely logical resource — Ray bin-packs k trials onto one
+    device and sets CUDA_VISIBLE_DEVICES, with no memory or compute isolation. Pair
+    with :func:`apply_gpu_quota` inside the trainable for actual memory enforcement.
+    """
+    return {"cpu": n_cpus, "gpu": 1.0 / k}
+
+
+def apply_gpu_quota(share: float, context_bytes: int = 0, margin: float = 0.9, device=None) -> None:
+    """Cap this process's CUDA caching allocator to its slice of the device (packing step 4: enforce).
+
+    Call at the top of the trainable. Makes OOM deterministic: a config fails iff it
+    exceeds its own slice, independent of which neighbors happen to run — so a sampled
+    (non-guaranteed) worst-case footprint degrades gracefully instead of taking down
+    co-located trials.
+
+    The CUDA context (~0.5 GB per process on consumer cards) lives outside the torch
+    allocator, so it is subtracted from each slice: with k = 1/share co-located
+    processes the allocator caps plus the k contexts then sum to ``margin`` of device
+    memory. With the default ``context_bytes=0`` the sum can exceed the device at
+    high k — pass the probed ``SaturationProbe.context_overhead_bytes`` (or
+    ``PackingRecommendation.context_overhead_bytes``).
+
+    Args:
+        share: this trial's GPU fraction, e.g. ``1/k``, or read at runtime via
+            ``ray.tune.get_context().get_trial_resources().required_resources["GPU"]``
+        context_bytes: per-process CUDA context overhead from the saturation probe
+        margin: fraction of device memory budgeted across all co-located trials
+        device: CUDA device (defaults to the current one)
+    """
+    total = torch.cuda.get_device_properties(device if device is not None else "cuda").total_memory
+    fraction = margin * share - context_bytes / total
+    if fraction <= 0:
+        raise ValueError(
+            f"GPU share {share} with context overhead {context_bytes / 2**30:.2f} GB"
+            f" and margin {margin} leaves no allocator budget"
+        )
+    torch.cuda.set_per_process_memory_fraction(fraction, device)
