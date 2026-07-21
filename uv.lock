@@ -4621,7 +4621,7 @@ tune = [
 [package.metadata]
 requires-dist = [
     { name = "h5py" },
-    { name = "identibench", specifier = ">=0.4.0" },
+    { name = "identibench", specifier = ">=0.4.0,<0.5" },
     { name = "ipykernel", marker = "extra == 'dev'" },
     { name = "jupytext", marker = "extra == 'dev'" },
     { name = "matplotlib" },
