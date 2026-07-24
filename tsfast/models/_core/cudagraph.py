@@ -1,5 +1,6 @@
 """CUDA-graphed wrapper for stateful models."""
 
+import gc
 import warnings
 
 import torch
@@ -65,11 +66,22 @@ class GraphedStatefulModel(nn.Module):
         wrapper = _FlatStateBridge(self.model, spec)
         sample_x = torch.zeros_like(x)
         sample_state = torch.zeros_like(self._zero_flat)
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "The AccumulateGrad node's stream")
-            self._graphed = torch.cuda.make_graphed_callables(
-                wrapper, (sample_x, sample_state), num_warmup_iters=self.num_warmup_iters
-            )
+        # Graphs discarded earlier stay alive in reference cycles until a cyclic
+        # collection frees them. CUDA forbids destroying a graph while a capture is in
+        # flight and invalidates that capture, so drop them first and keep the collector
+        # from running inside the capture below.
+        gc.collect()
+        gc_was_enabled = gc.isenabled()
+        gc.disable()
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", "The AccumulateGrad node's stream")
+                self._graphed = torch.cuda.make_graphed_callables(
+                    wrapper, (sample_x, sample_state), num_warmup_iters=self.num_warmup_iters
+                )
+        finally:
+            if gc_was_enabled:
+                gc.enable()
         self._graphed_shape = tuple(x.shape)
 
     def forward(self, x: Tensor, state=None) -> tuple[Tensor, ...]:
