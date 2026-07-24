@@ -79,15 +79,30 @@ class TestCNN:
     @pytest.mark.parametrize("hl_depth", [2, 3, 4])
     @pytest.mark.parametrize("layers_per_block", [1, 2, 3])
     def test_tcn_receptive_field_matches_formula(self, hl_depth, layers_per_block):
-        """Receptive field is 1 + layers_per_block * (2**hl_depth - 1) — the n_skip default."""
+        """Receptive field is 1 + layers_per_block * (2**hl_depth - 1) — the n_skip default.
+
+        Probed with impulses rather than autograd: a backward pass here initializes
+        autograd engine state that later CUDA-graph capture tests are sensitive to.
+        """
         from tsfast.models.architectures.cnn import TCN
 
-        model = TCN(1, 1, hl_depth=hl_depth, hl_width=4, layers_per_block=layers_per_block).eval()
-        x = torch.zeros(1, 200, 1, requires_grad=True)
-        model(x)[0, -1, 0].backward()
-        influencing = (x.grad.abs()[0, :, 0] > 0).nonzero().flatten()
-        receptive_field = 200 - influencing.min().item()
-        assert receptive_field == 1 + layers_per_block * (2**hl_depth - 1)
+        seq_len = 200
+        torch.manual_seed(0)
+        model = TCN(1, 1, hl_depth=hl_depth, hl_width=4, layers_per_block=layers_per_block).eval().double()
+
+        def last_output(impulse_at=None):
+            x = torch.zeros(1, seq_len, 1, dtype=torch.float64)
+            if impulse_at is not None:
+                x[0, impulse_at, 0] = 1.0
+            with torch.no_grad():
+                return model(x)[0, -1, 0].item()
+
+        # Exact comparison: a step outside the receptive field is causally unreachable, so
+        # it changes nothing at all, while one inside shifts the output by however little.
+        receptive_field = 1 + layers_per_block * (2**hl_depth - 1)
+        baseline = last_output()
+        assert last_output(seq_len - receptive_field) != baseline
+        assert last_output(seq_len - receptive_field - 1) == baseline
 
     @pytest.mark.parametrize("bn", [False, True])
     def test_tcn_block_widens_channels_per_layer(self, bn):
