@@ -3,24 +3,36 @@
 import atexit
 import queue
 import threading
-import weakref
 
 from torch.utils.data import DataLoader
 
 _DONE = object()
-_live_iterators: set[weakref.ref] = set()
+_JOIN_TIMEOUT = 2.0
+_producers: dict[threading.Thread, threading.Event] = {}
 _lock = threading.Lock()
 
 
-def _cleanup_iterators():
-    """Stop all live prefetch threads at interpreter shutdown."""
+def _unregister(thread: threading.Thread) -> None:
     with _lock:
-        refs = list(_live_iterators)
-        _live_iterators.clear()
-    for ref in refs:
-        it = ref()
-        if it is not None:
-            it.close()
+        _producers.pop(thread, None)
+
+
+def _cleanup_iterators():
+    """Stop every producer thread and wait for it at interpreter shutdown.
+
+    Producers are daemon threads, so nothing else joins them. Tracking the threads
+    rather than the iterators is what makes this reachable: an abandoned iterator is
+    collected as soon as its caller drops it, and its producer may still be inside a
+    native DataLoader call (pinning memory, reading HDF5) when finalization starts,
+    which deadlocks or crashes the interpreter.
+    """
+    with _lock:
+        producers = list(_producers.items())
+        _producers.clear()
+    for _, stop in producers:
+        stop.set()
+    for thread, _ in producers:
+        thread.join(timeout=_JOIN_TIMEOUT)
 
 
 atexit.register(_cleanup_iterators)
@@ -54,6 +66,7 @@ def _produce(dl_iter, q: queue.Queue, stop: threading.Event):
         # Release the DataLoader iterator (and any open file handles) in the
         # thread that owns it rather than at interpreter teardown.
         del dl_iter
+        _unregister(threading.current_thread())
 
 
 class _PrefetchIterator:
@@ -63,18 +76,18 @@ class _PrefetchIterator:
         self._queue: queue.Queue = queue.Queue(maxsize=prefetch)
         self._stop = threading.Event()
         self._thread = threading.Thread(target=_produce, args=(dl_iter, self._queue, self._stop), daemon=True)
-        self._thread.start()
-        ref = weakref.ref(self, _remove_ref)
+        # Registered before start so a producer is never running unregistered; holds
+        # only the thread and its event, never the iterator, so an abandoned iterator
+        # stays collectable.
         with _lock:
-            _live_iterators.add(ref)
-        self._ref = ref
+            _producers[self._thread] = self._stop
+        self._thread.start()
 
-    def close(self, timeout: float = 2.0):
+    def close(self, timeout: float = _JOIN_TIMEOUT):
         """Stop the producer thread and wait for it to exit."""
         self._stop.set()
         self._thread.join(timeout=timeout)
-        with _lock:
-            _live_iterators.discard(self._ref)
+        _unregister(self._thread)
 
     def __next__(self):
         while True:
@@ -101,11 +114,6 @@ class _PrefetchIterator:
             self._stop.set()
         except Exception:
             pass
-
-
-def _remove_ref(ref):
-    with _lock:
-        _live_iterators.discard(ref)
 
 
 class PrefetchLoader:
