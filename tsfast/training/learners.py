@@ -834,12 +834,13 @@ def TCNLearner(
 
     Args:
         dls: DataLoaders providing training and validation data.
-        num_layers: Number of TCN hidden layers (sets receptive field to 2**num_layers).
+        num_layers: Number of TCN blocks; with ``layers_per_block`` convolutions each the
+            receptive field is ``1 + layers_per_block * (2**num_layers - 1)``.
         hidden_size: Number of channels in hidden TCN layers.
         loss_func: Loss function instance.
         metrics: List of metric functions.
         lr: learning rate.
-        n_skip: Number of initial time steps to skip in the loss (defaults to 2**num_layers).
+        n_skip: Number of initial time steps to skip in the loss (defaults to the receptive field).
         opt_func: Optimizer constructor.
         input_norm: Input normalization scaler class, or None to disable.
         output_norm: Output denormalization scaler class, or None to disable.
@@ -856,7 +857,8 @@ def TCNLearner(
         metrics = [fun_rmse]
 
     inp, out = get_io_size(dls)
-    n_skip = 2**num_layers if n_skip is None else n_skip
+    if n_skip is None:
+        n_skip = 1 + kwargs.get("layers_per_block", 1) * (2**num_layers - 1)
     model = TCN(inp, out, num_layers, hidden_size, **kwargs)
     model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
 
@@ -965,13 +967,14 @@ def AR_TCNLearner(
 
     Args:
         dls: DataLoaders providing training and validation data.
-        hl_depth: Number of TCN hidden layers.
+        hl_depth: Number of TCN blocks; with ``layers_per_block`` convolutions each the
+            receptive field is ``1 + layers_per_block * (2**hl_depth - 1)``.
         alpha: Regularization weight for smoothness penalty.
         beta: Regularization weight for sparsity penalty.
         loss_func: loss function for training.
         metrics: Metric functions (defaults to RMSE).
         lr: learning rate.
-        n_skip: Number of initial time steps to skip in the loss (defaults to 2**hl_depth).
+        n_skip: Number of initial time steps to skip in the loss (defaults to the receptive field).
         opt_func: Optimizer constructor.
         input_norm: Input normalization scaler class, or None to disable.
         transforms: list of transforms (train + valid); defaults to prediction_concat.
@@ -985,7 +988,8 @@ def AR_TCNLearner(
     """
     if metrics is None:
         metrics = [fun_rmse]
-    n_skip = 2**hl_depth if n_skip is None else n_skip
+    if n_skip is None:
+        n_skip = 1 + kwargs.get("layers_per_block", 1) * (2**hl_depth - 1)
 
     if transforms is None:
         transforms = [prediction_concat(t_offset=0)]

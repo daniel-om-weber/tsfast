@@ -76,6 +76,19 @@ class TestCNN:
         out = model(batch[0])
         assert out.shape == batch[1].shape
 
+    @pytest.mark.parametrize("hl_depth", [2, 3, 4])
+    @pytest.mark.parametrize("layers_per_block", [1, 2, 3])
+    def test_tcn_receptive_field_matches_formula(self, hl_depth, layers_per_block):
+        """Receptive field is 1 + layers_per_block * (2**hl_depth - 1) — the n_skip default."""
+        from tsfast.models.architectures.cnn import TCN
+
+        model = TCN(1, 1, hl_depth=hl_depth, hl_width=4, layers_per_block=layers_per_block).eval()
+        x = torch.zeros(1, 200, 1, requires_grad=True)
+        model(x)[0, -1, 0].backward()
+        influencing = (x.grad.abs()[0, :, 0] > 0).nonzero().flatten()
+        receptive_field = 200 - influencing.min().item()
+        assert receptive_field == 1 + layers_per_block * (2**hl_depth - 1)
+
     @pytest.mark.parametrize("bn", [False, True])
     def test_tcn_block_widens_channels_per_layer(self, bn):
         """Layers after the first take the block's output width, not its input width."""
