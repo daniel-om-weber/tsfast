@@ -39,14 +39,14 @@ def Conv1D(
         output_size: Number of output channels.
         kernel_size: Size of the convolving kernel.
         activation: Activation function class, or None to disable.
-        wn: Whether to apply weight normalization.
-        bn: Whether to apply batch normalization before the convolution.
+        wn: Accepted for signature parity with ``CConv1D``; weight norm is not applied.
+        bn: Whether to apply batch normalization after the convolution.
         **kwargs: Additional arguments passed to ``nn.Conv1d``.
     """
     conv = nn.Conv1d(input_size, output_size, kernel_size, **kwargs)
+    norm = nn.BatchNorm1d(output_size) if bn else None
     act = activation() if activation is not None else None
-    bn = nn.BatchNorm1d(input_size) if bn else None
-    m = [m for m in [bn, conv, act] if m is not None]
+    m = [m for m in [conv, norm, act] if m is not None]
     return nn.Sequential(*m)
 
 
@@ -142,16 +142,17 @@ def CConv1D(
         output_size: Number of output channels.
         kernel_size: Size of the convolving kernel.
         activation: Activation function class, or None to disable.
-        wn: Whether to apply weight normalization.
-        bn: Whether to apply batch normalization before the convolution.
+        wn: Whether to apply weight normalization. Redundant when ``bn`` is set, since
+            batch norm cancels the weight magnitude that weight norm parametrizes.
+        bn: Whether to apply batch normalization after the convolution.
         **kwargs: Additional arguments passed to ``CausalConv1d``.
     """
     conv = CausalConv1d(input_size, output_size, kernel_size, **kwargs)
     if wn:
         conv = weight_norm(conv)
+    norm = nn.BatchNorm1d(output_size) if bn else None
     act = activation() if activation is not None else None
-    bn = nn.BatchNorm1d(input_size) if bn else None
-    m = [m for m in [bn, conv, act] if m is not None]
+    m = [m for m in [conv, norm, act] if m is not None]
     return nn.Sequential(*m)
 
 
@@ -163,8 +164,10 @@ class TCN_Block(nn.Module):
         output_size: Number of output channels.
         num_layers: Number of causal convolution layers in the block.
         activation: Activation function class, or None to disable.
-        wn: Whether to apply weight normalization.
-        bn: Whether to apply batch normalization.
+        wn: Whether to apply weight normalization. Redundant when ``bn`` is set, since
+            batch norm cancels the weight magnitude that weight norm parametrizes.
+        bn: Whether to apply batch normalization after each convolution.
+        dropout: Dropout probability applied after each activation, or 0 to disable.
         **kwargs: Additional arguments passed to ``CausalConv1d``.
     """
 
@@ -176,7 +179,7 @@ class TCN_Block(nn.Module):
         activation: type[nn.Module] | None = Mish,
         wn: bool = True,
         bn: bool = False,
-        dropout: float = 0,
+        dropout: float = 0.0,
         **kwargs,
     ):
         super().__init__()
@@ -186,10 +189,10 @@ class TCN_Block(nn.Module):
             conv = CausalConv1d(input_size if i == 0 else output_size, output_size, 2, **kwargs)
             if wn:
                 conv = weight_norm(conv)
-            bn = nn.BatchNorm1d(output_size) if bn else None
+            norm = nn.BatchNorm1d(output_size) if bn else None
             act = activation() if activation is not None else None
             drop = nn.Dropout(dropout) if dropout > 0 else None
-            layers += [m for m in [conv, bn, act, drop] if m is not None]
+            layers += [m for m in [conv, norm, act, drop] if m is not None]
 
         self.layers = nn.Sequential(*layers)
 
@@ -211,6 +214,8 @@ class TCN(nn.Module):
         hl_width: Number of channels in each hidden TCN block.
         act: Activation function class.
         bn: Whether to apply batch normalization.
+        layers_per_block: Number of causal convolution layers within each TCN block.
+        dropout: Dropout probability applied after each activation, or 0 to disable.
     """
 
     def __init__(
@@ -221,6 +226,8 @@ class TCN(nn.Module):
         hl_width: int = 10,
         act: type[nn.Module] = Mish,
         bn: bool = False,
+        layers_per_block: int = 1,
+        dropout: float = 0.0,
     ):
         super().__init__()
 
@@ -228,9 +235,11 @@ class TCN(nn.Module):
             TCN_Block(
                 input_size if i == 0 else hl_width,
                 hl_width,
+                num_layers=layers_per_block,
                 dilation=2 ** (i),
                 bn=bn,
                 activation=act,
+                dropout=dropout,
             )
             for i in range(hl_depth)
         ]
@@ -255,6 +264,8 @@ class SeperateTCN(nn.Module):
         act: Activation function class.
         bn: Whether to apply batch normalization.
         final_layer: Number of hidden layers in the final linear head.
+        layers_per_block: Number of causal convolution layers within each TCN block.
+        dropout: Dropout probability applied after each activation, or 0 to disable.
     """
 
     def __init__(
@@ -266,6 +277,8 @@ class SeperateTCN(nn.Module):
         act: type[nn.Module] = Mish,
         bn: bool = False,
         final_layer: int = 3,
+        layers_per_block: int = 1,
+        dropout: float = 0.0,
     ):
         super().__init__()
         self.input_list = np.cumsum([0] + input_list)
@@ -273,7 +286,15 @@ class SeperateTCN(nn.Module):
         tcn_width = hl_width // len(input_list)
         layers = [
             [
-                TCN_Block(n if i == 0 else tcn_width, tcn_width, dilation=2 ** (i), bn=bn, activation=act)
+                TCN_Block(
+                    n if i == 0 else tcn_width,
+                    tcn_width,
+                    num_layers=layers_per_block,
+                    dilation=2 ** (i),
+                    bn=bn,
+                    activation=act,
+                    dropout=dropout,
+                )
                 for i in range(hl_depth)
             ]
             for n in input_list

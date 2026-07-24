@@ -64,6 +64,29 @@ class TestCNN:
         out = model(batch[0])
         assert out.shape == batch[1].shape
 
+    @pytest.mark.parametrize("layers_per_block", [1, 2, 3])
+    @pytest.mark.parametrize("bn", [False, True])
+    @pytest.mark.parametrize("dropout", [0.0, 0.2])
+    def test_tcn_shape_stacked(self, dls_simulation, layers_per_block, bn, dropout):
+        from tsfast.models.architectures.cnn import TCN
+
+        batch = dls_simulation.one_batch()
+        device = batch[0].device
+        model = TCN(1, 1, hl_depth=2, hl_width=10, layers_per_block=layers_per_block, bn=bn, dropout=dropout).to(device)
+        out = model(batch[0])
+        assert out.shape == batch[1].shape
+
+    @pytest.mark.parametrize("bn", [False, True])
+    def test_tcn_block_widens_channels_per_layer(self, bn):
+        """Layers after the first take the block's output width, not its input width."""
+        from tsfast.models.architectures.cnn import TCN_Block
+
+        block = TCN_Block(3, 8, num_layers=3, bn=bn, dropout=0.1)
+        out = block(torch.randn(2, 3, 20))
+        assert out.shape == (2, 8, 20)
+        assert sum(isinstance(m, torch.nn.BatchNorm1d) for m in block.layers) == (3 if bn else 0)
+        assert sum(isinstance(m, torch.nn.Dropout) for m in block.layers) == 3
+
     @pytest.mark.slow
     def test_tcn_learner_fit(self, dls_simulation):
         from tsfast.training import TCNLearner
@@ -97,6 +120,7 @@ class TestLayers:
     def test_seq_linear_matches_conv1d(self, hidden_layer):
         """nn.Linear SeqLinear is numerically equal to the old Conv1d(1x1) formulation."""
         from tsfast.models._core.layers import SeqLinear
+
         nn = torch.nn
 
         torch.manual_seed(0)
@@ -105,6 +129,7 @@ class TestLayers:
         # Build the old Conv1d(1x1) reference, then copy the Linear weights into it.
         def conv_act(inp, out):
             return nn.Sequential(nn.Conv1d(inp, out, 1), nn.Mish())
+
         if hidden_layer < 1:
             ref_lin = nn.Conv1d(7, 3, 1)
         else:
@@ -126,6 +151,7 @@ class TestLayers:
     def test_seq_linear_preserves_leading_dims(self):
         """nn.Linear maps the last dim and keeps all leading dims (2-D / 3-D / 4-D)."""
         from tsfast.models._core.layers import SeqLinear
+
         m = SeqLinear(6, 4, hidden_size=8, hidden_layer=2)
         assert m(torch.rand(5, 6)).shape == (5, 4)
         assert m(torch.rand(2, 5, 6)).shape == (2, 5, 4)
@@ -135,16 +161,14 @@ class TestLayers:
     def test_seq_linear_loads_old_conv_checkpoint(self, hidden_layer):
         """Old Conv1d-layout checkpoints (3-D ``*.weight``) load into the nn.Linear SeqLinear."""
         from tsfast.models._core.layers import SeqLinear
+
         torch.manual_seed(1)
         m = SeqLinear(5, 2, hidden_size=8, hidden_layer=hidden_layer)
         x = torch.rand(2, 10, 5)
         ref = m(x)
 
         # Emulate the old conv layout: every ``*.weight`` gains a trailing singleton dim.
-        old_sd = {
-            k: (v.unsqueeze(-1) if k.endswith("weight") else v)
-            for k, v in m.state_dict().items()
-        }
+        old_sd = {k: (v.unsqueeze(-1) if k.endswith("weight") else v) for k, v in m.state_dict().items()}
         assert any(v.dim() == 3 for k, v in old_sd.items() if k.endswith("weight"))
 
         m2 = SeqLinear(5, 2, hidden_size=8, hidden_layer=hidden_layer)
