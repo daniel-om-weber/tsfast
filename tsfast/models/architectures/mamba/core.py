@@ -5,69 +5,44 @@ __all__ = [
     "DeepMamba",
 ]
 
-import importlib
 import math
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..._core import scan
-from ..._core.dispatch import warn_fallback
+from ..._core.dispatch import resolve
 from ..._core.scan import _diagonal_recurrence_sequential, selective_recurrence
+from . import conv_triton, mamba_triton
+
+# Module objects, not import paths: this dispatch runs inside potentially-compiled
+# forwards, and Dynamo can trace a supports() shape check but not an importlib call.
+# Both modules import safely without triton (their kernels are guarded).
+_CONV_BACKENDS = {"triton": conv_triton}
+_SSM_BACKENDS = {"triton": mamba_triton}
 
 
 def _fused_conv(x, tail, weight, bias):
     """Dispatch the fused causal conv + SiLU kernel; None means run the eager conv path.
 
-    Same backend policy as ``_fused_ssm``: serves ``scan.backend`` "auto" (CUDA only)
-    and "triton"; silent on non-CUDA devices under "auto", warns once per process
-    otherwise.
+    Honors the process backend preference (``tsfast.models.set_backend``/``use_backend``):
+    the fused kernel serves "auto" (CUDA only) and "triton"; other families select the
+    eager path silently. An unusable candidate warns once per process with the reason.
     """
-    if scan.backend not in ("auto", "triton"):
-        return None
-    if scan.backend == "auto" and x.device.type != "cuda":
-        return None
-    try:
-        mod = importlib.import_module(".conv_triton", __package__)
-    except Exception as e:  # pragma: no cover - triton import failure
-        reason = f"backend import failed ({e!r})"
-    else:
-        reason = mod.supports(x, tail, weight, bias)
-        if reason is None:
-            return mod.run(x, tail, weight, bias)
-    warn_fallback(
-        "mamba.conv.triton",
-        f"fused conv triton kernel unusable: {reason}; falling back to the eager convolution",
-    )
-    return None
+    order = ("triton",) if x.device.type == "cuda" else ()
+    mod = resolve("mamba.conv", _CONV_BACKENDS, order, (x, tail, weight, bias))
+    return None if mod is None else mod.run(x, tail, weight, bias)
 
 
 def _fused_ssm(draw, A, B_t, C_t, u, z, Dp, h0):
     """Dispatch the fused Mamba SSM kernel; None means run the generic scan path.
 
-    Honors ``tsfast.models._core.scan.backend``: the fused kernel serves "auto" (CUDA only)
-    and "triton"; "doubling"/"c" force the generic path. Missing module or unsupported
-    inputs warn once per process, except on non-CUDA devices under "auto", where the
-    generic C/doubling path is the intended backend and silence is correct.
+    Same policy as ``_fused_conv``; on non-CUDA devices the generic selective scan
+    (which applies its own backend dispatch) is the intended path and silence is correct.
     """
-    if scan.backend not in ("auto", "triton"):
-        return None
-    if scan.backend == "auto" and draw.device.type != "cuda":
-        return None
-    try:
-        mod = importlib.import_module(".mamba_triton", __package__)
-    except Exception as e:  # pragma: no cover - triton import failure
-        reason = f"backend import failed ({e!r})"
-    else:
-        reason = mod.supports(draw, A, B_t, C_t, u, z, Dp, h0)
-        if reason is None:
-            return mod.run(draw, A, B_t, C_t, u, z, Dp, h0)
-    warn_fallback(
-        "scan.mamba.triton",
-        f"fused mamba triton kernel unusable: {reason}; falling back to the generic selective scan",
-    )
-    return None
+    order = ("triton",) if draw.device.type == "cuda" else ()
+    mod = resolve("mamba.ssm", _SSM_BACKENDS, order, (draw, A, B_t, C_t, u, z, Dp, h0))
+    return None if mod is None else mod.run(draw, A, B_t, C_t, u, z, Dp, h0)
 
 
 class MambaLayer(nn.Module):
@@ -99,7 +74,8 @@ class MambaLayer(nn.Module):
         dt_max: upper bound of the timestep initialization.
         backend: ``"scan"`` (fused Triton kernels for the convolution and the selective
             scan on CUDA float32, otherwise the eager convolution and the generic
-            parallel scan resolved by ``tsfast.models._core.scan.backend``) or ``"eager"``
+            parallel scan; both honor the process preference set via
+            ``tsfast.models.set_backend``/``use_backend``) or ``"eager"``
             (sequential loop).
     """
 

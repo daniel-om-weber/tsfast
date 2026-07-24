@@ -16,13 +16,16 @@ reduction) are open-coded. Toolchain probing, compile flags, and the batch-paral
 are shared with the SSM/NARX C backends.
 
 Only the coefficients and the forward output are saved for backward (matching the doubling
-implementation's O(L) memory contract); the per-lane ``grad_lam`` partials are reduced to the
-broadcast shape of ``lam`` on the torch side, as are ``grad_v`` and ``grad_x0``.
+implementation's O(L) memory contract). Inputs arrive from the ``tsfast::scan_diagonal``
+custom op in the flattened lane layout (lam ``[M, N]``, v ``[M, L, N]``, contiguous, with
+broadcasting already materialized); the per-lane gradients are reduced back to the callers'
+broadcast shapes by plain autograd outside the op.
 """
 
 __all__ = [
     "supports",
-    "run",
+    "forward",
+    "backward",
 ]
 
 import hashlib
@@ -39,47 +42,6 @@ from ..kernel_c import (
 
 _DTYPES = (torch.float32, torch.complex64)
 _EXT = None
-
-
-# ----------------------------------------------------------------------- shared torch-side glue
-# _prep / _reduce are the broadcast bookkeeping both the C and the Triton backend share: flatten
-# the recurrence to M = prod(batch dims) independent lanes of N states over L steps, materialize
-# lam and x0 in that [M, N] lane layout, and reduce the per-lane gradients back to the (possibly
-# broadcast) shapes of the original lam / v / x0. The Triton backend imports both from here.
-
-
-def _prep(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None):
-    """Broadcast to the output shape and flatten to lane layout.
-
-    Returns ``(lam_lane [M, N], v_flat [M, L, N], x0_lane [M, N] | None, meta)`` all contiguous,
-    where ``meta = (out_shape, batch_dims, M, L, N)``.
-    """
-    out_shape = torch.broadcast_shapes(lam.unsqueeze(-2).shape, v.shape)
-    bdims = tuple(out_shape[:-2])
-    L, n = out_shape[-2], out_shape[-1]
-    m = 1
-    for d in bdims:
-        m *= d
-    lam_lane = lam.broadcast_to(bdims + (n,)).reshape(m, n).contiguous()
-    v_flat = v.broadcast_to(out_shape).reshape(m, L, n).contiguous()
-    x0_lane = None if x0 is None else x0.broadcast_to(bdims + (n,)).reshape(m, n).contiguous()
-    return lam_lane, v_flat, x0_lane, (out_shape, bdims, m, L, n)
-
-
-def _reduce(grad_v_flat, grad_lam_lane, grad_x0_lane, lam, v, x0, meta, needs):
-    """Reduce per-lane gradients to the broadcast shapes of ``lam`` / ``v`` / ``x0``.
-
-    ``needs`` is ``(need_lam, need_v, need_x0)``; grads for absent needs are None.
-    """
-    out_shape, bdims, _m, _l, n = meta
-    grad_lam = grad_v = grad_x0 = None
-    if needs[0]:
-        grad_lam = grad_lam_lane.reshape(bdims + (n,)).sum_to_size(lam.shape)
-    if needs[1]:
-        grad_v = grad_v_flat.reshape(out_shape).sum_to_size(v.shape)
-    if x0 is not None and needs[2]:
-        grad_x0 = grad_x0_lane.reshape(bdims + (n,)).sum_to_size(x0.shape)
-    return grad_lam, grad_v, grad_x0
 
 
 # ------------------------------------------------------------------------------ generated source
@@ -535,47 +497,24 @@ def supports(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None) -> str
     return None
 
 
-def _forward(ext, lam_lane, v_flat, x0_lane, meta):
-    _os, _bd, m, L, n = meta
-    is_complex = v_flat.is_complex()
-    out = torch.empty_like(v_flat)
-    x0 = x0_lane if x0_lane is not None else v_flat[:0]
-    ext.diag_fwd(lam_lane, v_flat, x0, out, x0_lane is not None, is_complex, m, L, n)
+def forward(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None) -> torch.Tensor:
+    """Forward recurrence on the lane layout: lam ``[M, N]``, v ``[M, L, N]``, x0 ``[M, N]`` or None."""
+    ext = _get_ext()
+    m, L, n = v.shape
+    out = torch.empty_like(v)
+    ext.diag_fwd(lam, v, x0 if x0 is not None else v[:0], out, x0 is not None, v.is_complex(), m, L, n)
     return out
 
 
-class _CDiagonal(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, ext, lam, v, x0):
-        lam_lane, v_flat, x0_lane, meta = _prep(lam, v, x0)
-        out = _forward(ext, lam_lane, v_flat, x0_lane, meta)
-        ctx.ext, ctx.meta = ext, meta
-        ctx.lam, ctx.v, ctx.x0 = lam, v, x0
-        ctx.save_for_backward(lam_lane, out, x0_lane)
-        return out.reshape(meta[0])
-
-    @staticmethod
-    def backward(ctx, grad_out):
-        ext = ctx.ext
-        _os, _bd, m, L, n = ctx.meta
-        lam_lane, out, x0_lane = ctx.saved_tensors
-        has_x0 = x0_lane is not None
-        is_complex = out.is_complex()
-        g = grad_out.reshape(m, L, n).contiguous()
-        gv = torch.empty_like(out)
-        glam = torch.empty_like(lam_lane)
-        gx0 = torch.empty_like(lam_lane) if has_x0 else lam_lane[:0]
-        x0 = x0_lane if has_x0 else out[:0]
-        ext.diag_bwd(g, lam_lane, out, x0, gv, glam, gx0, has_x0, is_complex, m, L, n)
-        needs = (ctx.needs_input_grad[1], ctx.needs_input_grad[2], ctx.needs_input_grad[3])
-        grad_lam, grad_v, grad_x0 = _reduce(gv, glam, gx0, ctx.lam, ctx.v, ctx.x0, ctx.meta, needs)
-        return None, grad_lam, grad_v, grad_x0
-
-
-def run(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None) -> torch.Tensor:
-    """Run the constant-coefficient diagonal recurrence through the C++ extension (autograd-capable)."""
+def backward(
+    g: torch.Tensor, lam: torch.Tensor, out: torch.Tensor, x0: torch.Tensor | None
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Adjoint sweep on the lane layout, returning ``(glam, gv, gx0)`` (gx0 empty when x0 is None)."""
     ext = _get_ext()
-    if not torch.is_grad_enabled() or not any(t is not None and t.requires_grad for t in (lam, v, x0)):
-        lam_lane, v_flat, x0_lane, meta = _prep(lam, v, x0)
-        return _forward(ext, lam_lane, v_flat, x0_lane, meta).reshape(meta[0])
-    return _CDiagonal.apply(ext, lam, v, x0)
+    m, L, n = out.shape
+    has_x0 = x0 is not None
+    gv = torch.empty_like(out)
+    glam = torch.empty_like(lam)
+    gx0 = torch.empty_like(lam) if has_x0 else lam[:0]
+    ext.diag_bwd(g, lam, out, x0 if has_x0 else out[:0], gv, glam, gx0, has_x0, out.is_complex(), m, L, n)
+    return glam, gv, (gx0 if has_x0 else lam.new_empty(0))

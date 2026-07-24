@@ -150,3 +150,52 @@ class TestPHNN:
         m.backend = "compiled"
         out_compiled = m(xin)
         assert _rel(out_compiled, out_eager) < 1e-5
+
+    def test_reference_backend_scoped(self):
+        """``use_backend("reference")`` forces the non-fused policy for models on ``"auto"``."""
+        from tsfast.models import use_backend
+
+        torch.manual_seed(7)
+        m = PHNN(1, 1, n_state=3, hidden_size=8, dt=0.1, n_init=4, backend="auto")
+        xin = torch.randn(2, 12, 2)
+        m.backend = "eager"
+        ref = m(xin)
+        m.backend = "auto"
+        with use_backend("reference"):
+            out = m(xin)  # reference on CPU is the eager loop
+        assert torch.equal(out, ref)
+
+
+def _fullgraph_parity(m: PHNN, device: str):
+    """Fullgraph-compiled forward+backward must match the uncompiled model."""
+    torch.manual_seed(8)
+    xin = torch.randn(2, 16, 2, device=device)
+    out_ref = m(xin)
+    g_ref = torch.autograd.grad(out_ref.pow(2).mean(), list(m.parameters()))
+    cm = torch.compile(m, fullgraph=True)
+    out_c = cm(xin)
+    g_c = torch.autograd.grad(out_c.pow(2).mean(), list(m.parameters()))
+    assert _rel(out_c, out_ref) < 1e-4
+    assert max(_rel(a, b) for a, b in zip(g_c, g_ref)) < 1e-4
+
+
+class TestFullgraphCompile:
+    def _model(self, backend: str) -> PHNN:
+        torch.manual_seed(9)
+        m = PHNN(1, 1, n_state=3, hidden_size=16, num_layers=2, dt=0.1, n_init=4, backend=backend)
+        _randomize(m, std=0.2)
+        return m
+
+    def test_fullgraph_cpu_c(self):
+        from tsfast.models.architectures.phnn import backend_c
+
+        if not backend_c.is_available():
+            pytest.skip("no C++ toolchain")
+        _fullgraph_parity(self._model("c"), "cpu")
+
+    def test_fullgraph_cuda_triton(self):
+        from tsfast.models.architectures.phnn import backend_triton
+
+        if not torch.cuda.is_available() or not backend_triton.is_available():
+            pytest.skip("no CUDA/triton")
+        _fullgraph_parity(self._model("triton").cuda(), "cuda")

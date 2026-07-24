@@ -23,14 +23,17 @@ cuts the sequential depth from L to roughly L/chunks and is exact — no approxi
 """
 
 __all__ = [
-    "metal_rollout",
+    "supports",
+    "forward_train",
+    "forward_infer",
+    "backward",
     "is_available",
     "fits",
 ]
 
 import torch
 
-from .core import SSMSpec, check_rollout_args, mlp_param_grads
+from .core import SSMSpec, rollout_unsupported
 
 _ACT_MSL = {
     "tanh": ("precise::tanh({a})", "(1.0f - {z} * {z})"),
@@ -410,60 +413,56 @@ def _run_fwd(lib, spec: SSMSpec, u, x0, params, store_z):
     return out, zs
 
 
-class _MetalSSMRollout(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, lib, spec, u, x0, *params):
-        u = u.contiguous()
-        x0 = x0.contiguous()
-        out, zs = _run_fwd(lib, spec, u, x0, params, store_z=True)
-        ctx.lib, ctx.spec = lib, spec
-        ctx.save_for_backward(u, x0, out, *zs, *params[0::2])
-        return out
-
-    @staticmethod
-    def backward(ctx, grad_out):
-        lib, spec = ctx.lib, ctx.spec
-        k = spec.n_linear
-        saved = ctx.saved_tensors
-        u, x0, out = saved[0], saved[1], saved[2]
-        zs = list(saved[3 : 3 + k - 1])
-        weights = list(saved[3 + k - 1 :])
-        B, L = u.shape[0], u.shape[1]
-        nx = spec.n_state
-        tpg = _tpg(spec)
-        ws = [w.detach().contiguous() for w in weights]
-        gout = grad_out.contiguous()
-        gy = torch.empty(B, L, nx, device=u.device, dtype=torch.float32)
-        gas = [torch.empty_like(z) for z in zs]
-        gx0 = torch.empty(B, nx, device=u.device, dtype=torch.float32)
-        C = _scan_chunks(spec, B, L)
-        cl = -(-L // C)
-        C = -(-L // cl)
-        if C > 1:
-            jt = _build_jt(spec, ws, zs)
-            pc = torch.empty(B, C, nx, nx, device=u.device)
-            sc = torch.empty(B, C, nx, device=u.device)
-            bnd = torch.empty(B, C + 1, nx, device=u.device)
-            lib.ssm_bwd_summary(jt, gout, pc, sc, L, cl, C, threads=B * C * 32, group_size=32)
-            lib.ssm_bwd_scan(pc, sc, bnd, C, threads=B * 32, group_size=32)
-        else:
-            jt = bnd = torch.zeros(1, device=u.device)
-        lib.ssm_bwd(gout, *zs, *ws, jt, bnd, gy, *gas, gx0, L, cl, C, threads=B * C * tpg, group_size=tpg)
-        grads, du = mlp_param_grads(spec, x0, u, out, zs, gy, gas, w0=weights[0], need_du=ctx.needs_input_grad[2])
-        dx0 = gx0 if ctx.needs_input_grad[3] else None
-        return (None, None, du, dx0, *grads)
-
-
-def metal_rollout(spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, params: list[torch.Tensor]) -> torch.Tensor:
-    """Run the rollout through the generated persistent Metal kernels (autograd-capable)."""
-    check_rollout_args(spec, u, x0, "mps")
+def supports(spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor) -> str | None:
+    """Reason the persistent Metal kernels cannot handle these inputs, or None when they can."""
+    reason = rollout_unsupported(spec, u, x0, "mps")
+    if reason is not None:
+        return reason
     if not fits(spec):
-        raise RuntimeError(
-            f"spec {spec} exceeds the metal backend envelope (layer widths <= {_MAX_WIDTH}, "
-            f"<= {_MAX_LINEAR} linear layers); use backend='eager'"
-        )
+        return f"spec {spec} exceeds the metal envelope (layer widths <= {_MAX_WIDTH}, <= {_MAX_LINEAR} linear layers)"
+    if not is_available():
+        return "no MPS / shader compilation"
+    return None
+
+
+def forward_train(
+    spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, params: list[torch.Tensor]
+) -> tuple[torch.Tensor, list[torch.Tensor]]:
+    """Rollout that also stores the hidden activations: returns ``(out, zs)``."""
+    return _run_fwd(_get_lib(spec), spec, u, x0, params, store_z=True)
+
+
+def forward_infer(spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, params: list[torch.Tensor]) -> torch.Tensor:
+    """Rollout without stored intermediates: returns ``out`` of shape ``[B, L, n_state]``."""
+    out, _ = _run_fwd(_get_lib(spec), spec, u, x0, params, store_z=False)
+    return out
+
+
+def backward(
+    spec: SSMSpec, grad_out: torch.Tensor, zs: list[torch.Tensor], weights: list[torch.Tensor]
+) -> tuple[torch.Tensor, list[torch.Tensor], torch.Tensor]:
+    """Reverse state-adjoint sweep: returns ``(gy, gas, gx0)`` for the shared GEMM stage."""
     lib = _get_lib(spec)
-    if not torch.is_grad_enabled() or not any(t.requires_grad for t in [u, x0, *params]):
-        out, _ = _run_fwd(lib, spec, u.contiguous(), x0.contiguous(), params, store_z=False)
-        return out
-    return _MetalSSMRollout.apply(lib, spec, u, x0, *params)
+    B, L = grad_out.shape[0], grad_out.shape[1]
+    nx = spec.n_state
+    tpg = _tpg(spec)
+    dev = grad_out.device
+    ws = [w.detach().contiguous() for w in weights]
+    gout = grad_out.contiguous()
+    gy = torch.empty(B, L, nx, device=dev, dtype=torch.float32)
+    gas = [torch.empty_like(z) for z in zs]
+    gx0 = torch.empty(B, nx, device=dev, dtype=torch.float32)
+    C = _scan_chunks(spec, B, L)
+    cl = -(-L // C)
+    C = -(-L // cl)
+    if C > 1:
+        jt = _build_jt(spec, ws, zs)
+        pc = torch.empty(B, C, nx, nx, device=dev)
+        sc = torch.empty(B, C, nx, device=dev)
+        bnd = torch.empty(B, C + 1, nx, device=dev)
+        lib.ssm_bwd_summary(jt, gout, pc, sc, L, cl, C, threads=B * C * 32, group_size=32)
+        lib.ssm_bwd_scan(pc, sc, bnd, C, threads=B * 32, group_size=32)
+    else:
+        jt = bnd = torch.zeros(1, device=dev)
+    lib.ssm_bwd(gout, *zs, *ws, jt, bnd, gy, *gas, gx0, L, cl, C, threads=B * C * tpg, group_size=tpg)
+    return gy, gas, gx0

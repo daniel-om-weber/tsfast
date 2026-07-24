@@ -12,14 +12,18 @@ input-window contribution ``hu = conv_u(u)`` per step and returns the prediction
 Backward follows the split-BPTT design: a persistent reverse-sweep kernel carries the
 lag-buffer adjoint and emits the per-step adjoints; parameter gradients are batched cuBLAS
 GEMMs over the ``[B*L, .]`` flattened adjoints (``narx_param_grads``), and the gradient
-w.r.t. ``hu`` hands the chain back to autograd for the convolution path.
+w.r.t. ``hu`` hands the chain back to autograd for the convolution path. The entry points
+serve the ``tsfast::narx_rollout*`` custom ops, which deliver contiguous float32 tensors.
 
 Kernels are generated from the layer spec (dims baked as literals) into a cached module file;
 all padded widths, including the flattened buffer, must stay <= 128.
 """
 
 __all__ = [
-    "triton_rollout",
+    "supports",
+    "forward_infer",
+    "forward_train",
+    "backward",
     "is_available",
     "fits",
 ]
@@ -32,7 +36,7 @@ from pathlib import Path
 import torch
 
 from ..._core.kernel_triton import _ACT_TL, _MAX_PADDED_WIDTH, _pow2, is_available
-from .core import NarxSpec, check_rollout_args, narx_param_grads
+from .core import NarxSpec
 
 _KERNELS: dict[NarxSpec, object] = {}
 
@@ -40,6 +44,23 @@ _KERNELS: dict[NarxSpec, object] = {}
 def fits(spec: NarxSpec) -> bool:
     """Whether the persistent GEMV kernels apply: all padded widths must stay on-chip."""
     return spec.act in _ACT_TL and max(_pow2(d) for d in spec.dims) <= _MAX_PADDED_WIDTH
+
+
+def supports(spec: NarxSpec, hu: torch.Tensor, y_true: torch.Tensor) -> str | None:
+    """Reason the Triton kernels cannot handle these inputs, or None when they can."""
+    if hu.device.type != "cuda" or y_true.device.type != "cuda":
+        return f"input on {hu.device.type}, triton backend is CUDA-only"
+    if not is_available():
+        return "no CUDA / triton"
+    if hu.dtype != torch.float32 or y_true.dtype != torch.float32:
+        return f"needs float32, got hu={hu.dtype}, y_true={y_true.dtype}"
+    if not fits(spec):
+        return f"spec {spec} exceeds the kernel envelope (padded widths <= {_MAX_PADDED_WIDTH})"
+    if hu.dim() != 3 or hu.shape[-1] != spec.hidden[0]:
+        return f"expected hu of shape [B, L, {spec.hidden[0]}], got {tuple(hu.shape)}"
+    if y_true.shape != (*hu.shape[:2], spec.n_y):
+        return f"expected y_true of shape [{hu.shape[0]}, {hu.shape[1]}, {spec.n_y}], got {tuple(y_true.shape)}"
+    return None
 
 
 def _gen_source(spec: NarxSpec) -> str:
@@ -222,71 +243,47 @@ def _prep_weights(spec: NarxSpec, weights: list[torch.Tensor], biases: list[torc
     return [b.contiguous() for b in bufs]
 
 
-def _run_fwd(mod, spec: NarxSpec, hu, y_true, washout, params, store_z, num_warps):
+def _run_fwd(spec: NarxSpec, hu, y_true, washout, params, store_z):
+    mod = _get_kernels(spec)
     B, L = hu.shape[0], hu.shape[1]
     dev = hu.device
+    nw = _num_warps(spec)
     out = torch.empty(B, L, spec.n_y, device=dev, dtype=torch.float32)
-    bufs = _prep_weights(spec, [w.detach() for w in [params[0], *params[1::2]]], [c.detach() for c in params[2::2]])
+    bufs = _prep_weights(spec, [params[0], *params[1::2]], list(params[2::2]))
     if store_z:
         zs = [torch.empty(B, L, h, device=dev, dtype=torch.float32) for h in spec.hidden]
-        mod.narx_fwd_train[(B,)](hu, y_true, *bufs, out, *zs, washout, B, L, NUM_STAGES=3, num_warps=num_warps)
+        mod.narx_fwd_train[(B,)](hu, y_true, *bufs, out, *zs, washout, B, L, NUM_STAGES=3, num_warps=nw)
     else:
         zs = []
-        mod.narx_fwd[(B,)](hu, y_true, *bufs, out, washout, B, L, NUM_STAGES=3, num_warps=num_warps)
+        mod.narx_fwd[(B,)](hu, y_true, *bufs, out, washout, B, L, NUM_STAGES=3, num_warps=nw)
     return out, zs
 
 
-class _TritonNarxRollout(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, mod, spec, washout, hu, y_true, *params):
-        hu = hu.contiguous()
-        y_true = y_true.contiguous()
-        nw = _num_warps(spec)
-        out, zs = _run_fwd(mod, spec, hu, y_true, washout, params, store_z=True, num_warps=nw)
-        ctx.mod, ctx.spec, ctx.washout, ctx.nw = mod, spec, washout, nw
-        ctx.save_for_backward(y_true, out, *zs, *params[0:1], *params[1::2])
-        return out
-
-    @staticmethod
-    def backward(ctx, grad_out):
-        mod, spec, washout = ctx.mod, ctx.spec, ctx.washout
-        k = spec.n_linear
-        saved = ctx.saved_tensors
-        y_true, out = saved[0], saved[1]
-        zs = list(saved[2 : 2 + k - 1])
-        weights = list(saved[2 + k - 1 :])  # [wy, w1, ..., w_{k-1}]
-        B, L = out.shape[0], out.shape[1]
-        dev = out.device
-        bufs = _prep_weights(spec, [w.detach() for w in weights], biases=None)
-        gy = torch.empty(B, L, spec.n_y, device=dev, dtype=torch.float32)
-        gfed = torch.empty(B, L, spec.n_y, device=dev, dtype=torch.float32)
-        gas = [torch.empty_like(z) for z in zs]
-        mod.narx_bwd[(B,)](
-            grad_out.contiguous(), *zs, *bufs, gy, gfed, *gas, washout, B, L, NUM_STAGES=3, num_warps=ctx.nw
-        )
-        grads = narx_param_grads(spec, y_true, out, washout, zs, gy, gas)
-        dhu = gas[0] if ctx.needs_input_grad[3] else None
-        dy_true = None
-        if ctx.needs_input_grad[4]:
-            t = torch.arange(L, device=dev)
-            dy_true = gfed * (t < washout)[None, :, None]
-        return (None, None, None, dhu, dy_true, *grads)
-
-
-def triton_rollout(
+def forward_infer(
     spec: NarxSpec, hu: torch.Tensor, y_true: torch.Tensor, washout: int, params: list[torch.Tensor]
 ) -> torch.Tensor:
-    """Run the free-run recurrence through the generated persistent Triton kernels (autograd-capable)."""
-    check_rollout_args(spec, hu, y_true, "cuda")
-    if not fits(spec):
-        raise RuntimeError(
-            f"spec {spec} exceeds the triton backend envelope (padded widths <= {_MAX_PADDED_WIDTH}); "
-            "use backend='compiled'"
-        )
+    """Forward rollout without stored intermediates, returning ``out [B, L, n_y]``."""
+    out, _ = _run_fwd(spec, hu, y_true, washout, params, store_z=False)
+    return out
+
+
+def forward_train(
+    spec: NarxSpec, hu: torch.Tensor, y_true: torch.Tensor, washout: int, params: list[torch.Tensor]
+) -> tuple[torch.Tensor, list[torch.Tensor]]:
+    """Forward rollout storing the post-activation hidden sequences, returning ``(out, zs)``."""
+    return _run_fwd(spec, hu, y_true, washout, params, store_z=True)
+
+
+def backward(
+    spec: NarxSpec, grad_out: torch.Tensor, zs: list[torch.Tensor], weights: list[torch.Tensor], washout: int
+) -> tuple[torch.Tensor, torch.Tensor, list[torch.Tensor]]:
+    """Reverse buffer-adjoint sweep, returning ``(gy, gfed, gas)`` (see ``narx_param_grads``)."""
     mod = _get_kernels(spec)
-    if not torch.is_grad_enabled() or not any(t.requires_grad for t in [hu, y_true, *params]):
-        out, _ = _run_fwd(
-            mod, spec, hu.contiguous(), y_true.contiguous(), washout, params, store_z=False, num_warps=_num_warps(spec)
-        )
-        return out
-    return _TritonNarxRollout.apply(mod, spec, washout, hu, y_true, *params)
+    B, L = grad_out.shape[0], grad_out.shape[1]
+    dev = grad_out.device
+    bufs = _prep_weights(spec, weights, biases=None)
+    gy = torch.empty(B, L, spec.n_y, device=dev, dtype=torch.float32)
+    gfed = torch.empty(B, L, spec.n_y, device=dev, dtype=torch.float32)
+    gas = [torch.empty_like(z) for z in zs]
+    mod.narx_bwd[(B,)](grad_out, *zs, *bufs, gy, gfed, *gas, washout, B, L, NUM_STAGES=3, num_warps=_num_warps(spec))
+    return gy, gfed, gas

@@ -1,13 +1,18 @@
 """Parallel scans for diagonal linear recurrences, the compute core of LRU/S5/Mamba-style layers.
 
-Both public functions run a log-doubling (Hillis-Steele) scan inside a custom
-``autograd.Function`` with the analytic adjoint: the gradient of a linear recurrence
-``x_t = a_t x_{t-1} + v_t`` is itself a reverse-time linear recurrence
-``G_t = g_t + conj(a_{t+1}) G_{t+1}`` with ``dL/dv_t = G_t``, ``dL/da_t = G_t conj(x_{t-1})``
-and ``dL/dx_0 = conj(a_1) G_1``. Only the coefficients and the forward output are saved,
-so the backward memory is O(L) instead of the O(L log L) intermediates plain autograd
-would retain across the doubling levels — the difference between fitting and OOM for
-long sequences at large batch sizes.
+Both public functions are registered ``torch.library`` custom ops (``tsfast::scan_diagonal``,
+``tsfast::scan_selective``) with analytic-adjoint backward ops, so they compose with
+``torch.compile`` (no graph breaks), fake/meta tracing, and export. Inside the op, dispatch
+picks the fastest usable kernel backend for the input's device from ``_BACKENDS`` —
+honoring the process preference set via ``tsfast.models.set_backend``/``use_backend`` —
+and falls back to the pure-PyTorch log-doubling (Hillis-Steele) scan below.
+
+The gradient of a linear recurrence ``x_t = a_t x_{t-1} + v_t`` is itself a reverse-time
+linear recurrence ``G_t = g_t + conj(a_{t+1}) G_{t+1}`` with ``dL/dv_t = G_t``,
+``dL/da_t = G_t conj(x_{t-1})`` and ``dL/dx_0 = conj(a_1) G_1``. Only the coefficients and
+the forward output are saved, so the backward memory is O(L) instead of the O(L log L)
+intermediates plain autograd would retain across the doubling levels — the difference
+between fitting and OOM for long sequences at large batch sizes.
 """
 
 __all__ = [
@@ -17,53 +22,31 @@ __all__ = [
     "real_out_proj",
 ]
 
-import importlib
-
 import torch
-from torch.autograd.function import once_differentiable
 
-from .dispatch import warn_fallback
+from .dispatch import resolve
 
-# Process-wide backend override for both scan functions: "auto" resolves to the
-# fastest kernel available for the input's device ("triton" on CUDA, "c" on CPU),
-# falling back to the pure-PyTorch doubling scan with a once-per-process warning.
-# "doubling" forces the fallback; explicit "triton"/"c" warn whenever unusable.
-backend: str = "auto"
-
+# Kernel backends per op, resolved through dispatch.resolve: each module exposes
+# supports(lam, v, x0) -> str | None and forward/backward entry points on the
+# flattened lane layout the ops below establish.
+_BACKENDS = {
+    "diagonal": {
+        "triton": "tsfast.models._core.scan_backends.diagonal_triton",
+        "c": "tsfast.models._core.scan_backends.diagonal_c",
+    },
+    "selective": {
+        "triton": "tsfast.models._core.scan_backends.selective_triton",
+        "c": "tsfast.models._core.scan_backends.selective_c",
+    },
+}
 _AUTO_ORDER = {"cuda": ("triton",), "cpu": ("c",)}
 
 
-def _dispatch(op: str, lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None):
-    """Try the resolved kernel backends for ``op``; None means run the doubling scan.
+def _resolve(op: str, lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None):
+    return resolve(f"scan.{op}", _BACKENDS[op], _AUTO_ORDER.get(v.device.type, ()), (lam, v, x0))
 
-    Backend modules live in ``scan_backends/{op}_{name}.py`` and expose
-    ``supports(lam, v, x0) -> str | None`` (a reason string when unusable) and
-    ``run(lam, v, x0) -> Tensor`` (autograd-capable). A backend module that does
-    not exist is skipped silently under "auto" (not implemented is not an error);
-    any other failure warns once per process.
-    """
-    if backend == "doubling":
-        return None
-    names = _AUTO_ORDER.get(v.device.type, ()) if backend == "auto" else (backend,)
-    for name in names:
-        try:
-            mod = importlib.import_module(f".scan_backends.{op}_{name}", __package__)
-        except ModuleNotFoundError as e:
-            reason = f"backend module not available ({e})"
-            if backend == "auto" and e.name and e.name.rsplit(".", 1)[-1] == f"{op}_{name}":
-                continue
-        except Exception as e:  # a backend that exists but fails to load is worth a warning
-            reason = f"backend import failed ({e!r})"
-        else:
-            reason = mod.supports(lam, v, x0)
-            if reason is None:
-                return mod.run(lam, v, x0)
-        warn_fallback(
-            f"scan.{op}.{name}",
-            f"scan backend {name!r} unusable for {op} recurrence: {reason}; "
-            "falling back to the pure-PyTorch doubling scan",
-        )
-    return None
+
+# --------------------------------------------------------------- reference implementation
 
 
 def _scan_diagonal_(x: torch.Tensor, lam: torch.Tensor) -> torch.Tensor:
@@ -103,66 +86,136 @@ def _x_prev(x: torch.Tensor, x0: torch.Tensor | None) -> torch.Tensor:
     return torch.cat((first, x[..., :-1, :]), dim=-2)
 
 
-class _DiagonalRecurrence(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, lam, v, x0):
-        x = v.broadcast_to(torch.broadcast_shapes(lam.unsqueeze(-2).shape, v.shape)).clone()
-        if x0 is not None:
-            x[..., 0, :] += lam * x0
-        _scan_diagonal_(x, lam)
-        ctx.save_for_backward(lam, x, x0)
-        ctx.v_shape = v.shape
-        return x
-
-    @staticmethod
-    @once_differentiable
-    def backward(ctx, g):
-        lam, x, x0 = ctx.saved_tensors
-        lam_c = lam.conj()
-        # G_t = g_t + conj(lam) G_{t+1}: the same constant-coefficient scan, time-reversed.
-        G = _scan_diagonal_(g.flip(-2).clone(), lam_c).flip(-2)
-        grad_lam = grad_v = grad_x0 = None
-        if ctx.needs_input_grad[0]:
-            grad_lam = (G * _x_prev(x, x0).conj()).sum_to_size(lam.unsqueeze(-2).shape).squeeze(-2)
-        if ctx.needs_input_grad[1]:
-            grad_v = G.sum_to_size(ctx.v_shape)
-        if x0 is not None and ctx.needs_input_grad[2]:
-            grad_x0 = (lam_c * G[..., 0, :]).sum_to_size(x0.shape)
-        return grad_lam, grad_v, grad_x0
+# ------------------------------------------------------------------------- custom ops
+#
+# Both recurrences are exposed as forward/backward custom-op pairs operating on a
+# flattened lane layout (all leading batch dims collapsed, everything contiguous,
+# broadcasting already materialized by the public wrappers): diagonal takes
+# lam [M, N] constant over time with v [M, L, N]; selective takes lam [B, L, N]
+# matching v. Keeping the broadcast/reshape outside the ops means plain autograd
+# reduces the lane gradients back to the callers' (possibly broadcast) shapes.
+# The backward is its own registered op so compiled autograd also sees no graph break.
 
 
-class _SelectiveRecurrence(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, lam, v, x0):
-        shape = torch.broadcast_shapes(lam.shape, v.shape)
-        x = v.broadcast_to(shape).clone()
-        a = lam.broadcast_to(shape).clone()
-        if x0 is not None:
-            x[..., 0, :] += a[..., 0, :] * x0
-        _scan_selective_(x, a)
-        ctx.save_for_backward(lam, x, x0)
-        ctx.v_shape = v.shape
-        return x
+@torch.library.custom_op("tsfast::scan_diagonal", mutates_args=())
+def _scan_diagonal_op(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None) -> torch.Tensor:
+    lam, v = lam.contiguous(), v.contiguous()
+    x0 = x0.contiguous() if x0 is not None else None
+    mod = _resolve("diagonal", lam, v, x0)
+    if mod is not None:
+        return mod.forward(lam, v, x0)
+    x = v.clone()
+    if x0 is not None:
+        x[..., 0, :] += lam * x0
+    return _scan_diagonal_(x, lam)
 
-    @staticmethod
-    @once_differentiable
-    def backward(ctx, g):
-        lam, x, x0 = ctx.saved_tensors
-        shape = x.shape
-        # G_t = g_t + conj(a_{t+1}) G_{t+1}: time-reverse, then the flipped coefficient at
-        # step s is conj(a) flipped and shifted right by one (the first slot multiplies the
-        # zero initial state of the reverse scan, so its value never matters).
-        a_f = lam.conj().broadcast_to(shape).flip(-2)
-        c = torch.cat((torch.zeros_like(a_f[..., :1, :]), a_f[..., :-1, :]), dim=-2)
-        G = _scan_selective_(g.flip(-2).clone(), c).flip(-2)
-        grad_lam = grad_v = grad_x0 = None
-        if ctx.needs_input_grad[0]:
-            grad_lam = (G * _x_prev(x, x0).conj()).sum_to_size(lam.shape)
-        if ctx.needs_input_grad[1]:
-            grad_v = G.sum_to_size(ctx.v_shape)
-        if x0 is not None and ctx.needs_input_grad[2]:
-            grad_x0 = (lam.broadcast_to(shape)[..., 0, :].conj() * G[..., 0, :]).sum_to_size(x0.shape)
-        return grad_lam, grad_v, grad_x0
+
+@_scan_diagonal_op.register_fake
+def _(lam, v, x0):
+    return torch.empty_like(v)
+
+
+@torch.library.custom_op("tsfast::scan_diagonal_bwd", mutates_args=())
+def _scan_diagonal_bwd_op(
+    g: torch.Tensor, lam: torch.Tensor, out: torch.Tensor, x0: torch.Tensor | None
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    # lam/x0 come from setup_context and may still be broadcast views; the kernels
+    # index raw data pointers, so materialize everything (no-ops when already dense).
+    g, lam, out = g.contiguous(), lam.contiguous(), out.contiguous()
+    x0 = x0.contiguous() if x0 is not None else None
+    mod = _resolve("diagonal", lam, g, x0)
+    if mod is not None:
+        return mod.backward(g, lam, out, x0)
+    lam_c = lam.conj()
+    # G_t = g_t + conj(lam) G_{t+1}: the same constant-coefficient scan, time-reversed.
+    G = _scan_diagonal_(g.flip(-2).clone(), lam_c).flip(-2)
+    glam = (G * _x_prev(out, x0).conj()).sum(-2)
+    gx0 = lam_c * G[..., 0, :] if x0 is not None else lam.new_empty(0)
+    return glam, G, gx0
+
+
+@_scan_diagonal_bwd_op.register_fake
+def _(g, lam, out, x0):
+    gx0 = torch.empty_like(lam) if x0 is not None else lam.new_empty(0)
+    return torch.empty_like(lam), torch.empty_like(g), gx0
+
+
+def _diag_setup(ctx, inputs, output):
+    lam, v, x0 = inputs
+    ctx.save_for_backward(lam, output, x0)
+
+
+def _diag_backward(ctx, g):
+    lam, out, x0 = ctx.saved_tensors
+    glam, gv, gx0 = _scan_diagonal_bwd_op(g, lam, out, x0)
+    return glam, gv, (gx0 if x0 is not None else None)
+
+
+_scan_diagonal_op.register_autograd(_diag_backward, setup_context=_diag_setup)
+
+
+@torch.library.custom_op("tsfast::scan_selective", mutates_args=())
+def _scan_selective_op(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None) -> torch.Tensor:
+    lam, v = lam.contiguous(), v.contiguous()
+    x0 = x0.contiguous() if x0 is not None else None
+    mod = _resolve("selective", lam, v, x0)
+    if mod is not None:
+        return mod.forward(lam, v, x0)
+    x = v.clone()
+    a = lam.clone()
+    if x0 is not None:
+        x[..., 0, :] += a[..., 0, :] * x0
+    return _scan_selective_(x, a)
+
+
+@_scan_selective_op.register_fake
+def _(lam, v, x0):
+    return torch.empty_like(v)
+
+
+@torch.library.custom_op("tsfast::scan_selective_bwd", mutates_args=())
+def _scan_selective_bwd_op(
+    g: torch.Tensor, lam: torch.Tensor, out: torch.Tensor, x0: torch.Tensor | None
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    # lam/x0 come from setup_context and may still be broadcast views; the kernels
+    # index raw data pointers, so materialize everything (no-ops when already dense).
+    g, lam, out = g.contiguous(), lam.contiguous(), out.contiguous()
+    x0 = x0.contiguous() if x0 is not None else None
+    mod = _resolve("selective", lam, g, x0)
+    if mod is not None:
+        return mod.backward(g, lam, out, x0)
+    # G_t = g_t + conj(a_{t+1}) G_{t+1}: time-reverse, then the flipped coefficient at
+    # step s is conj(a) flipped and shifted right by one (the first slot multiplies the
+    # zero initial state of the reverse scan, so its value never matters).
+    a_f = lam.conj().flip(-2)
+    c = torch.cat((torch.zeros_like(a_f[..., :1, :]), a_f[..., :-1, :]), dim=-2)
+    G = _scan_selective_(g.flip(-2).clone(), c).flip(-2)
+    glam = G * _x_prev(out, x0).conj()
+    gx0 = lam[..., 0, :].conj() * G[..., 0, :] if x0 is not None else lam.new_empty(0)
+    return glam, G, gx0
+
+
+@_scan_selective_bwd_op.register_fake
+def _(g, lam, out, x0):
+    gx0 = torch.empty_like(lam[..., 0, :]) if x0 is not None else lam.new_empty(0)
+    return torch.empty_like(lam), torch.empty_like(g), gx0
+
+
+def _sel_setup(ctx, inputs, output):
+    lam, v, x0 = inputs
+    ctx.save_for_backward(lam, output, x0)
+
+
+def _sel_backward(ctx, g):
+    lam, out, x0 = ctx.saved_tensors
+    glam, gv, gx0 = _scan_selective_bwd_op(g, lam, out, x0)
+    return glam, gv, (gx0 if x0 is not None else None)
+
+
+_scan_selective_op.register_autograd(_sel_backward, setup_context=_sel_setup)
+
+
+# ------------------------------------------------------------------------- public API
 
 
 def diagonal_recurrence(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None = None) -> torch.Tensor:
@@ -182,8 +235,12 @@ def diagonal_recurrence(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | N
     Returns:
         States ``x_1 .. x_L`` as ``[..., L, n]``.
     """
-    out = _dispatch("diagonal", lam, v, x0)
-    return out if out is not None else _DiagonalRecurrence.apply(lam, v, x0)
+    out_shape = torch.broadcast_shapes(lam.unsqueeze(-2).shape, v.shape)
+    bdims, L, n = out_shape[:-2], out_shape[-2], out_shape[-1]
+    lam_lane = lam.broadcast_to(bdims + (n,)).reshape(-1, n)
+    v_flat = v.broadcast_to(out_shape).reshape(-1, L, n)
+    x0_lane = None if x0 is None else x0.broadcast_to(bdims + (n,)).reshape(-1, n)
+    return _scan_diagonal_op(lam_lane, v_flat, x0_lane).reshape(out_shape)
 
 
 def selective_recurrence(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None = None) -> torch.Tensor:
@@ -197,15 +254,19 @@ def selective_recurrence(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | 
     of Mamba-style selective state-space layers.
 
     Args:
-        lam: diagonal coefficients per step ``[..., L, n]``.
+        lam: diagonal coefficients per step ``[..., L, n]``, broadcast against ``v``.
         v: input sequence ``[..., L, n]``.
         x0: initial state ``[..., n]``; zeros if None.
 
     Returns:
         States ``x_1 .. x_L`` as ``[..., L, n]``.
     """
-    out = _dispatch("selective", lam, v, x0)
-    return out if out is not None else _SelectiveRecurrence.apply(lam, v, x0)
+    out_shape = torch.broadcast_shapes(lam.shape, v.shape)
+    bdims, L, n = out_shape[:-2], out_shape[-2], out_shape[-1]
+    lam3 = lam.broadcast_to(out_shape).reshape(-1, L, n)
+    v3 = v.broadcast_to(out_shape).reshape(-1, L, n)
+    x03 = None if x0 is None else x0.broadcast_to(bdims + (n,)).reshape(-1, n)
+    return _scan_selective_op(lam3, v3, x03).reshape(out_shape)
 
 
 def complex_in_proj(u: torch.Tensor, W_re: torch.Tensor, W_im: torch.Tensor) -> torch.Tensor:

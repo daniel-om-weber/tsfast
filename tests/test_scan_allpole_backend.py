@@ -13,7 +13,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-import tsfast.models._core.scan as scan
+from tsfast.models import use_backend
 from tsfast.models.architectures.dynonet import DynoNet, linear_recurrence
 from tsfast.models.architectures.dynonet import allpole_triton
 
@@ -128,18 +128,15 @@ class TestDynoNetFusedPath:
             m = self._prep_model()
             u = torch.randn(5, 64, 3, device="cuda")
             res = {}
-            for backend in ("auto", "doubling"):
-                scan.backend = backend
-                try:
+            for backend in ("auto", "reference"):
+                with use_backend(backend):
                     for p in m.parameters():
                         p.grad = None
                     out = m(u)
                     out.square().mean().backward()
-                finally:
-                    scan.backend = "auto"
                 res[backend] = (out.detach().clone(), [p.grad.clone() for p in m.parameters()])
-            assert _rel(res["auto"][0], res["doubling"][0]) < 1e-5
-            rels = [_rel(g, r) for g, r in zip(res["auto"][1], res["doubling"][1])]
+            assert _rel(res["auto"][0], res["reference"][0]) < 1e-5
+            rels = [_rel(g, r) for g, r in zip(res["auto"][1], res["reference"][1])]
             assert max(rels) < 1e-4, f"max relative param-grad diff {max(rels):.2e}"
         finally:
             torch.backends.cuda.matmul.allow_tf32 = prev

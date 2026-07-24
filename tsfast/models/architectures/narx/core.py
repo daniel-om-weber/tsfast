@@ -3,6 +3,7 @@
 __all__ = [
     "NarxMLP",
     "NarxSpec",
+    "fused_rollout",
 ]
 
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
+from ..._core.dispatch import get_backend, resolve
 from ..cnn import CausalConv1d
 
 _ACTS: dict[str, type[nn.Module]] = {
@@ -55,6 +57,32 @@ class NarxSpec:
         return len(self.hidden) + 1
 
 
+# Kernel backends of the free-run recurrence, resolved through dispatch.resolve: each
+# module exposes supports(spec, hu, y_true) -> str | None plus forward_infer /
+# forward_train / backward entry points on contiguous [B, L, .] tensors.
+_BACKENDS = {
+    "triton": "tsfast.models.architectures.narx.backend_triton",
+    "c": "tsfast.models.architectures.narx.backend_c",
+}
+#: Families tried under "auto" inside the custom ops, per device.
+_AUTO_ORDER = {"cuda": ("triton",), "cpu": ("c",)}
+#: Families the model's own "auto" policy tries. CPU stays empty: auto rollouts use the
+#: eager loop, and the C backend's one-time compilation is opt-in (explicit ``"c"``).
+_MODEL_AUTO = {"cuda": ("triton",)}
+
+
+def _resolve_fused(spec: NarxSpec, hu: torch.Tensor, y_true: torch.Tensor, backend: str):
+    """Backend module for the fused rollout ops; raises when nothing is usable."""
+    requested = None if backend == "auto" else backend
+    mod = resolve("narx.rollout", _BACKENDS, _AUTO_ORDER.get(hu.device.type, ()), (spec, hu, y_true), requested)
+    if mod is None:
+        raise RuntimeError(
+            f"no usable fused NARX backend for device {hu.device.type!r} (requested {backend!r}); "
+            "use backend='eager' or 'compiled'"
+        )
+    return mod
+
+
 class NarxMLP(nn.Module):
     """MLP NARX model ``y[t] = f(y[t-1..t-na], u[t..t-nb+1])``.
 
@@ -88,14 +116,20 @@ class NarxMLP(nn.Module):
       float32 on CPU.
     - ``"triton"``: persistent-GEMV recurrence kernel with a fused BPTT backward —
       float32 on CUDA, padded widths up to 128.
-    - ``"auto"``: ``triton`` when it applies, else ``compiled`` on CUDA; ``eager`` on
-      CPU (select ``"c"`` explicitly to trade a one-time compilation for much faster
-      CPU rollouts).
+    - ``"reference"``: no fused kernels — ``compiled`` on float32 CUDA, ``eager``
+      elsewhere.
+    - ``"auto"``: the process preference (``tsfast.models.get_backend()``, scopable via
+      ``use_backend``); when that is itself ``"auto"``: ``triton`` when it applies, else
+      ``compiled`` on CUDA; ``eager`` on CPU (select ``"c"`` explicitly to trade a
+      one-time compilation for much faster CPU rollouts).
 
     All backends share the same parameters, so the backend can be switched at any time
-    via the ``backend`` attribute. The fused backends are loss-agnostic
-    ``autograd.Function``s and return the gradient w.r.t. the precomputed input-window
-    contribution, so the convolutions stay inside plain autograd.
+    via the ``backend`` attribute. An explicit fused family that cannot run the current
+    inputs warns once per process and falls back to the ``"reference"`` policy. The
+    fused backends run through the ``tsfast::narx_rollout*`` custom ops, so they are
+    loss-agnostic, autograd-capable, and compose with ``torch.compile`` without graph
+    breaks; they return the gradient w.r.t. the precomputed input-window contribution,
+    so the convolutions stay inside plain autograd.
 
     Args:
         u_size: number of input channels ``u``.
@@ -178,35 +212,41 @@ class NarxMLP(nn.Module):
         u, y = self._split(x)
         hu = self.conv_u(u).transpose(1, 2).contiguous()  # feedback-independent, parallel
         y_true = y.transpose(1, 2).contiguous()
-        match self._resolve_backend(x):
+        requested = self.backend
+        if requested == "auto" and not torch.compiler.is_compiling():
+            requested = get_backend()
+        match requested:
             case "eager":
                 return self._rollout_eager(hu, y_true)
             case "compiled":
-                if self._compiled_rollout is None:
-                    torch._dynamo.config.cache_size_limit = max(torch._dynamo.config.cache_size_limit, 64)
-                    self._compiled_rollout = torch.compile(self._rollout_eager, dynamic=False)
-                return self._compiled_rollout(hu, y_true)
-            case "c":
-                from .backend_c import c_rollout
+                return self._rollout_compiled(hu, y_true)
+            case "reference":
+                return self._rollout_reference(hu, y_true)
+            case _:
+                return self._rollout_fused(hu, y_true, requested)
 
-                return c_rollout(self.spec, hu, y_true, self.washout, self._params_flat())
-            case "triton":
-                from .backend_triton import triton_rollout
+    def _rollout_fused(self, hu: Tensor, y_true: Tensor, requested: str) -> Tensor:
+        # Inside a compiled graph the probe is skipped (dispatch runs Python that dynamo
+        # cannot trace); the custom op re-resolves at runtime and raises when unusable.
+        if not torch.compiler.is_compiling():
+            mod = resolve(
+                "narx.rollout", _BACKENDS, _MODEL_AUTO.get(hu.device.type, ()), (self.spec, hu, y_true), requested
+            )
+            if mod is None:
+                return self._rollout_reference(hu, y_true)
+        return fused_rollout(self.spec, hu, y_true, self.washout, self._params_flat(), requested)
 
-                return triton_rollout(self.spec, hu, y_true, self.washout, self._params_flat())
-            case unknown:
-                raise ValueError(f"unknown backend {unknown!r}")
+    def _rollout_reference(self, hu: Tensor, y_true: Tensor) -> Tensor:
+        """Non-fused rollout: the compiled loop on float32 CUDA, the eager loop elsewhere."""
+        if hu.is_cuda and hu.dtype == torch.float32:
+            return self._rollout_compiled(hu, y_true)
+        return self._rollout_eager(hu, y_true)
 
-    def _resolve_backend(self, x: Tensor) -> str:
-        if self.backend != "auto":
-            return self.backend
-        if x.is_cuda and x.dtype == torch.float32:
-            from . import backend_triton
-
-            if backend_triton.is_available() and backend_triton.fits(self.spec):
-                return "triton"
-            return "compiled"
-        return "eager"
+    def _rollout_compiled(self, hu: Tensor, y_true: Tensor) -> Tensor:
+        if self._compiled_rollout is None:
+            torch._dynamo.config.cache_size_limit = max(torch._dynamo.config.cache_size_limit, 64)
+            self._compiled_rollout = torch.compile(self._rollout_eager, dynamic=False)
+        return self._compiled_rollout(hu, y_true)
 
     def _rollout_eager(self, hu: Tensor, y_true: Tensor) -> Tensor:
         w_y = self.conv_y.weight  # (hidden, y_size, na); index na-1 is lag 1
@@ -224,18 +264,6 @@ class NarxMLP(nn.Module):
         if ar is None:
             ar = not (self.training and self.teacher_forcing)
         return self._forward_free_run(x) if ar else self._forward_teacher_forced(x)
-
-
-def check_rollout_args(spec: NarxSpec, hu: torch.Tensor, y_true: torch.Tensor, device_type: str) -> None:
-    """Validate inputs of the fused backends, which are float32-only and device-specific."""
-    if hu.device.type != device_type:
-        raise RuntimeError(f"this backend requires {device_type} tensors, got {hu.device.type}")
-    if hu.dtype != torch.float32 or y_true.dtype != torch.float32:
-        raise RuntimeError(f"this backend requires float32, got {hu.dtype}")
-    if hu.dim() != 3 or hu.shape[-1] != spec.hidden[0]:
-        raise RuntimeError(f"expected hu of shape [B, L, {spec.hidden[0]}], got {tuple(hu.shape)}")
-    if y_true.shape != (*hu.shape[:2], spec.n_y):
-        raise RuntimeError(f"expected y_true of shape [{hu.shape[0]}, {hu.shape[1]}, {spec.n_y}]")
 
 
 def fed_buffers(spec: NarxSpec, y_true: torch.Tensor, out: torch.Tensor, washout: int) -> torch.Tensor:
@@ -285,3 +313,144 @@ def narx_param_grads(
         grads.append(ga.t() @ a_prev)
         grads.append(ga.sum(0))
     return grads
+
+
+# ------------------------------------------------------------------------- custom ops
+#
+# The fused rollout is exposed as forward/backward custom-op pairs so it composes with
+# torch.compile (no graph breaks), fake/meta tracing, and export. The frozen NarxSpec
+# cannot cross the op boundary; its fields travel as scalars and the spec is rebuilt
+# inside the impl. Inference and training are separate ops (training stores the hidden
+# activations the fused BPTT needs; autograd is registered on the training op only),
+# and the backward is its own op so compiled autograd also sees no graph break.
+
+
+@torch.library.custom_op("tsfast::narx_rollout", mutates_args=())
+def _narx_rollout(
+    hu: Tensor,
+    y_true: Tensor,
+    params: list[Tensor],
+    washout: int,
+    n_y: int,
+    na: int,
+    hidden: list[int],
+    act: str,
+    backend: str,
+) -> Tensor:
+    spec = NarxSpec(n_y, na, tuple(hidden), act)
+    hu, y_true = hu.contiguous(), y_true.contiguous()
+    params = [p.contiguous() for p in params]
+    mod = _resolve_fused(spec, hu, y_true, backend)
+    return mod.forward_infer(spec, hu, y_true, washout, params)
+
+
+@_narx_rollout.register_fake
+def _(hu, y_true, params, washout, n_y, na, hidden, act, backend):
+    return hu.new_empty(hu.shape[0], hu.shape[1], n_y)
+
+
+@torch.library.custom_op("tsfast::narx_rollout_train", mutates_args=())
+def _narx_rollout_train(
+    hu: Tensor,
+    y_true: Tensor,
+    params: list[Tensor],
+    washout: int,
+    n_y: int,
+    na: int,
+    hidden: list[int],
+    act: str,
+    backend: str,
+) -> tuple[Tensor, list[Tensor]]:
+    spec = NarxSpec(n_y, na, tuple(hidden), act)
+    hu, y_true = hu.contiguous(), y_true.contiguous()
+    params = [p.contiguous() for p in params]
+    mod = _resolve_fused(spec, hu, y_true, backend)
+    out, zs = mod.forward_train(spec, hu, y_true, washout, params)
+    return out, zs
+
+
+@_narx_rollout_train.register_fake
+def _(hu, y_true, params, washout, n_y, na, hidden, act, backend):
+    B, L = hu.shape[0], hu.shape[1]
+    return hu.new_empty(B, L, n_y), [hu.new_empty(B, L, h) for h in hidden]
+
+
+@torch.library.custom_op("tsfast::narx_rollout_bwd", mutates_args=())
+def _narx_rollout_bwd(
+    grad_out: Tensor,
+    y_true: Tensor,
+    out: Tensor,
+    zs: list[Tensor],
+    params: list[Tensor],
+    washout: int,
+    n_y: int,
+    na: int,
+    hidden: list[int],
+    act: str,
+    backend: str,
+) -> tuple[Tensor, Tensor, list[Tensor]]:
+    spec = NarxSpec(n_y, na, tuple(hidden), act)
+    grad_out, y_true, out = grad_out.contiguous(), y_true.contiguous(), out.contiguous()
+    zs = [z.contiguous() for z in zs]
+    params = [p.contiguous() for p in params]
+    # zs[0] matches hu in shape/device/dtype, standing in for it in the supports probe.
+    mod = _resolve_fused(spec, zs[0], y_true, backend)
+    weights = [params[0], *params[1::2]]
+    gy, gfed, gas = mod.backward(spec, grad_out, zs, weights, washout)
+    grads = narx_param_grads(spec, y_true, out, washout, zs, gy, gas)
+    # dhu is the first pre-activation adjoint: h0 = act(hu + Wy @ buffer).
+    t = torch.arange(out.shape[1], device=out.device)
+    dy_true = gfed * (t < washout)[None, :, None]
+    return gas[0], dy_true, grads
+
+
+@_narx_rollout_bwd.register_fake
+def _(grad_out, y_true, out, zs, params, washout, n_y, na, hidden, act, backend):
+    return torch.empty_like(zs[0]), torch.empty_like(y_true), [torch.empty_like(p) for p in params]
+
+
+def _rollout_train_setup(ctx, inputs, output):
+    hu, y_true, params, washout, n_y, na, hidden, act, backend = inputs
+    out, zs = output
+    ctx.washout, ctx.n_y, ctx.na, ctx.hidden, ctx.act, ctx.backend = washout, n_y, na, hidden, act, backend
+    ctx.save_for_backward(y_true, out, *zs, *params)
+
+
+def _rollout_train_backward(ctx, grad_out, grad_zs):
+    # zs are backward workspaces never exposed by fused_rollout, so grad_zs is unused.
+    saved = ctx.saved_tensors
+    y_true, out = saved[0], saved[1]
+    nz = len(ctx.hidden)
+    zs, params = list(saved[2 : 2 + nz]), list(saved[2 + nz :])
+    dhu, dy_true, dparams = _narx_rollout_bwd(
+        grad_out, y_true, out, zs, params, ctx.washout, ctx.n_y, ctx.na, ctx.hidden, ctx.act, ctx.backend
+    )
+    return dhu, dy_true, dparams, None, None, None, None, None, None
+
+
+_narx_rollout_train.register_autograd(_rollout_train_backward, setup_context=_rollout_train_setup)
+
+
+def fused_rollout(
+    spec: NarxSpec,
+    hu: torch.Tensor,
+    y_true: torch.Tensor,
+    washout: int,
+    params: list[torch.Tensor],
+    backend: str = "auto",
+) -> torch.Tensor:
+    """Run the free-run recurrence through the fused-kernel custom ops (autograd-capable).
+
+    Args:
+        spec: feedback-path architecture; regenerating kernels per distinct spec.
+        hu: precomputed input-window contribution ``[B, L, hidden[0]]``.
+        y_true: true output sequence ``[B, L, n_y]`` (read during washout).
+        washout: teacher-forced prefix length.
+        params: feedback-path parameters in ``_params_flat`` order.
+        backend: requested kernel family; ``"auto"`` resolves per device, honoring the
+            process preference from ``tsfast.models.set_backend``/``use_backend``.
+    """
+    args = (hu, y_true, list(params), washout, spec.n_y, spec.na, list(spec.hidden), spec.act, backend)
+    if torch.is_grad_enabled() and any(t.requires_grad for t in (hu, y_true, *params)):
+        return _narx_rollout_train(*args)[0]
+    return _narx_rollout(*args)

@@ -13,11 +13,15 @@ Backward follows the split-BPTT design: the reverse sweep carries the lag-buffer
 (each fed-back prediction receives gradient from up to ``na`` future steps) and emits the
 per-step adjoints; parameter gradients are batched GEMMs over the ``[B*L, .]`` flattened
 adjoints (``narx_param_grads``), and the gradient w.r.t. ``hu`` hands the chain back to
-autograd for the convolution path.
+autograd for the convolution path. The entry points serve the ``tsfast::narx_rollout*``
+custom ops, which deliver contiguous float32 tensors.
 """
 
 __all__ = [
-    "c_rollout",
+    "supports",
+    "forward_infer",
+    "forward_train",
+    "backward",
     "is_available",
 ]
 
@@ -35,9 +39,24 @@ from ..._core.kernel_c import (
     _build_flags,
     is_available,
 )
-from .core import NarxSpec, check_rollout_args, narx_param_grads
+from .core import NarxSpec
 
 _EXTENSIONS: dict[NarxSpec, object] = {}
+
+
+def supports(spec: NarxSpec, hu: torch.Tensor, y_true: torch.Tensor) -> str | None:
+    """Reason the C++ kernel cannot handle these inputs, or None when it can."""
+    if hu.device.type != "cpu" or y_true.device.type != "cpu":
+        return "inputs not on CPU"
+    if not is_available():
+        return "no host C++ toolchain / ninja"
+    if hu.dtype != torch.float32 or y_true.dtype != torch.float32:
+        return f"needs float32, got hu={hu.dtype}, y_true={y_true.dtype}"
+    if hu.dim() != 3 or hu.shape[-1] != spec.hidden[0]:
+        return f"expected hu of shape [B, L, {spec.hidden[0]}], got {tuple(hu.shape)}"
+    if y_true.shape != (*hu.shape[:2], spec.n_y):
+        return f"expected y_true of shape [{hu.shape[0]}, {hu.shape[1]}, {spec.n_y}], got {tuple(y_true.shape)}"
+    return None
 
 
 def _gen_source(spec: NarxSpec) -> str:
@@ -210,55 +229,40 @@ def _get_extension(spec: NarxSpec):
     return ext
 
 
-def _run_fwd(ext, spec: NarxSpec, hu, y_true, washout, params, store_z):
+def _run_fwd(spec: NarxSpec, hu, y_true, washout, params, store_z):
+    ext = _get_extension(spec)
     B, L = hu.shape[0], hu.shape[1]
     out = torch.empty(B, L, spec.n_y, dtype=torch.float32)
     zs = [torch.empty(B, L, h, dtype=torch.float32) for h in spec.hidden]
-    wb = [t.detach().contiguous() for t in params]
+    wb = [t.contiguous() for t in params]
     ext.narx_fwd(hu, y_true, washout, *wb, out, *zs, store_z)
     return out, zs
 
 
-class _CNarxRollout(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, ext, spec, washout, hu, y_true, *params):
-        hu = hu.contiguous()
-        y_true = y_true.contiguous()
-        out, zs = _run_fwd(ext, spec, hu, y_true, washout, params, store_z=True)
-        ctx.ext, ctx.spec, ctx.washout = ext, spec, washout
-        ctx.save_for_backward(y_true, out, *zs, *params[0:1], *params[1::2])
-        return out
-
-    @staticmethod
-    def backward(ctx, grad_out):
-        ext, spec, washout = ctx.ext, ctx.spec, ctx.washout
-        k = spec.n_linear
-        saved = ctx.saved_tensors
-        y_true, out = saved[0], saved[1]
-        zs = list(saved[2 : 2 + k - 1])
-        weights = list(saved[2 + k - 1 :])  # [wy, w1, ..., w_{k-1}]
-        B, L = out.shape[0], out.shape[1]
-        wts = [w.detach().t().contiguous() for w in weights]
-        gy = torch.empty(B, L, spec.n_y, dtype=torch.float32)
-        gfed = torch.empty(B, L, spec.n_y, dtype=torch.float32)
-        gas = [torch.empty_like(z) for z in zs]
-        ext.narx_bwd(grad_out.contiguous(), washout, *zs, *wts, gy, gfed, *gas)
-        grads = narx_param_grads(spec, y_true, out, washout, zs, gy, gas)
-        dhu = gas[0] if ctx.needs_input_grad[3] else None
-        dy_true = None
-        if ctx.needs_input_grad[4]:
-            t = torch.arange(L)
-            dy_true = gfed * (t < washout)[None, :, None]
-        return (None, None, None, dhu, dy_true, *grads)
-
-
-def c_rollout(
+def forward_infer(
     spec: NarxSpec, hu: torch.Tensor, y_true: torch.Tensor, washout: int, params: list[torch.Tensor]
 ) -> torch.Tensor:
-    """Run the free-run recurrence through the generated C++ extension (autograd-capable)."""
-    check_rollout_args(spec, hu, y_true, "cpu")
+    """Forward rollout without stored intermediates, returning ``out [B, L, n_y]``."""
+    out, _ = _run_fwd(spec, hu, y_true, washout, params, store_z=False)
+    return out
+
+
+def forward_train(
+    spec: NarxSpec, hu: torch.Tensor, y_true: torch.Tensor, washout: int, params: list[torch.Tensor]
+) -> tuple[torch.Tensor, list[torch.Tensor]]:
+    """Forward rollout storing the post-activation hidden sequences, returning ``(out, zs)``."""
+    return _run_fwd(spec, hu, y_true, washout, params, store_z=True)
+
+
+def backward(
+    spec: NarxSpec, grad_out: torch.Tensor, zs: list[torch.Tensor], weights: list[torch.Tensor], washout: int
+) -> tuple[torch.Tensor, torch.Tensor, list[torch.Tensor]]:
+    """Reverse buffer-adjoint sweep, returning ``(gy, gfed, gas)`` (see ``narx_param_grads``)."""
     ext = _get_extension(spec)
-    if not torch.is_grad_enabled() or not any(t.requires_grad for t in [hu, y_true, *params]):
-        out, _ = _run_fwd(ext, spec, hu.contiguous(), y_true.contiguous(), washout, params, store_z=False)
-        return out
-    return _CNarxRollout.apply(ext, spec, washout, hu, y_true, *params)
+    B, L = grad_out.shape[0], grad_out.shape[1]
+    wts = [w.t().contiguous() for w in weights]
+    gy = torch.empty(B, L, spec.n_y, dtype=torch.float32)
+    gfed = torch.empty(B, L, spec.n_y, dtype=torch.float32)
+    gas = [torch.empty_like(z) for z in zs]
+    ext.narx_bwd(grad_out, washout, *zs, *wts, gy, gfed, *gas)
+    return gy, gfed, gas

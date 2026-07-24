@@ -12,10 +12,16 @@ gradients in Python (no locks, no races).
 The forward stores only the per-step input states (B×L×n); the backward recomputes
 each step's intra-step activations and runs the hand-derived reverse pass in
 ``MATH.md`` (§3), including the second-order coupling through the Hamiltonian gradient.
+Inputs arrive from the ``tsfast::phnn_rollout*`` custom ops as contiguous tensors with
+the parameters flattened in ``flat_params`` order.
 """
 
 __all__ = [
-    "c_rollout",
+    "supports",
+    "forward",
+    "forward_train",
+    "backward",
+    "fake_saved",
     "is_available",
 ]
 
@@ -24,7 +30,7 @@ import hashlib
 import torch
 
 from ..._core.kernel_c import _build_flags, is_available  # toolchain probe + flags shared
-from .common import PHNNSpec, bound_value, params_of
+from .common import PHNNSpec, spec_caps, split_params
 
 _EXTENSION = None
 
@@ -438,28 +444,40 @@ def _get_extension():
     return _EXTENSION
 
 
-def check_rollout_args(spec: PHNNSpec, u: torch.Tensor, x0: torch.Tensor) -> None:
-    if u.device.type != "cpu" or x0.device.type != "cpu":
-        raise RuntimeError(f"the c backend requires cpu tensors, got {u.device.type}")
+def supports(spec: PHNNSpec, u: torch.Tensor, x0: torch.Tensor | None) -> str | None:
+    """Reason this backend cannot handle the inputs, or None when it can."""
+    if u.device.type != "cpu":
+        return f"input on {u.device.type}, the c backend is CPU-only"
+    reason = spec_caps(spec)
+    if reason is not None:
+        return reason
     if spec.n_state > 32 or spec.hidden > 512 or spec.num_layers > 4:
-        raise RuntimeError(f"spec {spec} exceeds the c backend buffers (n_state<=32, hidden<=512, num_layers<=4)")
+        return (
+            f"spec exceeds the kernel buffers (n_state<=32, hidden<=512, num_layers<=4), "
+            f"got n_state={spec.n_state}, hidden={spec.hidden}, num_layers={spec.num_layers}"
+        )
+    if u.dtype not in (torch.float32, torch.float64):
+        return f"dtype {u.dtype} unsupported (need float32 or float64)"
     if u.dim() != 3 or u.shape[-1] != spec.n_input:
-        raise RuntimeError(f"expected u of shape [B, L, {spec.n_input}], got {tuple(u.shape)}")
+        return f"expected u of shape [B, L, {spec.n_input}], got {tuple(u.shape)}"
+    if not is_available():
+        return "no host C++ toolchain / ninja"
+    return None
 
 
-def _scalars(core, spec: PHNNSpec, p: dict) -> dict:
+def _scalars(spec: PHNNSpec, dt: float, bound: float, jr_scale: float, g_scale: float) -> dict:
     return dict(
         n=spec.n_state,
         nu=spec.n_input,
         ny=spec.n_output,
         nh=spec.hidden,
         K=spec.n_linear,
-        dt=float(core.dt),
+        dt=dt,
         out_linear=int(spec.output == "linear"),
         has_bound=int(spec.has_bound),
-        bound=bound_value(core),
-        jr_scale=float(core.jr_scale),
-        g_scale=float(core.g_scale),
+        bound=bound,
+        jr_scale=jr_scale,
+        g_scale=g_scale,
     )
 
 
@@ -506,112 +524,128 @@ def _run_fwd(ext, spec, p, sc, u, x0):
     return out, xstates
 
 
-class _CPHNNRollout(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, core, spec, u, x0, *params):
-        ext = _get_extension()
-        p = params_of(core)
-        sc = _scalars(core, spec, p)
-        out, xstates = _run_fwd(ext, spec, p, sc, u, x0)
-        ctx.core, ctx.spec, ctx.sc, ctx.ext = core, spec, sc, ext
-        ctx.save_for_backward(u, xstates)
-        return out
-
-    @staticmethod
-    def backward(ctx, grad_out):
-        core, spec, sc, ext = ctx.core, ctx.spec, ctx.sc, ctx.ext
-        u, xstates = ctx.saved_tensors
-        p = params_of(core)
-        B, L = xstates.shape[0], xstates.shape[1]
-        dt = u.dtype
-
-        def lane_like(lst):
-            return [torch.zeros(B, *t.shape, dtype=dt) for t in lst]
-
-        dhw, dhb = lane_like(p["hw"]), lane_like(p["hb"])
-        djw, djb = lane_like(p["jw"]), lane_like(p["jb"])
-        drw, drb = lane_like(p["rw"]), lane_like(p["rb"])
-        dgw, dgb = lane_like(p["gw"]), lane_like(p["gb"])
-        dglw = torch.zeros(B, *p["glw"].shape, dtype=dt)
-        dglb = torch.zeros(B, *p["glb"].shape, dtype=dt)
-        has_out = p["ow"] is not None
-        dow = torch.zeros(B, *p["ow"].shape, dtype=dt) if has_out else torch.empty(0, dtype=dt)
-        dob = torch.zeros(B, *p["ob"].shape, dtype=dt) if has_out else torch.empty(0, dtype=dt)
-        du = torch.zeros(B, L, spec.n_input, dtype=dt)
-        gx0 = torch.zeros(B, spec.n_state, dtype=dt)
-        ow = p["ow"] if has_out else torch.empty(0, dtype=dt)
-        ob = p["ob"] if has_out else torch.empty(0, dtype=dt)
-
-        ext.phnn_bwd(
-            u.contiguous(),
-            xstates.contiguous(),
-            grad_out.contiguous(),
-            _cd(p["hw"]),
-            _cd(p["hb"]),
-            _cd(p["jw"]),
-            _cd(p["jb"]),
-            _cd(p["rw"]),
-            _cd(p["rb"]),
-            p["glw"].detach().contiguous(),
-            p["glb"].detach().contiguous(),
-            _cd(p["gw"]),
-            _cd(p["gb"]),
-            ow.detach().contiguous(),
-            ob.detach().contiguous(),
-            dhw,
-            dhb,
-            djw,
-            djb,
-            drw,
-            drb,
-            dglw,
-            dglb,
-            dgw,
-            dgb,
-            dow,
-            dob,
-            du,
-            gx0,
-            sc["n"],
-            sc["nu"],
-            sc["ny"],
-            sc["nh"],
-            sc["K"],
-            sc["dt"],
-            sc["out_linear"],
-            sc["has_bound"],
-            sc["bound"],
-            sc["jr_scale"],
-            sc["g_scale"],
-        )
-        # sum per-lane grads to parameter grads, in flat_params order
-        grads = []
-        for lst in (dhw, dhb, djw, djb, drw, drb):
-            grads += [g.sum(0) for g in lst]
-        grads += [dglw.sum(0), dglb.sum(0)]
-        for lst in (dgw, dgb):
-            grads += [g.sum(0) for g in lst]
-        if has_out:
-            grads += [dow.sum(0), dob.sum(0)]
-        du_out = du if ctx.needs_input_grad[2] else None
-        dx0_out = gx0 if ctx.needs_input_grad[3] else None
-        return (None, None, du_out, dx0_out, *grads)
+def forward(
+    u: torch.Tensor,
+    x0: torch.Tensor,
+    params: list[torch.Tensor],
+    spec: PHNNSpec,
+    dt: float,
+    bound: float,
+    jr_scale: float,
+    g_scale: float,
+) -> torch.Tensor:
+    """Fused rollout, inference only: output sequence ``[B, L, n_output]``."""
+    p = split_params(params, spec)
+    out, _ = _run_fwd(_get_extension(), spec, p, _scalars(spec, dt, bound, jr_scale, g_scale), u, x0)
+    return out
 
 
-def c_rollout(core, spec: PHNNSpec, u: torch.Tensor, x0: torch.Tensor) -> torch.Tensor:
-    """Run the PHNN section rollout through the generic C++ extension (autograd-capable).
+def forward_train(
+    u: torch.Tensor,
+    x0: torch.Tensor,
+    params: list[torch.Tensor],
+    spec: PHNNSpec,
+    dt: float,
+    bound: float,
+    jr_scale: float,
+    g_scale: float,
+) -> tuple[torch.Tensor, list[torch.Tensor]]:
+    """Fused rollout storing the per-step input states for backward: ``(out, [xstates])``."""
+    p = split_params(params, spec)
+    out, xstates = _run_fwd(_get_extension(), spec, p, _scalars(spec, dt, bound, jr_scale, g_scale), u, x0)
+    return out, [xstates]
 
-    ``u`` is the future input ``[B, L, n_input]`` and ``x0`` the encoder state
-    ``[B, n_state]``; returns the output sequence ``[B, L, n_output]`` for the L future
-    steps (the encoder warm-up is prepended by the caller).
-    """
-    check_rollout_args(spec, u, x0)
-    from .common import flat_params
 
-    params = flat_params(core)
-    if not torch.is_grad_enabled() or not any(t.requires_grad for t in [u, x0, *params]):
-        ext = _get_extension()
-        p = params_of(core)
-        out, _ = _run_fwd(ext, spec, p, _scalars(core, spec, p), u, x0)
-        return out
-    return _CPHNNRollout.apply(core, spec, u, x0, *params)
+def fake_saved(u: torch.Tensor, spec: PHNNSpec) -> list[torch.Tensor]:
+    """Meta tensors matching ``forward_train``'s saved list (for fake registration)."""
+    return [u.new_empty(u.shape[0], u.shape[1], spec.n_state)]
+
+
+def backward(
+    grad_out: torch.Tensor,
+    u: torch.Tensor,
+    saved: list[torch.Tensor],
+    params: list[torch.Tensor],
+    spec: PHNNSpec,
+    dt: float,
+    bound: float,
+    jr_scale: float,
+    g_scale: float,
+) -> tuple[torch.Tensor, torch.Tensor, list[torch.Tensor]]:
+    """Fused BPTT sweep: ``(du, gx0, param_grads)`` with grads in ``params`` order."""
+    ext = _get_extension()
+    p = split_params(params, spec)
+    sc = _scalars(spec, dt, bound, jr_scale, g_scale)
+    xstates = saved[0]
+    B, L = xstates.shape[0], xstates.shape[1]
+    dt_ = u.dtype
+
+    def lane_like(lst):
+        return [torch.zeros(B, *t.shape, dtype=dt_) for t in lst]
+
+    dhw, dhb = lane_like(p["hw"]), lane_like(p["hb"])
+    djw, djb = lane_like(p["jw"]), lane_like(p["jb"])
+    drw, drb = lane_like(p["rw"]), lane_like(p["rb"])
+    dgw, dgb = lane_like(p["gw"]), lane_like(p["gb"])
+    dglw = torch.zeros(B, *p["glw"].shape, dtype=dt_)
+    dglb = torch.zeros(B, *p["glb"].shape, dtype=dt_)
+    has_out = p["ow"] is not None
+    dow = torch.zeros(B, *p["ow"].shape, dtype=dt_) if has_out else torch.empty(0, dtype=dt_)
+    dob = torch.zeros(B, *p["ob"].shape, dtype=dt_) if has_out else torch.empty(0, dtype=dt_)
+    du = torch.zeros(B, L, spec.n_input, dtype=dt_)
+    gx0 = torch.zeros(B, spec.n_state, dtype=dt_)
+    ow = p["ow"] if has_out else torch.empty(0, dtype=dt_)
+    ob = p["ob"] if has_out else torch.empty(0, dtype=dt_)
+
+    ext.phnn_bwd(
+        u.contiguous(),
+        xstates.contiguous(),
+        grad_out.contiguous(),
+        _cd(p["hw"]),
+        _cd(p["hb"]),
+        _cd(p["jw"]),
+        _cd(p["jb"]),
+        _cd(p["rw"]),
+        _cd(p["rb"]),
+        p["glw"].detach().contiguous(),
+        p["glb"].detach().contiguous(),
+        _cd(p["gw"]),
+        _cd(p["gb"]),
+        ow.detach().contiguous(),
+        ob.detach().contiguous(),
+        dhw,
+        dhb,
+        djw,
+        djb,
+        drw,
+        drb,
+        dglw,
+        dglb,
+        dgw,
+        dgb,
+        dow,
+        dob,
+        du,
+        gx0,
+        sc["n"],
+        sc["nu"],
+        sc["ny"],
+        sc["nh"],
+        sc["K"],
+        sc["dt"],
+        sc["out_linear"],
+        sc["has_bound"],
+        sc["bound"],
+        sc["jr_scale"],
+        sc["g_scale"],
+    )
+    # sum per-lane grads to parameter grads, in flat_params order
+    grads = []
+    for lst in (dhw, dhb, djw, djb, drw, drb):
+        grads += [g.sum(0) for g in lst]
+    grads += [dglw.sum(0), dglb.sum(0)]
+    for lst in (dgw, dgb):
+        grads += [g.sum(0) for g in lst]
+    if has_out:
+        grads += [dow.sum(0), dob.sum(0)]
+    return du, gx0, grads

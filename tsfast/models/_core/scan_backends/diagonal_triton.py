@@ -19,14 +19,16 @@ kernel source serves both float32 and complex64.
 Only the coefficients and the forward output are saved for backward (matching the doubling
 implementation's O(L) memory contract); unlike the Mamba backend no checkpointing or state
 recomputation is needed, since the saved output *is* the state and ``x_{t-1}`` is re-read from
-it with a one-step shift. Each lane reduces its own ``grad_lam`` over time locally; the
-cross-batch / broadcast reduction of ``grad_lam`` (and of ``grad_v`` / ``grad_x0``) is finished
-on the torch side by ``_reduce``, shared with the C backend.
+it with a one-step shift. Each lane reduces its own ``grad_lam`` over time locally. Inputs
+arrive from the ``tsfast::scan_diagonal`` custom op in the flattened lane layout (lam
+``[M, N]``, v ``[M, L, N]``, contiguous, broadcasting already materialized); the per-lane
+gradients are reduced back to the callers' broadcast shapes by plain autograd outside the op.
 """
 
 __all__ = [
     "supports",
-    "run",
+    "forward",
+    "backward",
 ]
 
 import torch
@@ -34,7 +36,6 @@ import triton
 import triton.language as tl
 
 from ..kernel_triton import is_available
-from .diagonal_c import _prep, _reduce
 
 _DTYPES = (torch.float32, torch.complex64)
 
@@ -244,17 +245,18 @@ def supports(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None) -> str
     return None
 
 
-def _forward(lam_lane, v_flat, x0_lane, meta):
-    _os, _bd, m, L, n = meta
-    str_ = 2 if v_flat.is_complex() else 1
-    out = torch.empty_like(v_flat)
-    has_x0 = x0_lane is not None
-    x0v = _as_real(x0_lane) if has_x0 else out.new_empty(0, dtype=torch.float32)
+def forward(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None) -> torch.Tensor:
+    """Forward recurrence on the lane layout: lam ``[M, N]``, v ``[M, L, N]``, x0 ``[M, N]`` or None."""
+    m, L, n = v.shape
+    str_ = 2 if v.is_complex() else 1
+    out = torch.empty_like(v)
+    has_x0 = x0 is not None
+    x0v = _as_real(x0) if has_x0 else out.new_empty(0, dtype=torch.float32)
     lanes = m * n
     grid = lambda META: (triton.cdiv(lanes, META["BLOCK"]),)  # noqa: E731
     _diag_fwd_kernel[grid](
-        _as_real(lam_lane),
-        _as_real(v_flat),
+        _as_real(lam),
+        _as_real(v),
         x0v,
         _as_real(out),
         m,
@@ -266,50 +268,31 @@ def _forward(lam_lane, v_flat, x0_lane, meta):
     return out
 
 
-class _TritonDiagonal(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, lam, v, x0):
-        lam_lane, v_flat, x0_lane, meta = _prep(lam, v, x0)
-        out = _forward(lam_lane, v_flat, x0_lane, meta)
-        ctx.meta = meta
-        ctx.lam, ctx.v, ctx.x0 = lam, v, x0
-        ctx.save_for_backward(lam_lane, out, x0_lane)
-        return out.reshape(meta[0])
-
-    @staticmethod
-    def backward(ctx, grad_out):
-        _os, _bd, m, L, n = ctx.meta
-        lam_lane, out, x0_lane = ctx.saved_tensors
-        has_x0 = x0_lane is not None
-        str_ = 2 if out.is_complex() else 1
-        g = grad_out.reshape(m, L, n).contiguous()
-        gv = torch.empty_like(out)
-        glam = torch.empty_like(lam_lane)
-        dummy = out.new_empty(0, dtype=torch.float32)
-        gx0 = torch.empty_like(lam_lane) if has_x0 else None
-        x0v = _as_real(x0_lane) if has_x0 else dummy
-        grid = lambda META: (triton.cdiv(m * n, META["BLOCK"]),)  # noqa: E731
-        _diag_bwd_kernel[grid](
-            _as_real(g),
-            _as_real(lam_lane),
-            _as_real(out),
-            x0v,
-            _as_real(gv),
-            _as_real(glam),
-            _as_real(gx0) if has_x0 else dummy,
-            m,
-            L,
-            n,
-            STR=str_,
-            HAS_X0=has_x0,
-        )
-        needs = (ctx.needs_input_grad[0], ctx.needs_input_grad[1], ctx.needs_input_grad[2])
-        return _reduce(gv, glam, gx0, ctx.lam, ctx.v, ctx.x0, ctx.meta, needs)
-
-
-def run(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None) -> torch.Tensor:
-    """Run the constant-coefficient diagonal recurrence through the Triton kernels (autograd-capable)."""
-    if not torch.is_grad_enabled() or not any(t is not None and t.requires_grad for t in (lam, v, x0)):
-        lam_lane, v_flat, x0_lane, meta = _prep(lam, v, x0)
-        return _forward(lam_lane, v_flat, x0_lane, meta).reshape(meta[0])
-    return _TritonDiagonal.apply(lam, v, x0)
+def backward(
+    g: torch.Tensor, lam: torch.Tensor, out: torch.Tensor, x0: torch.Tensor | None
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Adjoint sweep on the lane layout, returning ``(glam, gv, gx0)`` (gx0 empty when x0 is None)."""
+    m, L, n = out.shape
+    has_x0 = x0 is not None
+    str_ = 2 if out.is_complex() else 1
+    gv = torch.empty_like(out)
+    glam = torch.empty_like(lam)
+    dummy = out.new_empty(0, dtype=torch.float32)
+    gx0 = torch.empty_like(lam) if has_x0 else None
+    x0v = _as_real(x0) if has_x0 else dummy
+    grid = lambda META: (triton.cdiv(m * n, META["BLOCK"]),)  # noqa: E731
+    _diag_bwd_kernel[grid](
+        _as_real(g),
+        _as_real(lam),
+        _as_real(out),
+        x0v,
+        _as_real(gv),
+        _as_real(glam),
+        _as_real(gx0) if has_x0 else dummy,
+        m,
+        L,
+        n,
+        STR=str_,
+        HAS_X0=has_x0,
+    )
+    return glam, gv, (gx0 if has_x0 else lam.new_empty(0))

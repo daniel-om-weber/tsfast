@@ -1,16 +1,21 @@
-"""Spec, parameter extraction, and applicability checks shared by the PHNN backends.
+"""Spec and parameter plumbing shared by the PHNN backends.
 
-The fused backends receive the component-net weights as flat lists in a fixed
-canonical order (``params_of``) and a static :class:`PHNNSpec` describing the shapes
-and step structure. The eager and compiled paths in ``phnn.py`` are untouched; these
-helpers only read the existing submodules of a :class:`~tsfast.models.architectures.phnn.PHNNCore`.
+The fused backends receive the component-net weights as a flat list in a fixed
+canonical order (``flat_params``/``split_params``) and a static :class:`PHNNSpec`
+describing the shapes and step structure. These helpers only read the existing
+submodules of a :class:`~tsfast.models.architectures.phnn.PHNNCore`; each backend module
+reports its own applicability through ``supports(spec, u, x0)``, sharing the
+step-structure caps in :func:`spec_caps`.
 """
 
 __all__ = [
     "PHNNSpec",
     "spec_of",
     "params_of",
-    "supports",
+    "flat_params",
+    "split_params",
+    "bound_value",
+    "spec_caps",
 ]
 
 from dataclasses import dataclass
@@ -100,24 +105,34 @@ def flat_params(core) -> list[torch.Tensor]:
     return flat
 
 
+def split_params(params: list[torch.Tensor], spec: PHNNSpec) -> dict:
+    """Rebuild the ``params_of`` dict from a flat ``flat_params``-ordered list."""
+    k = spec.n_linear
+    it = iter(params)
+
+    def take(count: int) -> list[torch.Tensor]:
+        return [next(it) for _ in range(count)]
+
+    d = {"hw": take(k), "hb": take(k), "jw": take(k), "jb": take(k), "rw": take(k), "rb": take(k)}
+    d["glw"], d["glb"] = next(it), next(it)
+    d["gw"], d["gb"] = take(k), take(k)
+    if spec.output == "linear":
+        d["ow"], d["ob"] = next(it), next(it)
+    else:
+        d["ow"] = d["ob"] = None
+    return d
+
+
 def bound_value(core) -> float:
     """The ELU shift ``b = lower_bound + 1`` (0.0 when the bound is disabled)."""
     lb = core.hamiltonian.lower_bound
     return 0.0 if lb is None else lb + 1.0
 
 
-def supports(spec: PHNNSpec, backend: str) -> bool:
-    """Whether ``backend`` can run this spec.
-
-    Common caps (both backends): a single RK4 step and at least one hidden layer.
-    The Triton persistent kernel additionally requires the weights to fit on-chip:
-    ``hidden <= 128``, ``n_state <= 16``, ``num_layers <= 2`` (the benchmark search
-    space); outside that envelope callers fall back to the compiled loop.
-    """
-    if spec.rk4_steps != 1 or spec.num_layers < 1:
-        return False
-    if backend == "c":
-        return True
-    if backend == "triton":
-        return spec.hidden <= 128 and spec.n_state <= 16 and spec.num_layers <= 2
-    return False
+def spec_caps(spec: PHNNSpec) -> str | None:
+    """Reason no fused backend can run this spec (shared step-structure caps), or None."""
+    if spec.rk4_steps != 1:
+        return f"rk4_steps={spec.rk4_steps} (the fused kernels implement a single RK4 step)"
+    if spec.num_layers < 1:
+        return f"num_layers={spec.num_layers} (the fused kernels need at least one hidden layer)"
+    return None

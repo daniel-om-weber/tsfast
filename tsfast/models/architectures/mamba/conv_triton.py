@@ -14,8 +14,9 @@ tap is a shifted tile load that hits L2 after the first pass. The backward recom
 the pre-activation (cheaper than saving it), accumulates the input gradient from the
 ``K`` shifted output gradients, and reduces the weight/bias gradients over ``(batch,
 time-block)`` via partial buffers summed in PyTorch — no atomics (deterministic). The
-tiny gradient to the carried tail (``K - 1`` leading steps) is handled in PyTorch by the
-autograd wrapper, not here. Real float32 only, matching the scan kernel's regime.
+tiny gradient to the carried tail (``K - 1`` leading steps) is computed with a handful
+of eager PyTorch ops inside the backward op. Real float32 only, matching the scan
+kernel's regime.
 """
 
 __all__ = [
@@ -188,12 +189,15 @@ def _fwd_grid(B, L, D):
     return lambda meta: (B * triton.cdiv(L, meta["BLOCK_T"]) * triton.cdiv(D, meta["BLOCK_D"]),)
 
 
-def _forward(x, tail, weight, bias):
+@torch.library.custom_op("tsfast::mamba_conv_silu", mutates_args=())
+def _conv_silu_op(x: torch.Tensor, tail: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor | None) -> torch.Tensor:
     B, L, D = x.shape
     K = weight.shape[-1]
+    tail, weight = tail.contiguous(), weight.contiguous()
+    bias = bias.contiguous() if bias is not None else None
     out = torch.empty(B, L, D, device=x.device, dtype=x.dtype)
     _conv_fwd[_fwd_grid(B, L, D)](
-        x,
+        x,  # any strides: the kernel reads the in_proj chunk view directly
         tail,
         weight,
         bias if bias is not None else weight,  # unused pointer when HAS_BIAS is False
@@ -210,64 +214,76 @@ def _forward(x, tail, weight, bias):
     return out
 
 
-class _FusedConvSilu(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, tail, weight, bias):
-        ctx.has_bias = bias is not None
-        ctx.save_for_backward(x, tail, weight, *((bias,) if bias is not None else ()))
-        return _forward(x, tail, weight, bias)
+@_conv_silu_op.register_fake
+def _(x, tail, weight, bias):
+    return torch.empty(x.shape, device=x.device, dtype=x.dtype)
 
-    @staticmethod
-    def backward(ctx, gy):
-        x, tail, weight, *rest = ctx.saved_tensors
-        bias = rest[0] if ctx.has_bias else None
-        B, L, D = x.shape
-        K = weight.shape[-1]
-        gy = gy.contiguous()
-        need_gb = bool(ctx.has_bias and ctx.needs_input_grad[3])
-        NBT = B * triton.cdiv(L, _BWD_BLOCK_T)
-        gx = torch.empty(B, L, D, device=x.device, dtype=x.dtype)
-        gw_part = torch.empty(NBT, D, K, device=x.device, dtype=x.dtype)
-        gb_part = torch.empty(NBT, D, device=x.device, dtype=x.dtype) if need_gb else gx
-        _conv_bwd[_fwd_grid(B, L, D)](
-            x,
-            tail,
-            weight,
-            bias if ctx.has_bias else weight,
-            gy,
-            gx,
-            gw_part,
-            gb_part,
-            B,
-            L,
-            D,
-            x.stride(0),
-            x.stride(1),
-            x.stride(2),
-            K=K,
-            HAS_BIAS=ctx.has_bias,
-            NEED_GB=need_gb,
-            BLOCK_T=_BWD_BLOCK_T,
-        )
-        g_tail = None
-        if ctx.needs_input_grad[1]:
-            # only the first K-1 outputs see the tail; recompute their pre-activation
-            # and correlate with the taps in eager PyTorch (a handful of tiny ops)
-            Lh = min(K - 1, L)
-            xbuf_head = torch.cat((tail, x[:, :Lh].mT), dim=-1)
-            p_head = F.conv1d(xbuf_head, weight.unsqueeze(1), bias, groups=D)
-            sig = torch.sigmoid(p_head)
-            gpre_head = gy[:, :Lh].mT * sig * (1.0 + p_head * (1.0 - sig))
-            g_tail = torch.zeros_like(tail)
-            for j in range(K - 1):
-                for t in range(min(j, Lh - 1) + 1):
-                    g_tail[:, :, j] += gpre_head[:, :, t] * weight[:, j - t]
-        return (
-            gx if ctx.needs_input_grad[0] else None,
-            g_tail,
-            gw_part.sum(dim=0) if ctx.needs_input_grad[2] else None,
-            gb_part.sum(dim=0) if need_gb else None,
-        )
+
+@torch.library.custom_op("tsfast::mamba_conv_silu_bwd", mutates_args=())
+def _conv_silu_bwd_op(
+    gy: torch.Tensor, x: torch.Tensor, tail: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor | None
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    B, L, D = x.shape
+    K = weight.shape[-1]
+    gy, tail, weight = gy.contiguous(), tail.contiguous(), weight.contiguous()
+    bias = bias.contiguous() if bias is not None else None
+    has_bias = bias is not None
+    NBT = B * triton.cdiv(L, _BWD_BLOCK_T)
+    gx = torch.empty(B, L, D, device=x.device, dtype=x.dtype)
+    gw_part = torch.empty(NBT, D, K, device=x.device, dtype=x.dtype)
+    gb_part = torch.empty(NBT, D, device=x.device, dtype=x.dtype) if has_bias else gx
+    _conv_bwd[_fwd_grid(B, L, D)](
+        x,
+        tail,
+        weight,
+        bias if has_bias else weight,
+        gy,
+        gx,
+        gw_part,
+        gb_part,
+        B,
+        L,
+        D,
+        x.stride(0),
+        x.stride(1),
+        x.stride(2),
+        K=K,
+        HAS_BIAS=has_bias,
+        NEED_GB=has_bias,
+        BLOCK_T=_BWD_BLOCK_T,
+    )
+    # only the first K-1 outputs see the tail; recompute their pre-activation
+    # and correlate with the taps in eager PyTorch (a handful of tiny ops)
+    Lh = min(K - 1, L)
+    xbuf_head = torch.cat((tail, x[:, :Lh].mT), dim=-1)
+    p_head = F.conv1d(xbuf_head, weight.unsqueeze(1), bias, groups=D)
+    sig = torch.sigmoid(p_head)
+    gpre_head = gy[:, :Lh].mT * sig * (1.0 + p_head * (1.0 - sig))
+    g_tail = torch.zeros_like(tail)
+    for j in range(K - 1):
+        for t in range(min(j, Lh - 1) + 1):
+            g_tail[:, :, j] += gpre_head[:, :, t] * weight[:, j - t]
+    return gx, g_tail, gw_part.sum(dim=0), (gb_part.sum(dim=0) if has_bias else gx.new_empty(0))
+
+
+@_conv_silu_bwd_op.register_fake
+def _(gy, x, tail, weight, bias):
+    gb = torch.empty_like(bias) if bias is not None else gy.new_empty(0)
+    return torch.empty(x.shape, device=x.device, dtype=x.dtype), torch.empty_like(tail), torch.empty_like(weight), gb
+
+
+def _conv_setup(ctx, inputs, output):
+    x, tail, weight, bias = inputs
+    ctx.save_for_backward(x, tail, weight, bias)
+
+
+def _conv_backward(ctx, gy):
+    x, tail, weight, bias = ctx.saved_tensors
+    gx, g_tail, gw, gb = _conv_silu_bwd_op(gy, x, tail, weight, bias)
+    return gx, g_tail, gw, (gb if bias is not None else None)
+
+
+_conv_silu_op.register_autograd(_conv_backward, setup_context=_conv_setup)
 
 
 def supports(x, tail, weight, bias) -> str | None:
@@ -304,12 +320,6 @@ def run(x, tail, weight, bias):
 
     ``x`` is channel-last ``[B, L, D]`` (any strides); ``tail`` is the carried causal
     left-context ``[B, D, K-1]``. Returns the activated signal ``[B, L, D]``,
-    contiguous; differentiable in all inputs.
+    contiguous; differentiable in all inputs (via the ``tsfast::mamba_conv_silu`` op).
     """
-    tail = tail.contiguous()
-    weight = weight.contiguous().squeeze(1)
-    bias = bias.contiguous() if bias is not None else None
-    inputs = (x, tail, weight) + ((bias,) if bias is not None else ())
-    if not torch.is_grad_enabled() or not any(t.requires_grad for t in inputs):
-        return _forward(x, tail, weight, bias)
-    return _FusedConvSilu.apply(x, tail, weight, bias)
+    return _conv_silu_op(x, tail.contiguous(), weight.contiguous().squeeze(1), bias)

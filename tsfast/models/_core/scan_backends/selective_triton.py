@@ -10,12 +10,14 @@ Backward is the analytic reverse-time adjoint ``G_t = g_t + a_{t+1} G_{t+1}`` ru
 second persistent kernel (time descending), emitting ``grad_v = G``, ``grad_lam = G x_{t-1}``
 and ``grad_x0 = a_0 G_0`` in one sweep. Only ``lam`` and the forward output are saved for
 backward, so the backward memory stays O(L). Real float32 only (the Mamba selective scan),
-so no conjugation is needed.
+so no conjugation is needed. Inputs arrive from the ``tsfast::scan_selective`` custom op as
+contiguous ``[B, L, N]`` (lam materialized to v's shape) with x0 ``[B, N]`` or None.
 """
 
 __all__ = [
     "supports",
-    "run",
+    "forward",
+    "backward",
 ]
 
 import torch
@@ -105,7 +107,8 @@ def _grid(B, N):
     return lambda meta: (B * triton.cdiv(N, meta["BLOCK_N"]),)
 
 
-def _forward(lam, v, x0):
+def forward(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None) -> torch.Tensor:
+    """Forward recurrence: lam and v ``[B, L, N]``, x0 ``[B, N]`` or None."""
     B, L, N = lam.shape
     out = torch.empty_like(lam)
     has_x0 = x0 is not None
@@ -114,31 +117,18 @@ def _forward(lam, v, x0):
     return out
 
 
-class _SelectiveTriton(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, lam, v, x0):
-        out = _forward(lam, v, x0)
-        ctx.save_for_backward(lam, out, x0)
-        ctx.has_x0 = x0 is not None
-        return out
-
-    @staticmethod
-    def backward(ctx, g):
-        lam, out, x0 = ctx.saved_tensors
-        g = g.contiguous()
-        B, L, N = lam.shape
-        has_x0 = ctx.has_x0
-        need_lam, need_v, need_x0 = ctx.needs_input_grad
-        need_x0 = bool(need_x0 and has_x0)
-        glam = torch.empty_like(lam)
-        gv = torch.empty_like(lam)
-        gx0 = torch.empty(B, N, device=lam.device, dtype=lam.dtype) if need_x0 else lam
-        x0_arg = x0 if has_x0 else lam
-        _sel_bwd[_grid(B, N)](lam, out, g, x0_arg, glam, gv, gx0, B, L, N, HAS_X0=has_x0, NEED_X0=need_x0)
-        grad_lam = glam if need_lam else None
-        grad_v = gv if need_v else None
-        grad_x0 = gx0 if need_x0 else None
-        return grad_lam, grad_v, grad_x0
+def backward(
+    g: torch.Tensor, lam: torch.Tensor, out: torch.Tensor, x0: torch.Tensor | None
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Adjoint sweep, returning ``(glam, gv, gx0)`` (gx0 empty when x0 is None)."""
+    B, L, N = lam.shape
+    has_x0 = x0 is not None
+    glam = torch.empty_like(lam)
+    gv = torch.empty_like(lam)
+    gx0 = torch.empty(B, N, device=lam.device, dtype=lam.dtype) if has_x0 else lam
+    x0_arg = x0 if has_x0 else lam
+    _sel_bwd[_grid(B, N)](lam, out, g, x0_arg, glam, gv, gx0, B, L, N, HAS_X0=has_x0, NEED_X0=has_x0)
+    return glam, gv, (gx0 if has_x0 else lam.new_empty(0))
 
 
 def supports(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None) -> str | None:
@@ -162,17 +152,3 @@ def supports(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None) -> str
         if tuple(x0.shape) != tuple(expected):
             return f"x0.shape {tuple(x0.shape)} != expected {tuple(expected)}"
     return None
-
-
-def run(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None) -> torch.Tensor:
-    """Selective recurrence ``x_t = lam_t x_{t-1} + v_t`` via the persistent Triton kernel."""
-    lam3 = lam.contiguous().reshape(-1, lam.shape[-2], lam.shape[-1])
-    v3 = v.contiguous().reshape(-1, v.shape[-2], v.shape[-1])
-    x03 = x0.contiguous().reshape(-1, x0.shape[-1]) if x0 is not None else None
-    if not torch.is_grad_enabled() or not (
-        lam3.requires_grad or v3.requires_grad or (x03 is not None and x03.requires_grad)
-    ):
-        out = _forward(lam3, v3, x03)
-    else:
-        out = _SelectiveTriton.apply(lam3, v3, x03)
-    return out.reshape(lam.shape)

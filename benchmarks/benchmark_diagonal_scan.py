@@ -17,6 +17,7 @@ import time
 import torch
 
 import tsfast.models._core.scan as scan
+from tsfast.models import set_backend
 
 N_WARMUP = 10
 N_TIMED = 30
@@ -53,7 +54,7 @@ def make_step(backend, lam, v, x0):
     def step():
         lam_ = lam.detach().clone().requires_grad_()
         v_ = v.detach().clone().requires_grad_()
-        scan.backend = backend
+        set_backend(backend)
         out = scan.diagonal_recurrence(lam_, v_, x0)
         (out.abs() ** 2).sum().backward()
 
@@ -75,15 +76,15 @@ def run(args):
         lam = (torch.rand(n) * 0.9 * torch.exp(1j * torch.rand(n) * 3.0)).to(torch.complex64).to(device)
         v = torch.randn(B, L, n, dtype=torch.complex64, device=device)
         x0 = torch.randn(B, n, dtype=torch.complex64, device=device)
-        t_dbl = bench(make_step("doubling", lam, v, x0), device)
+        t_dbl = bench(make_step("reference", lam, v, x0), device)
         t_k = bench(make_step(kernel, lam, v, x0), device)
         row = f"{n:>8d}{t_dbl:>14.3f}{t_k:>14.3f}{t_dbl / t_k:>9.1f}x"
         if device.type == "cuda":
-            m_dbl = peak_mem_mb(make_step("doubling", lam, v, x0), device)
+            m_dbl = peak_mem_mb(make_step("reference", lam, v, x0), device)
             m_k = peak_mem_mb(make_step(kernel, lam, v, x0), device)
             row += f"{m_dbl:>10.0f}{m_k:>10.0f}"
         print(row)
-    scan.backend = "auto"
+    set_backend("auto")
 
 
 def main():

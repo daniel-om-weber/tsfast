@@ -182,3 +182,71 @@ class TestNarxBackends:
 
         assert backend_triton.fits(NarxSpec(1, 32, (64, 64), "tanh"))
         assert not backend_triton.fits(NarxSpec(6, 32, (64, 64), "tanh"))  # padded buffer 256
+
+    def test_use_backend_scoping(self, monkeypatch):
+        """A use_backend scope steers auto models inside the block and restores on exit."""
+        from tsfast.models import get_backend, use_backend
+        from tsfast.models.architectures.narx import backend_c
+
+        torch.manual_seed(0)
+        m = NarxMLP(2, 3, na=3, nb=4, hidden_size=16, washout=5)
+        x = torch.randn(2, 20, 5)
+        with torch.no_grad():
+            ref = m.forward(x, ar=True)
+        outer = get_backend()
+        with use_backend("reference"):
+            assert get_backend() == "reference"
+            with torch.no_grad():
+                out_ref = m.forward(x, ar=True)
+        assert get_backend() == outer
+        assert torch.allclose(out_ref, ref, atol=1e-6)
+        if not backend_c.is_available():
+            pytest.skip("no C++ toolchain")
+        calls = []
+        orig = backend_c.forward_infer
+        monkeypatch.setattr(backend_c, "forward_infer", lambda *a, **k: (calls.append(1), orig(*a, **k))[1])
+        with use_backend("c"), torch.no_grad():
+            out_c = m.forward(x, ar=True)
+        assert len(calls) == 1
+        assert _rel(out_c, ref) < 2e-3
+        with torch.no_grad():
+            m.forward(x, ar=True)
+        assert len(calls) == 1  # outside the scope the auto policy no longer picks C
+
+
+class TestNarxCompile:
+    @staticmethod
+    def _assert_compile_parity(backend, device):
+        """torch.compile(fullgraph) over the fused free run must match its eager execution."""
+        torch.manual_seed(0)
+        m = NarxMLP(2, 3, na=3, nb=4, hidden_size=24, num_layers=2, washout=7, backend=backend).to(device)
+        x = torch.randn(4, 30, 5, device=device)
+        out_e, g_e, dx_e = _run_backend(m, backend, x)
+        compiled = torch.compile(m, fullgraph=True)
+        for p in m.parameters():
+            p.grad = None
+        xc = x.clone().requires_grad_()
+        out_c = compiled(xc, ar=True)
+        loss = (out_c**2).mean() + out_c.abs().sum() * 0.01
+        loss.backward()
+        assert _rel(out_c, out_e) < 1e-4
+        assert max(_rel(p.grad, g) for p, g in zip(m.parameters(), g_e)) < 1e-4
+        assert _rel(xc.grad, dx_e) < 1e-4
+        with torch.no_grad():
+            out_i = compiled(x, ar=True)
+        assert _rel(out_i, out_e.detach()) < 1e-4
+
+    def test_compile_fullgraph_c(self):
+        from tsfast.models.architectures.narx import backend_c
+
+        if not backend_c.is_available():
+            pytest.skip("no C++ toolchain")
+        self._assert_compile_parity("c", "cpu")
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+    def test_compile_fullgraph_triton(self):
+        from tsfast.models.architectures.narx import backend_triton
+
+        if not backend_triton.is_available():
+            pytest.skip("triton unavailable")
+        self._assert_compile_parity("triton", "cuda")

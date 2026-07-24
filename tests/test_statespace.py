@@ -21,6 +21,20 @@ def _rel(a, b):
     return (a - b).abs().max().item() / (b.abs().max().item() + 1e-30)
 
 
+def _run_compiled(m, backend, u, x0):
+    """Like ``_run`` but through ``torch.compile(m, fullgraph=True)``."""
+    m.backend = backend
+    cm = torch.compile(m, fullgraph=True)
+    for p in m.parameters():
+        p.grad = None
+    u = u.clone().requires_grad_()
+    x0 = x0.clone().requires_grad_()
+    out = cm(u, x0)
+    loss = (out**2).mean() + out.abs().sum() * 0.01
+    loss.backward()
+    return out, [p.grad.clone() for p in m.parameters()], u.grad.clone(), x0.grad.clone()
+
+
 def _assert_backend_parity(backend, device, hidden=(48, 32), act="tanh", tol=5e-4):
     from tsfast.models.architectures.ssm import NeuralStateSpace
 
@@ -142,6 +156,82 @@ class TestNeuralStateSpace:
         assert fits(SSMSpec(10, 10, (128, 128), "tanh"))
         assert not fits(SSMSpec(10, 10, (256,), "tanh"))
         assert not fits(SSMSpec(200, 10, (64,), "tanh"))
+
+    def test_compile_fullgraph_c_parity(self):
+        from tsfast.models.architectures.ssm import NeuralStateSpace, backend_c
+
+        if not backend_c.is_available():
+            pytest.skip("no C++ toolchain / ninja")
+        torch.manual_seed(0)
+        m = NeuralStateSpace(3, 2, n_state=4, hidden_size=[48, 32], backend="eager")
+        u = torch.randn(5, 40, 3)
+        x0 = torch.randn(5, 4)
+        out_e, g_e, du_e, dx0_e = _run(m, "eager", u, x0)
+        out_c, g_c, du_c, dx0_c = _run_compiled(m, "c", u, x0)
+        assert _rel(out_c, out_e) < 1e-4
+        assert max(_rel(a, b) for a, b in zip(g_c, g_e)) < 1e-4
+        assert _rel(du_c, du_e) < 1e-4 and _rel(dx0_c, dx0_e) < 1e-4
+
+    def test_compile_fullgraph_triton_parity(self):
+        from tsfast.models.architectures.ssm import NeuralStateSpace, backend_triton
+
+        if not backend_triton.is_available():
+            pytest.skip("no CUDA/triton")
+        prev = torch.backends.cuda.matmul.allow_tf32
+        torch.backends.cuda.matmul.allow_tf32 = False
+        try:
+            torch.manual_seed(0)
+            m = NeuralStateSpace(3, 2, n_state=4, hidden_size=[48, 32], backend="eager").to("cuda")
+            u = torch.randn(5, 40, 3, device="cuda")
+            x0 = torch.randn(5, 4, device="cuda")
+            out_e, g_e, du_e, dx0_e = _run(m, "eager", u, x0)
+            out_t, g_t, du_t, dx0_t = _run_compiled(m, "triton", u, x0)
+            assert _rel(out_t, out_e) < 1e-4
+            assert max(_rel(a, b) for a, b in zip(g_t, g_e)) < 1e-4
+            assert _rel(du_t, du_e) < 1e-4 and _rel(dx0_t, dx0_e) < 1e-4
+        finally:
+            torch.backends.cuda.matmul.allow_tf32 = prev
+
+    def test_use_backend_scoping(self):
+        from tsfast.models import use_backend
+        from tsfast.models.architectures.ssm import NeuralStateSpace, backend_c
+        from tsfast.models.architectures.ssm import core as ssm_core
+
+        torch.manual_seed(0)
+        m = NeuralStateSpace(3, 2, n_state=4, hidden_size=[16], backend="auto")
+        u = torch.randn(2, 12, 3)
+        x0 = torch.randn(2, 4)
+        calls = []
+        orig = ssm_core.fused_rollout
+
+        def spy(*args, **kwargs):
+            calls.append("fused")
+            return orig(*args, **kwargs)
+
+        ssm_core.fused_rollout = spy
+        try:
+            with use_backend("reference"):
+                out_ref = m(u, x0)
+            assert calls == []  # reference scope keeps auto models off the fused kernels
+            if backend_c.is_available():
+                with use_backend("c"):
+                    out_c = m(u, x0)
+                assert calls == ["fused"]
+                assert _rel(out_c, out_ref) < 5e-4
+            if torch.cuda.is_available():
+                from tsfast.models.architectures.ssm import backend_triton
+
+                if backend_triton.is_available():
+                    mc = NeuralStateSpace(3, 2, n_state=4, hidden_size=[16], backend="auto").to("cuda")
+                    calls.clear()
+                    with use_backend("triton"):
+                        mc(u.to("cuda"), x0.to("cuda"))
+                    assert calls == ["fused"]
+                    calls.clear()
+                    mc(u.to("cuda"), x0.to("cuda"))  # outside the scope: auto still picks triton
+                    assert calls == ["fused"]
+        finally:
+            ssm_core.fused_rollout = orig
 
     def test_stateful_chunked_equivalence(self):
         from tsfast.models.architectures.ssm import NeuralStateSpace

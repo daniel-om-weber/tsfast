@@ -6,16 +6,18 @@ __all__ = [
     "DynoNet",
 ]
 
-import importlib
-
 import torch
 import torch.nn.functional as F
 from torch import nn
-from torch.autograd.function import once_differentiable
 
-from ..._core import scan
-from ..._core.dispatch import warn_fallback
+from ..._core.dispatch import resolve
 from ..._core.layers import SeqLinear
+from . import allpole_triton
+
+# Module object, not an import path: this dispatch runs inside potentially-compiled
+# forwards, and Dynamo can trace a supports() shape check but not an importlib call.
+# The module imports safely without triton (its kernels are generated on demand).
+_ALLPOLE_BACKENDS = {"triton": allpole_triton}
 
 
 def _doubling_scan(A: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
@@ -41,57 +43,61 @@ def _x_prev(x: torch.Tensor, x0: torch.Tensor | None) -> torch.Tensor:
     return torch.cat((first, x[..., :-1, :]), dim=-2)
 
 
-class _MatrixRecurrence(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, A, v, x0):
-        ctx.v_shape = v.shape  # captured before the x0 injection, which may broadcast v's leading dims
-        if x0 is not None:
-            v = torch.cat((v[..., :1, :] + x0.unsqueeze(-2) @ A.transpose(-1, -2), v[..., 1:, :]), dim=-2)
-        x = _doubling_scan(A, v)
-        ctx.save_for_backward(A, x, x0)
-        return x
+@torch.library.custom_op("tsfast::linear_recurrence", mutates_args=())
+def _linear_recurrence_op(A: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None) -> torch.Tensor:
+    if x0 is not None:
+        v = torch.cat((v[..., :1, :] + x0.unsqueeze(-2) @ A.transpose(-1, -2), v[..., 1:, :]), dim=-2)
+    return _doubling_scan(A, v)
 
-    @staticmethod
-    @once_differentiable
-    def backward(ctx, g):
-        A, x, x0 = ctx.saved_tensors
-        # G_t = A^T G_{t+1} + g_t: the same constant-matrix doubling scan with A transposed, run
-        # time-reversed. torch.flip copies, so the flipped gradient never aliases the saved output.
-        G = _doubling_scan(A.transpose(-1, -2), g.flip(-2)).flip(-2)
-        grad_A = grad_v = grad_x0 = None
-        if ctx.needs_input_grad[0]:
-            grad_A = torch.einsum("...ti,...tj->...ij", G, _x_prev(x, x0)).sum_to_size(A.shape)
-        if ctx.needs_input_grad[1]:
-            grad_v = G.sum_to_size(ctx.v_shape)
-        if x0 is not None and ctx.needs_input_grad[2]:
-            grad_x0 = (G[..., :1, :] @ A).squeeze(-2).sum_to_size(x0.shape)  # (A^T G_1) as a row vector
-        return grad_A, grad_v, grad_x0
+
+@_linear_recurrence_op.register_fake
+def _(A, v, x0):
+    return torch.empty_like(v)
+
+
+@torch.library.custom_op("tsfast::linear_recurrence_bwd", mutates_args=())
+def _linear_recurrence_bwd_op(
+    g: torch.Tensor, A: torch.Tensor, out: torch.Tensor, x0: torch.Tensor | None
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    # G_t = A^T G_{t+1} + g_t: the same constant-matrix doubling scan with A transposed, run
+    # time-reversed. torch.flip copies, so the flipped gradient never aliases the saved output.
+    G = _doubling_scan(A.transpose(-1, -2), g.flip(-2)).flip(-2)
+    grad_A = torch.einsum("...ti,...tj->...ij", G, _x_prev(out, x0))
+    # (A^T G_1) as a row vector
+    grad_x0 = (G[..., :1, :] @ A).squeeze(-2) if x0 is not None else A.new_empty(0)
+    return grad_A, G, grad_x0
+
+
+@_linear_recurrence_bwd_op.register_fake
+def _(g, A, out, x0):
+    gx0 = torch.empty_like(x0) if x0 is not None else A.new_empty(0)
+    return torch.empty_like(A), torch.empty_like(g), gx0
+
+
+def _linrec_setup(ctx, inputs, output):
+    A, v, x0 = inputs
+    ctx.save_for_backward(A, output, x0)
+
+
+def _linrec_backward(ctx, g):
+    A, out, x0 = ctx.saved_tensors
+    grad_A, grad_v, grad_x0 = _linear_recurrence_bwd_op(g, A, out, x0)
+    return grad_A, grad_v, (grad_x0 if x0 is not None else None)
+
+
+_linear_recurrence_op.register_autograd(_linrec_backward, setup_context=_linrec_setup)
 
 
 def _fused_allpole(a, w, y0):
     """Dispatch the fused all-pole Triton kernel; None means run the matrix doubling scan.
 
-    Same backend policy as Mamba's ``_fused_ssm``: serves ``scan.backend`` "auto"
-    (CUDA only) and "triton"; silent on non-CUDA devices under "auto", warns once
-    per process otherwise.
+    Honors the process backend preference (``tsfast.models.set_backend``/``use_backend``):
+    the fused kernel serves "auto" (CUDA only) and "triton"; other families select the
+    doubling scan silently. An unusable candidate warns once per process with the reason.
     """
-    if scan.backend not in ("auto", "triton"):
-        return None
-    if scan.backend == "auto" and w.device.type != "cuda":
-        return None
-    try:
-        mod = importlib.import_module(".allpole_triton", __package__)
-    except Exception as e:  # pragma: no cover - triton import failure
-        reason = f"backend import failed ({e!r})"
-    else:
-        reason = mod.supports(a, w, y0)
-        if reason is None:
-            return mod.run(a, w, y0)
-    warn_fallback(
-        "scan.allpole.triton",
-        f"fused all-pole triton kernel unusable: {reason}; falling back to the matrix doubling scan",
-    )
-    return None
+    order = ("triton",) if w.device.type == "cuda" else ()
+    mod = resolve("dynonet.allpole", _ALLPOLE_BACKENDS, order, (a, w, y0))
+    return None if mod is None else mod.run(a, w, y0)
 
 
 def linear_recurrence(A: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None = None) -> torch.Tensor:
@@ -104,6 +110,7 @@ def linear_recurrence(A: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None 
     of ``A``. Gradients come from the analytic matrix adjoint (the reverse-time scan
     ``G_t = A^T G_{t+1} + g_t``) rather than autograd replay through the doubling levels, so
     backward memory is O(L) instead of the O(L log L) the levels would retain. Real dtypes only.
+    Runs as the ``tsfast::linear_recurrence`` custom op, so it composes with ``torch.compile``.
 
     Args:
         A: transition matrices ``[..., n, n]``, broadcast against the leading dims of ``v``.
@@ -113,7 +120,11 @@ def linear_recurrence(A: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None 
     Returns:
         States ``x_1 .. x_L`` as ``[..., L, n]``.
     """
-    return _MatrixRecurrence.apply(A, v, x0)
+    bshape = torch.broadcast_shapes(A.shape[:-2], v.shape[:-2], () if x0 is None else x0.shape[:-1])
+    A_b = A.broadcast_to(bshape + A.shape[-2:])
+    v_b = v.broadcast_to(bshape + v.shape[-2:])
+    x0_b = None if x0 is None else x0.broadcast_to(bshape + x0.shape[-1:])
+    return _linear_recurrence_op(A_b, v_b, x0_b)
 
 
 def _linear_recurrence_sequential(A: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None = None) -> torch.Tensor:
@@ -153,8 +164,9 @@ class LinearDynamicalOperator(nn.Module):
         nb: number of numerator (FIR) taps per filter.
         na: denominator order per filter; ``0`` gives a pure FIR operator.
         backend: ``"scan"`` (parallel; on CUDA float32 the fused all-pole Triton kernel,
-            honoring ``tsfast.models._core.scan.backend``, else the log-doubling matrix scan)
-            or ``"eager"`` (sequential loop).
+            honoring the process preference set via ``tsfast.models.set_backend``/
+            ``use_backend``, else the log-doubling matrix scan) or ``"eager"``
+            (sequential loop).
     """
 
     def __init__(self, in_channels: int, out_channels: int, nb: int = 8, na: int = 2, backend: str = "scan"):

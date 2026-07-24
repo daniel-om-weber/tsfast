@@ -321,77 +321,168 @@ def _forward(draw, A, Bt, Ct, u, z, Dp, h0, store_chk: bool):
     return out, h_last, (chk if store_chk else None)
 
 
-class _FusedMambaScan(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, draw, A, Bt, Ct, u, z, Dp, h0):
-        out, h_last, chk = _forward(draw, A, Bt, Ct, u, z, Dp, h0, store_chk=True)
-        ctx.save_for_backward(draw, A, Bt, Ct, u, z, Dp, h0, chk)
-        return out, h_last
+def _contig(*ts: torch.Tensor | None) -> list[torch.Tensor | None]:
+    return [t.contiguous() if t is not None else None for t in ts]
 
-    @staticmethod
-    def backward(ctx, gout, ghlast):
-        draw, A, Bt, Ct, u, z, Dp, h0, chk = ctx.saved_tensors
-        B, L, D = draw.shape
-        N = A.shape[-1]
-        NC = triton.cdiv(L, _CHK)
-        gout = gout.contiguous()
-        has_h0 = h0 is not None
-        need_gh0 = bool(ctx.needs_input_grad[7] and has_h0)
-        # a zero upstream state-gradient arrives as None from autograd
-        has_glast = ghlast is not None
-        ghlast_arg = ghlast.contiguous() if has_glast else gout
-        GD = triton.cdiv(D, _block_d(B, D))
-        gdraw = torch.empty_like(draw)
-        gu = torch.empty_like(draw)
-        gz = torch.empty_like(draw)
-        gA_part = torch.empty(B, D, N, device=draw.device, dtype=draw.dtype)
-        gBt_part = torch.empty(GD, B, L, N, device=draw.device, dtype=draw.dtype)
-        gCt_part = torch.empty(GD, B, L, N, device=draw.device, dtype=draw.dtype)
-        gDp_part = torch.empty(B, D, device=draw.device, dtype=draw.dtype)
-        gh0 = torch.empty(B, D, N, device=draw.device, dtype=draw.dtype) if need_gh0 else gout
-        h0_arg = h0 if has_h0 else gout
-        _mamba_bwd[_grid(B, D)](
-            draw,
-            A,
-            Bt,
-            Ct,
-            u,
-            z,
-            Dp,
-            h0_arg,
-            chk,
-            gout,
-            ghlast_arg,
-            gdraw,
-            gA_part,
-            gBt_part,
-            gCt_part,
-            gu,
-            gz,
-            gDp_part,
-            gh0,
-            B,
-            L,
-            D,
-            N,
-            NC,
-            HAS_H0=has_h0,
-            HAS_GLAST=has_glast,
-            NEED_GH0=need_gh0,
-            CHK=_CHK,
-            BLOCK_D=_block_d(B, D),
-            BLOCK_N=triton.next_power_of_2(N),
-        )
-        return (
-            gdraw if ctx.needs_input_grad[0] else None,
-            gA_part.sum(dim=0) if ctx.needs_input_grad[1] else None,
-            gBt_part.sum(dim=0) if ctx.needs_input_grad[2] else None,
-            gCt_part.sum(dim=0) if ctx.needs_input_grad[3] else None,
-            gu if ctx.needs_input_grad[4] else None,
-            gz if ctx.needs_input_grad[5] else None,
-            gDp_part.sum(dim=0) if ctx.needs_input_grad[6] else None,
-            gh0 if need_gh0 else None,
-        )
+
+@torch.library.custom_op("tsfast::mamba_scan", mutates_args=())
+def _scan_op(
+    draw: torch.Tensor,
+    A: torch.Tensor,
+    Bt: torch.Tensor,
+    Ct: torch.Tensor,
+    u: torch.Tensor,
+    z: torch.Tensor,
+    Dp: torch.Tensor,
+    h0: torch.Tensor | None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    draw, A, Bt, Ct, u, z, Dp, h0 = _contig(draw, A, Bt, Ct, u, z, Dp, h0)
+    out, h_last, _ = _forward(draw, A, Bt, Ct, u, z, Dp, h0, store_chk=False)
+    return out, h_last
+
+
+@torch.library.custom_op("tsfast::mamba_scan_train", mutates_args=())
+def _scan_train_op(
+    draw: torch.Tensor,
+    A: torch.Tensor,
+    Bt: torch.Tensor,
+    Ct: torch.Tensor,
+    u: torch.Tensor,
+    z: torch.Tensor,
+    Dp: torch.Tensor,
+    h0: torch.Tensor | None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    draw, A, Bt, Ct, u, z, Dp, h0 = _contig(draw, A, Bt, Ct, u, z, Dp, h0)
+    out, h_last, chk = _forward(draw, A, Bt, Ct, u, z, Dp, h0, store_chk=True)
+    return out, h_last, chk
+
+
+def _fake_outs(draw, A, with_chk: bool):
+    B, L, D = draw.shape
+    N = A.shape[-1]
+    out = torch.empty_like(draw)
+    h_last = draw.new_empty(B, D, N)
+    if not with_chk:
+        return out, h_last
+    return out, h_last, draw.new_empty(B, -(-L // _CHK), D, N)
+
+
+@_scan_op.register_fake
+def _(draw, A, Bt, Ct, u, z, Dp, h0):
+    return _fake_outs(draw, A, with_chk=False)
+
+
+@_scan_train_op.register_fake
+def _(draw, A, Bt, Ct, u, z, Dp, h0):
+    return _fake_outs(draw, A, with_chk=True)
+
+
+@torch.library.custom_op("tsfast::mamba_scan_bwd", mutates_args=())
+def _scan_bwd_op(
+    gout: torch.Tensor,
+    ghlast: torch.Tensor | None,
+    chk: torch.Tensor,
+    draw: torch.Tensor,
+    A: torch.Tensor,
+    Bt: torch.Tensor,
+    Ct: torch.Tensor,
+    u: torch.Tensor,
+    z: torch.Tensor,
+    Dp: torch.Tensor,
+    h0: torch.Tensor | None,
+) -> tuple[
+    torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor
+]:
+    gout, ghlast, chk, draw, A, Bt, Ct, u, z, Dp, h0 = _contig(gout, ghlast, chk, draw, A, Bt, Ct, u, z, Dp, h0)
+    B, L, D = draw.shape
+    N = A.shape[-1]
+    NC = triton.cdiv(L, _CHK)
+    has_h0 = h0 is not None
+    # a zero upstream state-gradient arrives as None from autograd
+    has_glast = ghlast is not None
+    ghlast_arg = ghlast if has_glast else gout
+    GD = triton.cdiv(D, _block_d(B, D))
+    gdraw = torch.empty_like(draw)
+    gu = torch.empty_like(draw)
+    gz = torch.empty_like(draw)
+    gA_part = torch.empty(B, D, N, device=draw.device, dtype=draw.dtype)
+    gBt_part = torch.empty(GD, B, L, N, device=draw.device, dtype=draw.dtype)
+    gCt_part = torch.empty(GD, B, L, N, device=draw.device, dtype=draw.dtype)
+    gDp_part = torch.empty(B, D, device=draw.device, dtype=draw.dtype)
+    gh0 = torch.empty(B, D, N, device=draw.device, dtype=draw.dtype) if has_h0 else gout
+    h0_arg = h0 if has_h0 else gout
+    _mamba_bwd[_grid(B, D)](
+        draw,
+        A,
+        Bt,
+        Ct,
+        u,
+        z,
+        Dp,
+        h0_arg,
+        chk,
+        gout,
+        ghlast_arg,
+        gdraw,
+        gA_part,
+        gBt_part,
+        gCt_part,
+        gu,
+        gz,
+        gDp_part,
+        gh0,
+        B,
+        L,
+        D,
+        N,
+        NC,
+        HAS_H0=has_h0,
+        HAS_GLAST=has_glast,
+        NEED_GH0=has_h0,
+        CHK=_CHK,
+        BLOCK_D=_block_d(B, D),
+        BLOCK_N=triton.next_power_of_2(N),
+    )
+    return (
+        gdraw,
+        gA_part.sum(dim=0),
+        gBt_part.sum(dim=0),
+        gCt_part.sum(dim=0),
+        gu,
+        gz,
+        gDp_part.sum(dim=0),
+        (gh0 if has_h0 else gout.new_empty(0)),
+    )
+
+
+@_scan_bwd_op.register_fake
+def _(gout, ghlast, chk, draw, A, Bt, Ct, u, z, Dp, h0):
+    B, L, D = draw.shape
+    N = A.shape[-1]
+    return (
+        torch.empty_like(draw),
+        draw.new_empty(D, N),
+        draw.new_empty(B, L, N),
+        draw.new_empty(B, L, N),
+        torch.empty_like(draw),
+        torch.empty_like(draw),
+        draw.new_empty(D),
+        (draw.new_empty(B, D, N) if h0 is not None else draw.new_empty(0)),
+    )
+
+
+def _scan_setup(ctx, inputs, output):
+    draw, A, Bt, Ct, u, z, Dp, h0 = inputs
+    ctx.save_for_backward(draw, A, Bt, Ct, u, z, Dp, h0, output[2])
+
+
+def _scan_backward(ctx, gout, ghlast, gchk):
+    draw, A, Bt, Ct, u, z, Dp, h0, chk = ctx.saved_tensors
+    gdraw, gA, gBt, gCt, gu, gz, gDp, gh0 = _scan_bwd_op(gout, ghlast, chk, draw, A, Bt, Ct, u, z, Dp, h0)
+    return gdraw, gA, gBt, gCt, gu, gz, gDp, (gh0 if h0 is not None else None)
+
+
+_scan_train_op.register_autograd(_scan_backward, setup_context=_scan_setup)
 
 
 def supports(draw, A, Bt, Ct, u, z, Dp, h0) -> str | None:
@@ -429,18 +520,11 @@ def run(draw, A, Bt, Ct, u, z, Dp, h0):
     """Fused Mamba SSM: ``h_t = exp(softplus(draw_t) A) h_{t-1} + softplus(draw_t) u_t B_t``,
     output ``(h_t . C_t + Dp u_t) * silu(z_t)``.
 
-    Returns ``(out [B, L, D], h_last [B, D, N])``; differentiable in all inputs.
+    Returns ``(out [B, L, D], h_last [B, D, N])``; differentiable in all inputs (via the
+    ``tsfast::mamba_scan`` ops; the training op additionally stores state checkpoints).
     """
-    draw = draw.contiguous()
-    A = A.contiguous()
-    Bt = Bt.contiguous()
-    Ct = Ct.contiguous()
-    u = u.contiguous()
-    z = z.contiguous()
-    Dp = Dp.contiguous()
-    h0 = h0.contiguous() if h0 is not None else None
     inputs = (draw, A, Bt, Ct, u, z, Dp) + ((h0,) if h0 is not None else ())
     if not torch.is_grad_enabled() or not any(t.requires_grad for t in inputs):
-        out, h_last, _ = _forward(draw, A, Bt, Ct, u, z, Dp, h0, store_chk=False)
-        return out, h_last
-    return _FusedMambaScan.apply(draw, A, Bt, Ct, u, z, Dp, h0)
+        return _scan_op(draw, A, Bt, Ct, u, z, Dp, h0)
+    out, h_last, _chk = _scan_train_op(draw, A, Bt, Ct, u, z, Dp, h0)
+    return out, h_last

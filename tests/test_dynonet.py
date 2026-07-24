@@ -241,3 +241,25 @@ class TestDynoNet:
         lrn.fit(1, 1e-3)
         final_valid_loss = lrn.recorder[-1][1]
         assert not torch.isnan(torch.tensor(final_valid_loss))
+
+
+class TestDynoNetCompile:
+    def test_dynonet_fullgraph_compile(self):
+        """linear_recurrence (and the fused all-pole op on CUDA) must not graph-break."""
+        import torch
+
+        from tsfast.models import DynoNet
+
+        for device in ["cpu"] + (["cuda"] if torch.cuda.is_available() else []):
+            torch.manual_seed(0)
+            m = DynoNet(3, 2, n_channels=4, nb=4, na=2).to(device)
+            with torch.no_grad():
+                for op in (m.g1, m.g2, m.g_lin):
+                    op.a_coeff.uniform_(-0.3, 0.3)
+            u = torch.randn(2, 32, 3, device=device)
+            eager = m(u)
+            out = torch.compile(m, fullgraph=True)(u)
+            out.square().mean().backward()
+            rel = (out - eager).abs().max().item() / (eager.abs().max().item() + 1e-30)
+            assert rel < 1e-4, f"{device}: rel {rel:.2e}"
+            assert all(p.grad is not None for p in m.parameters())

@@ -3,9 +3,11 @@
 The whole section rollout runs as ONE launch, one program per batch lane, weights held
 as on-chip tiles -- the only thing that addresses the kernel-granularity bound of the
 compiled loop (~10^5 tiny kernels/step). float32. Applicability caps live in
-``common.supports``. The component-net weights are repacked/padded on the host into
+:func:`supports`. The component-net weights are repacked/padded on the host into
 power-of-two tiles (``_prep``), with the J/R/G output layers reshaped to ``n x n``/
-``n x m`` so the kernel forms the structure matrices directly.
+``n x m`` so the kernel forms the structure matrices directly. Inputs arrive from the
+``tsfast::phnn_rollout*`` custom ops as contiguous tensors with the parameters
+flattened in ``flat_params`` order.
 
 Backward follows the split-BPTT design of the SSM/NARX backends (see
 ``ssm/backend_triton.py``): the training forward additionally stores the per-stage
@@ -21,27 +23,39 @@ intractable at ``hidden=128``.
 """
 
 __all__ = [
-    "triton_rollout",
+    "supports",
+    "forward",
+    "forward_train",
+    "backward",
+    "fake_saved",
     "is_available",
 ]
 
 import torch
 
-from .common import PHNNSpec, bound_value, params_of, supports
+from ..._core.kernel_triton import _pow2, is_available
+from .common import PHNNSpec, spec_caps, split_params
 
 
-def is_available() -> bool:
-    if not torch.cuda.is_available():
-        return False
-    try:
-        import triton  # noqa: F401
-    except ImportError:
-        return False
-    return True
-
-
-def _pow2(n: int) -> int:
-    return 1 << (n - 1).bit_length()
+def supports(spec: PHNNSpec, u: torch.Tensor, x0: torch.Tensor | None) -> str | None:
+    """Reason this backend cannot handle the inputs, or None when it can."""
+    if u.device.type != "cuda":
+        return f"input on {u.device.type}, the triton backend is CUDA-only"
+    reason = spec_caps(spec)
+    if reason is not None:
+        return reason
+    if spec.hidden > 128 or spec.n_state > 16 or spec.num_layers > 2:
+        return (
+            f"spec outside the on-chip envelope (hidden<=128, n_state<=16, num_layers<=2), "
+            f"got hidden={spec.hidden}, n_state={spec.n_state}, num_layers={spec.num_layers}"
+        )
+    if u.dtype != torch.float32:
+        return f"dtype {u.dtype} unsupported (need float32)"
+    if u.dim() != 3 or u.shape[-1] != spec.n_input:
+        return f"expected u of shape [B, L, {spec.n_input}], got {tuple(u.shape)}"
+    if not is_available():
+        return "no CUDA / triton"
+    return None
 
 
 # ------------------------------------------------------------------ host weight repack
@@ -52,14 +66,13 @@ def _pad2(w, pin, pout):
     return out
 
 
-def _prep(core, spec: PHNNSpec):
+def _prep(p: dict, spec: PHNNSpec):
     """Repack component-net params into padded kernel tiles (a flat dict of tensors).
 
     Weight convention: ``[in, out]`` (transpose of ``nn.Linear.weight``). The J/R/G
     output layers are reshaped from a flat ``n²``/``n·m`` vector into a matrix tile so
     the kernel indexes ``B[i,j]``/``G[i,jm]`` directly.
     """
-    p = params_of(core)
     n, m, ny, nh = spec.n_state, spec.n_input, spec.n_output, spec.hidden
     pn, pm, pny, ph = _pow2(n), _pow2(m), _pow2(ny), _pow2(nh)
     mid = spec.num_layers == 2
@@ -131,18 +144,18 @@ def _prep(core, spec: PHNNSpec):
     return d, (pn, pm, pny, ph, mid)
 
 
-def _scalars(core, spec):
+def _scalars(spec: PHNNSpec, dt: float, bound: float, jr_scale: float, g_scale: float) -> dict:
     return dict(
         n=spec.n_state,
         m=spec.n_input,
         ny=spec.n_output,
         nh=spec.hidden,
-        dt=float(core.dt),
+        dt=dt,
         out_linear=spec.output == "linear",
         has_bound=spec.has_bound,
-        bound=bound_value(core),
-        jr_scale=float(core.jr_scale),
-        g_scale=float(core.g_scale),
+        bound=bound,
+        jr_scale=jr_scale,
+        g_scale=g_scale,
     )
 
 
@@ -1114,20 +1127,25 @@ def _zeros(*shape, dev):
     return torch.zeros(*shape, device=dev, dtype=torch.float32)
 
 
-def _run_fwd(core, spec, u, x0, store: bool, num_warps: int | None = None):
+def _run_fwd(p: dict, spec: PHNNSpec, sc: dict, u, x0, store: bool, num_warps: int | None = None):
     K = _build_kernels()
-    d, (pn, pm, pny, ph, mid) = _prep(core, spec)
-    sc = _scalars(core, spec)
+    d, (pn, pm, pny, ph, mid) = _prep(p, spec)
     B, L = u.shape[0], u.shape[1]
     dev = u.device
     out = torch.empty(B, L, spec.n_output, device=dev, dtype=torch.float32)
     xs = torch.empty(B, L, spec.n_state, device=dev, dtype=torch.float32)
     dummy = torch.zeros(1, device=dev)
     if store:
+        # placeholders for absent buffers are distinct tensors: the saved list crosses
+        # the custom-op boundary, whose outputs must not alias each other
         qs = torch.empty(B, L, 3, pn, device=dev, dtype=torch.float32)
         z0 = [torch.empty(B, L, 4, ph, device=dev, dtype=torch.float32) for _ in range(4)]
-        z1 = [torch.empty(B, L, 4, ph, device=dev, dtype=torch.float32) for _ in range(4)] if mid else [dummy] * 4
-        sv = torch.empty(B, L, 4, device=dev, dtype=torch.float32) if sc["has_bound"] else dummy
+        z1 = (
+            [torch.empty(B, L, 4, ph, device=dev, dtype=torch.float32) for _ in range(4)]
+            if mid
+            else [torch.zeros(1, device=dev) for _ in range(4)]
+        )
+        sv = torch.empty(B, L, 4, device=dev, dtype=torch.float32) if sc["has_bound"] else torch.zeros(1, device=dev)
     else:
         qs = dummy
         z0 = [dummy] * 4
@@ -1179,14 +1197,26 @@ def _run_fwd(core, spec, u, x0, store: bool, num_warps: int | None = None):
         ph,
         num_warps=_num_warps(spec, B) if num_warps is None else num_warps,
     )
-    saved = (xs, qs, *z0, *z1, sv) if store else None
+    saved = [xs, qs, *z0, *z1, sv] if store else None
     return out, saved
 
 
-def _run_bwd(core, spec, u, saved, grad_out, num_warps: int | None = None):
+def backward(
+    grad_out: torch.Tensor,
+    u: torch.Tensor,
+    saved: list[torch.Tensor],
+    params: list[torch.Tensor],
+    spec: PHNNSpec,
+    dt: float,
+    bound: float,
+    jr_scale: float,
+    g_scale: float,
+) -> tuple[torch.Tensor, torch.Tensor, list[torch.Tensor]]:
+    """Reverse sweep plus batched-GEMM parameter gradients: ``(du, gx0, param_grads)``."""
     K = _build_kernels()
-    d, (pn, pm, pny, ph, mid) = _prep(core, spec)
-    sc = _scalars(core, spec)
+    p = split_params(params, spec)
+    d, (pn, pm, pny, ph, mid) = _prep(p, spec)
+    sc = _scalars(spec, dt, bound, jr_scale, g_scale)
     xs, qs, zh0, zj0, zr0, zg0, zh1, zj1, zr1, zg1, sv = saved
     B, L = xs.shape[0], xs.shape[1]
     dev = u.device
@@ -1243,16 +1273,15 @@ def _run_bwd(core, spec, u, saved, grad_out, num_warps: int | None = None):
         pm,
         pny,
         ph,
-        num_warps=_num_warps(spec, B) if num_warps is None else num_warps,
+        num_warps=_num_warps(spec, B),
     )
-    grads = _param_grads(core, spec, saved, grad_out, (bj, br, bg, bhd, bhr))
-    return grads, du, gx0
+    grads = _param_grads(p, spec, saved, grad_out, (bj, br, bg, bhd, bhr))
+    return du, gx0, grads
 
 
-def _param_grads(core, spec, saved, grad_out, seeds):
+def _param_grads(p: dict, spec, saved, grad_out, seeds):
     """Parameter gradients as batched GEMMs over the ``[B*L*4, .]`` flattened per-stage
     adjoint seeds emitted by ``phnn_bwd`` (MATH.md sections 3.3/3.4)."""
-    p = params_of(core)
     n, m, ny, h = spec.n_state, spec.n_input, spec.n_output, spec.hidden
     mid = spec.num_layers == 2
     xs, qs, zh0, zj0, zr0, zg0, zh1, zj1, zr1, zg1, sv = saved
@@ -1347,33 +1376,46 @@ def _param_grads(core, spec, saved, grad_out, seeds):
     return [g.contiguous() for g in grads]
 
 
-class _TritonPHNNRollout(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, core, spec, u, x0, *params):
-        out, saved = _run_fwd(core, spec, u.contiguous(), x0.contiguous(), store=True)
-        ctx.core, ctx.spec = core, spec
-        ctx.save_for_backward(u, *saved)
-        return out
+def forward(
+    u: torch.Tensor,
+    x0: torch.Tensor,
+    params: list[torch.Tensor],
+    spec: PHNNSpec,
+    dt: float,
+    bound: float,
+    jr_scale: float,
+    g_scale: float,
+) -> torch.Tensor:
+    """Fused rollout, inference only: output sequence ``[B, L, n_output]``."""
+    p = split_params(params, spec)
+    out, _ = _run_fwd(p, spec, _scalars(spec, dt, bound, jr_scale, g_scale), u, x0, store=False)
+    return out
 
-    @staticmethod
-    def backward(ctx, grad_out):
-        u, *saved = ctx.saved_tensors
-        grads, du, gx0 = _run_bwd(ctx.core, ctx.spec, u, saved, grad_out.contiguous())
-        du_out = du if ctx.needs_input_grad[2] else None
-        dx0_out = gx0 if ctx.needs_input_grad[3] else None
-        return (None, None, du_out, dx0_out, *grads)
+
+def forward_train(
+    u: torch.Tensor,
+    x0: torch.Tensor,
+    params: list[torch.Tensor],
+    spec: PHNNSpec,
+    dt: float,
+    bound: float,
+    jr_scale: float,
+    g_scale: float,
+) -> tuple[torch.Tensor, list[torch.Tensor]]:
+    """Fused rollout storing the per-stage activations for backward: ``(out, saved)``."""
+    p = split_params(params, spec)
+    out, saved = _run_fwd(p, spec, _scalars(spec, dt, bound, jr_scale, g_scale), u, x0, store=True)
+    return out, saved
 
 
-def triton_rollout(core, spec: PHNNSpec, u: torch.Tensor, x0: torch.Tensor) -> torch.Tensor:
-    """Run the PHNN section rollout through the persistent Triton kernels (autograd-capable)."""
-    if not supports(spec, "triton"):
-        raise RuntimeError(f"spec {spec} outside the triton envelope")
-    if u.dtype != torch.float32:
-        raise RuntimeError(f"the triton backend requires float32, got {u.dtype}")
-    from .common import flat_params
-
-    params = flat_params(core)
-    if not torch.is_grad_enabled() or not any(t.requires_grad for t in [u, x0, *params]):
-        out, _ = _run_fwd(core, spec, u.contiguous(), x0.contiguous(), store=False)
-        return out
-    return _TritonPHNNRollout.apply(core, spec, u.contiguous(), x0.contiguous(), *params)
+def fake_saved(u: torch.Tensor, spec: PHNNSpec) -> list[torch.Tensor]:
+    """Meta tensors matching ``forward_train``'s saved list (for fake registration)."""
+    B, L = u.shape[0], u.shape[1]
+    pn, ph = _pow2(spec.n_state), _pow2(spec.hidden)
+    mid = spec.num_layers == 2
+    xs = u.new_empty(B, L, spec.n_state)
+    qs = u.new_empty(B, L, 3, pn)
+    z0 = [u.new_empty(B, L, 4, ph) for _ in range(4)]
+    z1 = [u.new_empty(B, L, 4, ph) for _ in range(4)] if mid else [u.new_empty(1) for _ in range(4)]
+    sv = u.new_empty(B, L, 4) if spec.has_bound else u.new_empty(1)
+    return [xs, qs, *z0, *z1, sv]

@@ -9,14 +9,19 @@ which is what makes small-batch rollouts fill the GPU. fp32-exact (no TF32 in th
 Backward follows the split-BPTT design: the training forward additionally stores the hidden
 activations; a persistent reverse-sweep kernel carries the state adjoint and emits the
 per-step pre-activation adjoints; the parameter gradients are batched cuBLAS GEMMs over the
-``[B*L, .]`` flattened adjoints (``mlp_param_grads``).
+``[B*L, .]`` flattened adjoints (``mlp_param_grads``, applied inside the
+``tsfast::ssm_rollout_bwd`` op). Inputs arrive from the ``tsfast::ssm_rollout*`` custom ops
+as contiguous float32 CUDA tensors.
 
 Kernels are generated from the layer spec (dims baked as literals) into a cached module file,
 so arbitrary MLP depths/widths are supported up to the on-chip limit (padded widths <= 128).
 """
 
 __all__ = [
-    "triton_rollout",
+    "supports",
+    "forward_train",
+    "forward_infer",
+    "backward",
     "is_available",
     "fits",
 ]
@@ -29,7 +34,7 @@ from pathlib import Path
 import torch
 
 from ..._core.kernel_triton import _ACT_TL, _MAX_PADDED_WIDTH, _pow2, is_available
-from .core import SSMSpec, check_rollout_args, mlp_param_grads
+from .core import SSMSpec, rollout_unsupported
 
 _KERNELS: dict[SSMSpec, object] = {}
 
@@ -225,48 +230,42 @@ def _run_fwd(mod, spec: SSMSpec, u, x0, params, store_z, num_warps):
     return out, zs
 
 
-class _TritonSSMRollout(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, mod, spec, u, x0, *params):
-        u = u.contiguous()
-        x0 = x0.contiguous()
-        nw = _num_warps(spec)
-        out, zs = _run_fwd(mod, spec, u, x0, params, store_z=True, num_warps=nw)
-        ctx.mod, ctx.spec, ctx.nw = mod, spec, nw
-        ctx.save_for_backward(u, x0, out, *zs, *params[0::2])
-        return out
-
-    @staticmethod
-    def backward(ctx, grad_out):
-        mod, spec = ctx.mod, ctx.spec
-        k = spec.n_linear
-        saved = ctx.saved_tensors
-        u, x0, out = saved[0], saved[1], saved[2]
-        zs = list(saved[3 : 3 + k - 1])
-        weights = list(saved[3 + k - 1 :])
-        B, L = u.shape[0], u.shape[1]
-        dev = u.device
-        bufs = _prep_weights(spec, [w.detach() for w in weights], biases=None)
-        wk = [bufs[0]] + bufs[2:]  # w0x, w1, ..., w{k-1} (w0u unused by the backward)
-        gy = torch.empty(B, L, spec.n_state, device=dev, dtype=torch.float32)
-        gas = [torch.empty_like(z) for z in zs]
-        gx0 = torch.empty(B, spec.n_state, device=dev, dtype=torch.float32)
-        mod.ssm_bwd[(B,)](grad_out.contiguous(), *zs, *wk, gy, *gas, gx0, B, L, NUM_STAGES=3, num_warps=ctx.nw)
-        grads, du = mlp_param_grads(spec, x0, u, out, zs, gy, gas, w0=weights[0], need_du=ctx.needs_input_grad[2])
-        dx0 = gx0 if ctx.needs_input_grad[3] else None
-        return (None, None, du, dx0, *grads)
-
-
-def triton_rollout(spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, params: list[torch.Tensor]) -> torch.Tensor:
-    """Run the rollout through the generated persistent Triton kernels (autograd-capable)."""
-    check_rollout_args(spec, u, x0, "cuda")
+def supports(spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor) -> str | None:
+    """Reason the persistent Triton kernels cannot handle these inputs, or None when they can."""
+    reason = rollout_unsupported(spec, u, x0, "cuda")
+    if reason is not None:
+        return reason
     if not fits(spec):
-        raise RuntimeError(
-            f"spec {spec} exceeds the triton backend envelope (padded widths <= {_MAX_PADDED_WIDTH}); "
-            "use backend='compiled'"
-        )
+        return f"spec {spec} exceeds the triton envelope (padded widths <= {_MAX_PADDED_WIDTH})"
+    if not is_available():
+        return "no CUDA / triton"
+    return None
+
+
+def forward_train(
+    spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, params: list[torch.Tensor]
+) -> tuple[torch.Tensor, list[torch.Tensor]]:
+    """Rollout that also stores the hidden activations: returns ``(out, zs)``."""
+    return _run_fwd(_get_kernels(spec), spec, u, x0, params, store_z=True, num_warps=_num_warps(spec))
+
+
+def forward_infer(spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, params: list[torch.Tensor]) -> torch.Tensor:
+    """Rollout without stored intermediates: returns ``out`` of shape ``[B, L, n_state]``."""
+    out, _ = _run_fwd(_get_kernels(spec), spec, u, x0, params, store_z=False, num_warps=_num_warps(spec))
+    return out
+
+
+def backward(
+    spec: SSMSpec, grad_out: torch.Tensor, zs: list[torch.Tensor], weights: list[torch.Tensor]
+) -> tuple[torch.Tensor, list[torch.Tensor], torch.Tensor]:
+    """Reverse state-adjoint sweep: returns ``(gy, gas, gx0)`` for the shared GEMM stage."""
     mod = _get_kernels(spec)
-    if not torch.is_grad_enabled() or not any(t.requires_grad for t in [u, x0, *params]):
-        out, _ = _run_fwd(mod, spec, u.contiguous(), x0.contiguous(), params, store_z=False, num_warps=_num_warps(spec))
-        return out
-    return _TritonSSMRollout.apply(mod, spec, u, x0, *params)
+    B, L = grad_out.shape[0], grad_out.shape[1]
+    dev = grad_out.device
+    bufs = _prep_weights(spec, [w.detach() for w in weights], biases=None)
+    wk = [bufs[0]] + bufs[2:]  # w0x, w1, ..., w{k-1} (w0u unused by the backward)
+    gy = torch.empty(B, L, spec.n_state, device=dev, dtype=torch.float32)
+    gas = [torch.empty_like(z) for z in zs]
+    gx0 = torch.empty(B, spec.n_state, device=dev, dtype=torch.float32)
+    mod.ssm_bwd[(B,)](grad_out, *zs, *wk, gy, *gas, gx0, B, L, NUM_STAGES=3, num_warps=_num_warps(spec))
+    return gy, gas, gx0

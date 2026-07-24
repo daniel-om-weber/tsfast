@@ -12,11 +12,14 @@ lane (time descending), emitting ``grad_v = G``, ``grad_lam = G x_{t-1}`` and
 ``grad_x0 = a_0 G_0``. Only ``lam`` and the forward output feed the backward, so its memory
 is O(L). Real float32 only (the Mamba selective scan), so no conjugation is needed. The
 toolchain probe, compile flags, and batch-parallel scaffold are shared with the SSM C backend.
+Inputs arrive from the ``tsfast::scan_selective`` custom op as contiguous ``[B, L, N]``
+(lam materialized to v's shape) with x0 ``[B, N]`` or None.
 """
 
 __all__ = [
     "supports",
-    "run",
+    "forward",
+    "backward",
 ]
 
 import hashlib
@@ -137,39 +140,27 @@ def _get_extension():
     return _EXTENSION
 
 
-def _forward(ext, lam, v, x0):
+def forward(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None) -> torch.Tensor:
+    """Forward recurrence: lam and v ``[B, L, N]``, x0 ``[B, N]`` or None."""
+    ext = _get_extension()
     out = torch.empty_like(lam)
     has_x0 = x0 is not None
     ext.sel_fwd(lam, v, x0 if has_x0 else lam, out, has_x0)
     return out
 
 
-class _SelectiveC(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, ext, lam, v, x0):
-        out = _forward(ext, lam, v, x0)
-        ctx.ext = ext
-        ctx.save_for_backward(lam, out, x0)
-        ctx.has_x0 = x0 is not None
-        return out
-
-    @staticmethod
-    def backward(ctx, g):
-        ext = ctx.ext
-        lam, out, x0 = ctx.saved_tensors
-        g = g.contiguous()
-        B, L, N = lam.shape
-        has_x0 = ctx.has_x0
-        _, need_lam, need_v, need_x0 = ctx.needs_input_grad
-        need_x0 = bool(need_x0 and has_x0)
-        glam = torch.empty_like(lam)
-        gv = torch.empty_like(lam)
-        gx0 = torch.empty(B, N, dtype=lam.dtype) if need_x0 else lam
-        ext.sel_bwd(lam, out, g, x0 if has_x0 else lam, glam, gv, gx0, has_x0, need_x0)
-        grad_lam = glam if need_lam else None
-        grad_v = gv if need_v else None
-        grad_x0 = gx0 if need_x0 else None
-        return None, grad_lam, grad_v, grad_x0
+def backward(
+    g: torch.Tensor, lam: torch.Tensor, out: torch.Tensor, x0: torch.Tensor | None
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Adjoint sweep, returning ``(glam, gv, gx0)`` (gx0 empty when x0 is None)."""
+    ext = _get_extension()
+    B, L, N = lam.shape
+    has_x0 = x0 is not None
+    glam = torch.empty_like(lam)
+    gv = torch.empty_like(lam)
+    gx0 = torch.empty(B, N, dtype=lam.dtype) if has_x0 else lam
+    ext.sel_bwd(lam, out, g, x0 if has_x0 else lam, glam, gv, gx0, has_x0, has_x0)
+    return glam, gv, (gx0 if has_x0 else lam.new_empty(0))
 
 
 def supports(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None) -> str | None:
@@ -191,18 +182,3 @@ def supports(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None) -> str
         if tuple(x0.shape) != tuple(expected):
             return f"x0.shape {tuple(x0.shape)} != expected {tuple(expected)}"
     return None
-
-
-def run(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None) -> torch.Tensor:
-    """Selective recurrence ``x_t = lam_t x_{t-1} + v_t`` via the compiled C++ extension."""
-    ext = _get_extension()
-    lam3 = lam.contiguous().reshape(-1, lam.shape[-2], lam.shape[-1])
-    v3 = v.contiguous().reshape(-1, v.shape[-2], v.shape[-1])
-    x03 = x0.contiguous().reshape(-1, x0.shape[-1]) if x0 is not None else None
-    if not torch.is_grad_enabled() or not (
-        lam3.requires_grad or v3.requires_grad or (x03 is not None and x03.requires_grad)
-    ):
-        out = _forward(ext, lam3, v3, x03)
-    else:
-        out = _SelectiveC.apply(ext, lam3, v3, x03)
-    return out.reshape(lam.shape)

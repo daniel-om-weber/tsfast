@@ -12,6 +12,7 @@ import time
 import torch
 
 import tsfast.models._core.scan as scan
+from tsfast.models import set_backend
 
 
 def _bench(shape, device, iters=8, warmup=3):
@@ -56,22 +57,22 @@ def main():
     rows = []
     if torch.cuda.is_available():
         for shape in [(32, 1600, 1024), (128, 1600, 1024)]:
-            scan.backend = "doubling"
+            set_backend("reference")
             t_d, m_d = _bench(shape, "cuda")
-            scan.backend = "auto"
+            set_backend("auto")
             t_k, m_k = _bench(shape, "cuda")
             rows.append(("triton", shape, t_d, m_d, t_k, m_k))
     else:
         print("CUDA unavailable; skipping GPU cases")
 
     for shape in [(8, 6841, 512)]:
-        scan.backend = "doubling"
+        set_backend("reference")
         t_d, m_d = _bench(shape, "cpu")
-        scan.backend = "auto"
+        set_backend("auto")
         t_k, m_k = _bench(shape, "cpu")
         rows.append(("c", shape, t_d, m_d, t_k, m_k))
 
-    scan.backend = "auto"
+    set_backend("auto")
     hdr = f"{'kernel':7s} {'shape':18s} {'doubling ms':>12s} {'dbl peakMB':>11s} " f"{'kernel ms':>10s} {'ker peakMB':>11s} {'speedup':>8s}"
     print(hdr)
     print("-" * len(hdr))

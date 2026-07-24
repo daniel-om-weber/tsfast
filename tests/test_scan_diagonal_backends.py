@@ -10,6 +10,7 @@ import pytest
 import torch
 
 import tsfast.models._core.scan as scan
+from tsfast.models import use_backend
 from tsfast.models._core.scan_backends import diagonal_c, diagonal_triton
 
 # (v_shape, lam_shape): model-realistic (LRU d_state=64 -> n=64; lam broadcast over batch/time),
@@ -45,12 +46,9 @@ def _fwd_bwd(backend, lam, v, x0):
     lam = lam.clone().requires_grad_()
     v = v.clone().requires_grad_()
     x0 = None if x0 is None else x0.clone().requires_grad_()
-    scan.backend = backend
-    try:
+    with use_backend(backend):
         out = scan.diagonal_recurrence(lam, v, x0)
         (out.abs() ** 2).sum().backward()
-    finally:
-        scan.backend = "auto"
     return out, lam.grad, v.grad, (None if x0 is None else x0.grad)
 
 
@@ -58,7 +56,7 @@ def _check(backend_name, device, dtype, v_shape, lam_shape, with_x0):
     torch.manual_seed(0)
     lam, v, x0 = _make(v_shape, lam_shape, dtype, device)
     init = x0 if with_x0 else None
-    ref = _fwd_bwd("doubling", lam, v, init)
+    ref = _fwd_bwd("reference", lam, v, init)
     got = _fwd_bwd(backend_name, lam, v, init)
     labels = ["out", "grad_lam", "grad_v", "grad_x0"]
     for name, a, b in zip(labels, got, ref):
@@ -89,7 +87,7 @@ def test_triton_matches_doubling(dtype, v_shape, lam_shape, with_x0):
 
 
 def test_inference_path_matches_grad_path():
-    """run() under no_grad must return the same forward output as the autograd path (both backends)."""
+    """The op under no_grad must return the same forward output as the autograd path (both backends)."""
     torch.manual_seed(0)
     for name, mod, device in [("c", diagonal_c, "cpu"), ("triton", diagonal_triton, "cuda")]:
         if device == "cuda" and not torch.cuda.is_available():
@@ -97,7 +95,8 @@ def test_inference_path_matches_grad_path():
         lam, v, x0 = _make((8, 64, 16), (16,), torch.complex64, device)
         if mod.supports(lam, v, x0):
             continue
-        with torch.no_grad():
-            out_nograd = mod.run(lam, v, x0)
-        out_grad = mod.run(lam.requires_grad_(), v.requires_grad_(), x0.requires_grad_())
+        with use_backend(name):
+            with torch.no_grad():
+                out_nograd = scan.diagonal_recurrence(lam, v, x0)
+            out_grad = scan.diagonal_recurrence(lam.requires_grad_(), v.requires_grad_(), x0.requires_grad_())
         assert _rel(out_nograd, out_grad) < 1e-5, name

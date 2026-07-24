@@ -194,7 +194,7 @@ class TestDeepMamba:
         """Gradients through the carried state (conv tail and h0 in, h_last out) match the generic path."""
         if not torch.cuda.is_available():
             pytest.skip("no CUDA")
-        import tsfast.models._core.scan as scan
+        from tsfast.models import use_backend
 
         torch.manual_seed(0)
         layer = MambaLayer(4, d_state=8).cuda()
@@ -204,9 +204,8 @@ class TestDeepMamba:
             "ssm": torch.randn(3, 8 * 8, device="cuda"),
         }
         results = {}
-        try:
-            for backend in ("auto", "doubling"):
-                scan.backend = backend
+        for backend in ("auto", "reference"):
+            with use_backend(backend):
                 for p in layer.parameters():
                     p.grad = None
                 state = {
@@ -222,10 +221,8 @@ class TestDeepMamba:
                     state["conv"].grad.clone(),
                     [p.grad.clone() for p in layer.parameters()],
                 )
-        finally:
-            scan.backend = "auto"
         out_f, hl_f, gh0_f, gc0_f, g_f = results["auto"]
-        out_d, hl_d, gh0_d, gc0_d, g_d = results["doubling"]
+        out_d, hl_d, gh0_d, gc0_d, g_d = results["reference"]
         assert _rel(out_f, out_d) < 5e-5
         assert _rel(hl_f, hl_d) < 5e-5
         assert _rel(gh0_f, gh0_d) < 5e-5
@@ -249,3 +246,19 @@ class TestDeepMamba:
         lrn.fit(1, 1e-3)
         final_valid_loss = lrn.recorder[-1][1]
         assert not torch.isnan(torch.tensor(final_valid_loss))
+
+
+class TestMambaCompile:
+    def test_deepmamba_fullgraph_compile_cuda(self):
+        """The fused conv/scan custom ops must not graph-break under torch.compile."""
+        if not torch.cuda.is_available():
+            pytest.skip("no CUDA")
+        torch.manual_seed(0)
+        m = DeepMamba(3, 2, d_model=16, d_state=8, n_layers=2).cuda()
+        u = torch.randn(2, 32, 3, device="cuda")
+        eager = m(u)
+        compiled = torch.compile(m, fullgraph=True)
+        out = compiled(u)
+        out.square().mean().backward()
+        assert _rel(out, eager) < 1e-4
+        assert all(p.grad is not None for p in m.parameters())

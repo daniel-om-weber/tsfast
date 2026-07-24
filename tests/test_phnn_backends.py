@@ -1,17 +1,19 @@
 """Tests for the fused PHNN rollout backends (c, triton).
 
 Correctness contract in ``MATH.md``. The C backend is fp64-gradcheckable and is the
-reference the Triton backend is validated against on GPU.
+reference the Triton backend is validated against on GPU. Both run behind the
+``tsfast::phnn_rollout*`` custom ops, entered through ``fused_rollout``.
 """
 
 import pytest
 import torch
 from torch import nn
 
-from tsfast.models.architectures.phnn import PHNN, PHNNCore
-from tsfast.models.architectures.phnn import spec_of, supports
-from tsfast.models.architectures.phnn.backend_c import c_rollout, is_available
+from tsfast.models.architectures.phnn import PHNN, PHNNCore, spec_of
+from tsfast.models.architectures.phnn import backend_c
+from tsfast.models.architectures.phnn.backend_c import is_available
 from tsfast.models.architectures.phnn.common import flat_params
+from tsfast.models.architectures.phnn.core import fused_rollout
 
 pytestmark = pytest.mark.skipif(not is_available(), reason="no C++ toolchain")
 
@@ -51,22 +53,20 @@ class TestCBackend:
     @pytest.mark.parametrize("nl,n,m,ny,out,bnd", CONFIGS)
     def test_forward_matches_eager(self, nl, n, m, ny, out, bnd):
         core = _randn_core(n, m, ny, 8, nl, out, bnd)
-        spec = spec_of(core)
         x0 = torch.randn(3, n, dtype=torch.float64)
         u = torch.randn(3, 7, m, dtype=torch.float64)
         with torch.no_grad():
             ref = _eager_roll(core, u, x0)
-            got = c_rollout(core, spec, u, x0)
+            got = fused_rollout(core, u, x0)
         assert _rel(got, ref) < 1e-12
 
     @pytest.mark.parametrize("nl,n,m,ny,out,bnd", CONFIGS)
     def test_gradcheck(self, nl, n, m, ny, out, bnd):
         core = _randn_core(n, m, ny, 6, nl, out, bnd, seed=1)
-        spec = spec_of(core)
         x0 = torch.randn(2, n, dtype=torch.float64, requires_grad=True)
         u = torch.randn(2, 5, m, dtype=torch.float64, requires_grad=True)
         params = flat_params(core)
-        f = lambda u, x0, *ps: c_rollout(core, spec, u, x0)  # noqa: E731
+        f = lambda u, x0, *ps: fused_rollout(core, u, x0)  # noqa: E731
         assert torch.autograd.gradcheck(f, (u, x0, *params), eps=1e-6, atol=1e-5, rtol=1e-3)
 
     def test_param_grad_equivalence_fp32(self):
@@ -84,7 +84,11 @@ class TestCBackend:
     def test_supports_caps(self):
         # single RK4 step and >=1 hidden layer required
         core2 = PHNNCore(4, 1, rk4_steps=2)
-        assert not supports(spec_of(core2), "c")
+        u, x0 = torch.randn(2, 5, 1), torch.randn(2, 4)
+        assert backend_c.supports(spec_of(core2), u, x0) is not None
+        core1 = PHNNCore(4, 1)
+        assert backend_c.supports(spec_of(core1), u, x0) is None
+        assert backend_c.supports(spec_of(core1), u.to(torch.float16), x0) is not None
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="no CUDA")
@@ -92,17 +96,14 @@ class TestTritonBackend:
     @pytest.mark.parametrize("nl,n,m,ny,out,bnd", CONFIGS)
     def test_matches_c_forward_and_grads(self, nl, n, m, ny, out, bnd):
         core = _randn_core(n, m, ny, 16, nl, out, bnd, seed=3, dtype=torch.float64)
-        spec = spec_of(core)
-        from tsfast.models.architectures.phnn.backend_triton import triton_rollout
-
         x0 = torch.randn(3, n, dtype=torch.float64)
         u = torch.randn(3, 12, m, dtype=torch.float64)
         x0d = x0.clone().requires_grad_(True)
         ud = u.clone().requires_grad_(True)
-        gc = torch.autograd.grad(c_rollout(core, spec, ud, x0d).pow(2).mean(), [ud, x0d, *flat_params(core)])
+        gc = torch.autograd.grad(fused_rollout(core, ud, x0d).pow(2).mean(), [ud, x0d, *flat_params(core)])
         ct = core.float().cuda()
         x0t = x0.float().cuda().requires_grad_(True)
         ut = u.float().cuda().requires_grad_(True)
-        outt = triton_rollout(ct, spec, ut, x0t)
+        outt = fused_rollout(ct, ut, x0t)
         gt = torch.autograd.grad(outt.pow(2).mean(), [ut, x0t, *flat_params(ct)])
         assert max(_rel(a.cpu().float(), b.float()) for a, b in zip(gt, gc)) < 1e-3

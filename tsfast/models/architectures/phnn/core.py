@@ -32,7 +32,18 @@ __all__ = [
 import torch
 from torch import nn
 
+from ..._core.dispatch import BACKENDS, get_backend, resolve
 from ..subnet import ResMLP, SubnetEncoder, _mlp
+from .common import PHNNSpec, bound_value, flat_params, spec_of
+
+# Fused rollout backends, resolved through dispatch.resolve: each module exposes
+# supports(spec, u, x0) -> str | None plus forward/forward_train/backward entry points
+# on the flat_params parameter layout.
+_BACKENDS = {
+    "triton": "tsfast.models.architectures.phnn.backend_triton",
+    "c": "tsfast.models.architectures.phnn.backend_c",
+}
+_AUTO_ORDER = {"cuda": ("triton",), "cpu": ("c",)}
 
 
 class HamiltonianMLP(nn.Module):
@@ -192,8 +203,12 @@ class PHNN(nn.Module):
     step into one graph, which exhausted memory on long free runs); ``"c"`` and
     ``"triton"`` fuse the whole section rollout and its BPTT into one call (batch-
     parallel C++ on CPU, a persistent per-lane kernel on CUDA — see
-    :mod:`tsfast.models.architectures.phnn`); ``"auto"`` picks ``triton`` on CUDA (else
-    ``compiled``) and ``c`` on CPU (else ``eager``), within the config caps.
+    :mod:`tsfast.models.architectures.phnn`); ``"reference"`` forces the non-fused
+    policy (``compiled`` on CUDA, ``eager`` on CPU); ``"auto"`` defers to the process
+    preference (:func:`tsfast.models.set_backend` / ``use_backend``), under which it
+    picks the fused kernel for the input's device when usable, else the non-fused
+    policy. An explicit fused backend that cannot run warns once per process and
+    falls back the same way.
 
     Args:
         n_input: exogenous input dimension.
@@ -273,44 +288,22 @@ class PHNN(nn.Module):
             self._compiled_step = torch.compile(self.core.step, dynamic=False)
         return self._rollout(u_future, x0, step=self._compiled_step)
 
-    def _resolve_backend(self, u_future: torch.Tensor) -> str:
-        """Map ``"auto"`` to a concrete backend and downgrade unavailable fused backends.
-
-        ``auto`` picks the fused ``triton`` kernel on CUDA and the fused ``c`` kernel on
-        CPU when they apply (float32/float64, config within caps), otherwise ``compiled``
-        on CUDA and ``eager`` on CPU. An explicit fused backend that does not apply falls
-        back the same way with a once-per-process warning.
-        """
-        from ..._core import dispatch as _b
-        from .common import spec_of, supports
-
-        backend = self.backend
+    def _route(self, u_future: torch.Tensor) -> str:
+        """Concrete execution route for this call: ``"eager"``, ``"compiled"``, or ``"fused"``."""
         spec = spec_of(self.core)
-        if backend in ("auto", "triton") and u_future.is_cuda:
-            from . import backend_triton
-
-            if u_future.dtype == torch.float32 and backend_triton.is_available() and supports(spec, "triton"):
-                return "triton"
-            if backend == "triton":
-                _b.warn_fallback("phnn.triton", "PHNN triton backend unavailable for this config; using compiled")
-            return "compiled"
-        if backend in ("auto", "c") and not u_future.is_cuda:
-            from . import backend_c
-
-            if u_future.dtype in (torch.float32, torch.float64) and backend_c.is_available() and supports(spec, "c"):
-                return "c"
-            if backend == "c":
-                _b.warn_fallback("phnn.c", "PHNN c backend unavailable for this config; using eager")
-            return "eager"
-        if backend == "auto":
-            return "compiled" if u_future.is_cuda else "eager"
-        if backend == "triton":  # requested on CPU
-            _b.warn_fallback("phnn.triton", "PHNN triton backend requires CUDA; using eager")
-            return "eager"
-        if backend == "c":  # requested on CUDA
-            _b.warn_fallback("phnn.c", "PHNN c backend requires CPU; using compiled")
-            return "compiled"
-        return backend
+        fields = (
+            spec.n_state,
+            spec.n_input,
+            spec.n_output,
+            spec.hidden,
+            spec.num_layers,
+            spec.rk4_steps,
+            spec.output,
+            spec.has_bound,
+        )
+        return _route_for(
+            self.backend, fields, u_future.device.type, u_future.dtype, u_future.dim(), u_future.shape[-1]
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Simulate from the encoder state; returns ``[B, L, n_output]`` with zeros before ``n_init``."""
@@ -318,22 +311,252 @@ class PHNN(nn.Module):
             raise ValueError(f"sequence length {x.shape[1]} too short for encoder warm-up n_init={self.n_init}")
         x0 = self.encode(x)
         u_future = x[:, self.n_init :, : self.n_input]
-        from .common import spec_of
-
-        match self._resolve_backend(u_future):
+        match self._route(u_future):
             case "eager":
                 out = self._rollout(u_future, x0)
             case "compiled":
                 out = self._rollout_compiled(u_future, x0)
-            case "c":
-                from .backend_c import c_rollout
-
-                out = c_rollout(self.core, spec_of(self.core), u_future.contiguous(), x0.contiguous())
-            case "triton":
-                from .backend_triton import triton_rollout
-
-                out = triton_rollout(self.core, spec_of(self.core), u_future.contiguous(), x0.contiguous())
-            case unknown:
-                raise ValueError(f"unknown backend {unknown!r}")
+            case _:
+                out = fused_rollout(self.core, u_future, x0)
         warmup = x.new_zeros(x.shape[0], self.n_init, self.n_output)
         return torch.cat((warmup, out), dim=1)
+
+
+@torch._dynamo.assume_constant_result
+def _route_for(backend: str, spec_fields: tuple, device_type: str, dtype: torch.dtype, u_dim: int, u_last: int) -> str:
+    """Map the instance ``backend`` to ``"eager"``, ``"compiled"``, or ``"fused"``.
+
+    ``"auto"`` defers to the process preference; ``"reference"`` and any fused family
+    that declines (via the once-warned ``dispatch.resolve``) map to the non-fused
+    policy: ``compiled`` on CUDA, ``eager`` on CPU. Takes only hashables so
+    ``torch.compile`` can fold the decision into a trace-time constant — the import
+    and availability probing inside ``resolve`` never enter the graph.
+    """
+    requested = get_backend() if backend == "auto" else backend
+    if requested in ("eager", "compiled"):
+        return requested
+    if requested not in BACKENDS:
+        raise ValueError(f"unknown backend {requested!r}, expected 'eager', 'compiled', or one of {BACKENDS}")
+    fallback = "compiled" if device_type == "cuda" else "eager"
+    if requested == "reference":
+        return fallback
+    spec = PHNNSpec(*spec_fields)
+    probe = torch.empty(*([0] * (u_dim - 1)), u_last, dtype=dtype, device=device_type)
+    mod = resolve("phnn.rollout", _BACKENDS, _AUTO_ORDER.get(device_type, ()), (spec, probe, None), requested=requested)
+    return "fused" if mod is not None else fallback
+
+
+# ------------------------------------------------------------------------- custom ops
+#
+# The fused rollout is exposed as forward/backward custom-op pairs so it composes with
+# torch.compile (no graph breaks), fake/meta tracing, and export. The frozen PHNNSpec
+# cannot cross the op boundary, so its fields travel as scalars and are rebuilt inside
+# the impls; the component-net parameters travel as one flat list in flat_params order
+# and receive gradients through the registered autograd bridge. Inside the op, dispatch
+# picks the fused backend for the input's device (triton on CUDA, c on CPU); the
+# non-fused eager/compiled paths stay outside the ops so torch.compile can trace them.
+
+
+def _resolve_fused(spec: PHNNSpec, u: torch.Tensor, x0: torch.Tensor | None):
+    mod = resolve("phnn.rollout", _BACKENDS, _AUTO_ORDER.get(u.device.type, ()), (spec, u, x0), requested="auto")
+    if mod is None:
+        raise RuntimeError(f"no fused PHNN backend usable for device {u.device.type} / dtype {u.dtype} / spec {spec}")
+    return mod
+
+
+@torch.library.custom_op("tsfast::phnn_rollout", mutates_args=())
+def _rollout_op(
+    u: torch.Tensor,
+    x0: torch.Tensor,
+    params: list[torch.Tensor],
+    n_state: int,
+    n_input: int,
+    n_output: int,
+    hidden: int,
+    num_layers: int,
+    rk4_steps: int,
+    output: str,
+    has_bound: bool,
+    dt: float,
+    bound: float,
+    jr_scale: float,
+    g_scale: float,
+) -> torch.Tensor:
+    spec = PHNNSpec(n_state, n_input, n_output, hidden, num_layers, rk4_steps, output, has_bound)
+    u, x0 = u.contiguous(), x0.contiguous()
+    params = [p.contiguous() for p in params]
+    mod = _resolve_fused(spec, u, x0)
+    return mod.forward(u, x0, params, spec, dt, bound, jr_scale, g_scale)
+
+
+@_rollout_op.register_fake
+def _(
+    u,
+    x0,
+    params,
+    n_state,
+    n_input,
+    n_output,
+    hidden,
+    num_layers,
+    rk4_steps,
+    output,
+    has_bound,
+    dt,
+    bound,
+    jr_scale,
+    g_scale,
+):
+    return u.new_empty(u.shape[0], u.shape[1], n_output)
+
+
+@torch.library.custom_op("tsfast::phnn_rollout_train", mutates_args=())
+def _rollout_train_op(
+    u: torch.Tensor,
+    x0: torch.Tensor,
+    params: list[torch.Tensor],
+    n_state: int,
+    n_input: int,
+    n_output: int,
+    hidden: int,
+    num_layers: int,
+    rk4_steps: int,
+    output: str,
+    has_bound: bool,
+    dt: float,
+    bound: float,
+    jr_scale: float,
+    g_scale: float,
+) -> tuple[torch.Tensor, list[torch.Tensor]]:
+    spec = PHNNSpec(n_state, n_input, n_output, hidden, num_layers, rk4_steps, output, has_bound)
+    u, x0 = u.contiguous(), x0.contiguous()
+    params = [p.contiguous() for p in params]
+    mod = _resolve_fused(spec, u, x0)
+    return mod.forward_train(u, x0, params, spec, dt, bound, jr_scale, g_scale)
+
+
+@_rollout_train_op.register_fake
+def _(
+    u,
+    x0,
+    params,
+    n_state,
+    n_input,
+    n_output,
+    hidden,
+    num_layers,
+    rk4_steps,
+    output,
+    has_bound,
+    dt,
+    bound,
+    jr_scale,
+    g_scale,
+):
+    spec = PHNNSpec(n_state, n_input, n_output, hidden, num_layers, rk4_steps, output, has_bound)
+    if u.device.type == "cuda":
+        from .backend_triton import fake_saved
+    else:
+        from .backend_c import fake_saved
+    return u.new_empty(u.shape[0], u.shape[1], n_output), fake_saved(u, spec)
+
+
+@torch.library.custom_op("tsfast::phnn_rollout_bwd", mutates_args=())
+def _rollout_bwd_op(
+    grad_out: torch.Tensor,
+    u: torch.Tensor,
+    saved: list[torch.Tensor],
+    params: list[torch.Tensor],
+    n_state: int,
+    n_input: int,
+    n_output: int,
+    hidden: int,
+    num_layers: int,
+    rk4_steps: int,
+    output: str,
+    has_bound: bool,
+    dt: float,
+    bound: float,
+    jr_scale: float,
+    g_scale: float,
+) -> tuple[torch.Tensor, torch.Tensor, list[torch.Tensor]]:
+    spec = PHNNSpec(n_state, n_input, n_output, hidden, num_layers, rk4_steps, output, has_bound)
+    grad_out, u = grad_out.contiguous(), u.contiguous()
+    saved = [t.contiguous() for t in saved]
+    params = [p.contiguous() for p in params]
+    mod = _resolve_fused(spec, u, None)
+    return mod.backward(grad_out, u, saved, params, spec, dt, bound, jr_scale, g_scale)
+
+
+@_rollout_bwd_op.register_fake
+def _(
+    grad_out,
+    u,
+    saved,
+    params,
+    n_state,
+    n_input,
+    n_output,
+    hidden,
+    num_layers,
+    rk4_steps,
+    output,
+    has_bound,
+    dt,
+    bound,
+    jr_scale,
+    g_scale,
+):
+    return torch.empty_like(u), u.new_empty(u.shape[0], n_state), [torch.empty_like(p) for p in params]
+
+
+def _train_setup(ctx, inputs, output):
+    u, x0, params, *scalars = inputs
+    _, saved = output
+    ctx.n_params = len(params)
+    ctx.scalars = scalars
+    ctx.save_for_backward(u, *params, *saved)
+
+
+def _train_backward(ctx, grad_out, grad_saved):
+    u, *rest = ctx.saved_tensors
+    params = list(rest[: ctx.n_params])
+    saved = list(rest[ctx.n_params :])
+    du, gx0, gparams = _rollout_bwd_op(grad_out, u, saved, params, *ctx.scalars)
+    return (du, gx0, gparams, *([None] * len(ctx.scalars)))
+
+
+_rollout_train_op.register_autograd(_train_backward, setup_context=_train_setup)
+
+
+def fused_rollout(core: PHNNCore, u: torch.Tensor, x0: torch.Tensor) -> torch.Tensor:
+    """Run the section rollout through the fused custom ops (autograd-capable).
+
+    ``u`` is the future input ``[B, L, n_input]`` and ``x0`` the encoder state
+    ``[B, n_state]``; returns the output sequence ``[B, L, n_output]`` for the L future
+    steps (the encoder warm-up is prepended by the caller). Picks the intermediate-storing
+    train op only when gradients can flow; raises RuntimeError when no fused backend is
+    usable for the input's device.
+    """
+    spec = spec_of(core)
+    params = flat_params(core)
+    args = (
+        u,
+        x0,
+        params,
+        spec.n_state,
+        spec.n_input,
+        spec.n_output,
+        spec.hidden,
+        spec.num_layers,
+        spec.rk4_steps,
+        spec.output,
+        spec.has_bound,
+        float(core.dt),
+        bound_value(core),
+        float(core.jr_scale),
+        float(core.g_scale),
+    )
+    if torch.is_grad_enabled() and any(t.requires_grad for t in (u, x0, *params)):
+        return _rollout_train_op(*args)[0]
+    return _rollout_op(*args)

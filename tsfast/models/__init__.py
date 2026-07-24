@@ -5,6 +5,7 @@ The layout under this package is three-zone — ``_core`` (shared machinery) and
 facade re-exports the same names regardless of where a symbol physically lives.
 """
 
+from tsfast.models._core.dispatch import get_backend, set_backend, use_backend
 from tsfast.models._core.layers import *
 from tsfast.models._core.scaling import *
 from tsfast.models.architectures.cnn import *

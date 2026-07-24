@@ -42,7 +42,6 @@ from pathlib import Path
 
 import torch
 import torch.nn.functional as F
-from torch.autograd.function import once_differentiable
 
 try:
     import triton
@@ -166,70 +165,81 @@ def supports(a: torch.Tensor, w: torch.Tensor, y0: torch.Tensor | None) -> str |
     return None
 
 
-def _prep(a, w, y0):
-    """Broadcast coefficients/state over w's leading dims and flatten to [lanes, ...]."""
-    lead, L, na = w.shape[:-1], w.shape[-1], a.shape[-1]
-    a_lane = a.broadcast_to(lead + (na,)).contiguous().reshape(-1, na)
-    w_flat = w.contiguous().reshape(-1, L)
-    y0_lane = y0.broadcast_to(lead + (na,)).contiguous().reshape(-1, na) if y0 is not None else None
-    return a_lane, w_flat, y0_lane, (lead, L, na)
-
-
 def _grid(lanes):
     return lambda meta: (triton.cdiv(lanes, meta["BLOCK"]),)
 
 
-def _forward(a_lane, w_flat, y0_lane, meta):
-    _lead, L, na = meta
-    y = torch.empty_like(w_flat)
-    lanes = w_flat.shape[0]
-    y0_arg = y0_lane if y0_lane is not None else a_lane  # unused pointer when HAS_Y0 is False
-    _get_kernels(na).allpole_fwd[_grid(lanes)](a_lane, w_flat, y0_arg, y, lanes, L, HAS_Y0=y0_lane is not None)
+@torch.library.custom_op("tsfast::dynonet_allpole", mutates_args=())
+def _allpole_op(a: torch.Tensor, w: torch.Tensor, y0: torch.Tensor | None) -> torch.Tensor:
+    a, w = a.contiguous(), w.contiguous()
+    y0 = y0.contiguous() if y0 is not None else None
+    lanes, L = w.shape
+    na = a.shape[-1]
+    y = torch.empty_like(w)
+    y0_arg = y0 if y0 is not None else a  # unused pointer when HAS_Y0 is False
+    _get_kernels(na).allpole_fwd[_grid(lanes)](a, w, y0_arg, y, lanes, L, HAS_Y0=y0 is not None)
     return y
 
 
-class _AllPoleTriton(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, a, w, y0):
-        a_lane, w_flat, y0_lane, meta = _prep(a, w, y0)
-        y = _forward(a_lane, w_flat, y0_lane, meta)
-        ctx.meta = meta
-        ctx.shapes = (a.shape, w.shape, None if y0 is None else y0.shape)
-        ctx.save_for_backward(a_lane, y, y0_lane)
-        return y.reshape(w.shape)
+@_allpole_op.register_fake
+def _(a, w, y0):
+    return torch.empty_like(w)
 
-    @staticmethod
-    @once_differentiable
-    def backward(ctx, grad_out):
-        lead, L, na = ctx.meta
-        a_shape, w_shape, y0_shape = ctx.shapes
-        a_lane, y, y0_lane = ctx.saved_tensors
-        lanes = y.shape[0]
-        g = grad_out.reshape(lanes, L).contiguous()
-        gw = torch.empty_like(g)
-        ga = torch.empty_like(a_lane)
-        _get_kernels(na).allpole_bwd[_grid(lanes)](a_lane, g, y, gw, ga, lanes, L)
-        grad_a = grad_w = grad_y0 = None
-        m = min(na, L)  # both head computations below touch only the first na adjoint values
-        if ctx.needs_input_grad[0]:
-            if y0_lane is not None:
-                # initial-state taps: grad_a_i also collects -sum_{k=1..i} G_{i-k} y0[k-1];
-                # left-padding zeros the out-of-range taps, flip aligns the correlation
-                win = F.pad(y0_lane, (m - 1, 0)).unfold(-1, m, 1)
-                ga += (win.flip(-1) * gw[:, None, :m]).sum(-1)
-            grad_a = (-ga).reshape(lead + (na,)).sum_to_size(a_shape)
-        if ctx.needs_input_grad[1]:
-            grad_w = gw.reshape(w_shape)
-        if y0_lane is not None and ctx.needs_input_grad[2]:
-            # grad_y0_j = -sum_{i=j+1..na} a_i G_{i-1-j}; right-padding zeros the taps beyond na
-            win = F.pad(a_lane, (0, m - 1)).unfold(-1, m, 1)
-            grad_y0 = -(win * gw[:, None, :m]).sum(-1).reshape(lead + (na,)).sum_to_size(y0_shape)
-        return grad_a, grad_w, grad_y0
+
+@torch.library.custom_op("tsfast::dynonet_allpole_bwd", mutates_args=())
+def _allpole_bwd_op(
+    g: torch.Tensor, a: torch.Tensor, y: torch.Tensor, y0: torch.Tensor | None
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    g, a, y = g.contiguous(), a.contiguous(), y.contiguous()
+    y0 = y0.contiguous() if y0 is not None else None
+    lanes, L = y.shape
+    na = a.shape[-1]
+    gw = torch.empty_like(g)
+    ga = torch.empty_like(a)
+    _get_kernels(na).allpole_bwd[_grid(lanes)](a, g, y, gw, ga, lanes, L)
+    m = min(na, L)  # both head computations below touch only the first na adjoint values
+    if y0 is not None:
+        # initial-state taps: grad_a_i also collects -sum_{k=1..i} G_{i-k} y0[k-1];
+        # left-padding zeros the out-of-range taps, flip aligns the correlation
+        win = F.pad(y0, (m - 1, 0)).unfold(-1, m, 1)
+        ga = ga + (win.flip(-1) * gw[:, None, :m]).sum(-1)
+        # grad_y0_j = -sum_{i=j+1..na} a_i G_{i-1-j}; right-padding zeros the taps beyond na
+        win = F.pad(a, (0, m - 1)).unfold(-1, m, 1)
+        grad_y0 = -(win * gw[:, None, :m]).sum(-1)
+    else:
+        grad_y0 = a.new_empty(0)
+    return -ga, gw, grad_y0
+
+
+@_allpole_bwd_op.register_fake
+def _(g, a, y, y0):
+    gy0 = torch.empty_like(y0) if y0 is not None else a.new_empty(0)
+    return torch.empty_like(a), torch.empty_like(g), gy0
+
+
+def _allpole_setup(ctx, inputs, output):
+    a, w, y0 = inputs
+    ctx.save_for_backward(a, output, y0)
+
+
+def _allpole_backward(ctx, g):
+    a, y, y0 = ctx.saved_tensors
+    grad_a, grad_w, grad_y0 = _allpole_bwd_op(g, a, y, y0)
+    return grad_a, grad_w, (grad_y0 if y0 is not None else None)
+
+
+_allpole_op.register_autograd(_allpole_backward, setup_context=_allpole_setup)
 
 
 def run(a: torch.Tensor, w: torch.Tensor, y0: torch.Tensor | None) -> torch.Tensor:
-    """Run the all-pole filter bank through the persistent Triton kernels (autograd-capable)."""
-    if not torch.is_grad_enabled() or not any(t is not None and t.requires_grad for t in (a, w, y0)):
-        a_lane, w_flat, y0_lane, meta = _prep(a, w, y0)
-        return _forward(a_lane, w_flat, y0_lane, meta).reshape(w.shape)
-    return _AllPoleTriton.apply(a, w, y0)
+    """Run the all-pole filter bank through the ``tsfast::dynonet_allpole`` op (autograd-capable).
+
+    Broadcasts the coefficients/state over ``w``'s leading dims and flattens to lanes
+    outside the op, so plain autograd reduces the lane gradients back to the callers'
+    (possibly broadcast) shapes.
+    """
+    lead, L, na = w.shape[:-1], w.shape[-1], a.shape[-1]
+    a_lane = a.broadcast_to(lead + (na,)).reshape(-1, na)
+    w_flat = w.reshape(-1, L)
+    y0_lane = y0.broadcast_to(lead + (na,)).reshape(-1, na) if y0 is not None else None
+    return _allpole_op(a_lane, w_flat, y0_lane).reshape(w.shape)

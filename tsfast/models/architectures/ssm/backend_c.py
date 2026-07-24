@@ -15,11 +15,16 @@ cache shared between machines of different CPU generations must not be reused.
 
 Backward follows the split-BPTT design: the sequential state-adjoint recurrence runs in C++
 (reverse sweep re-using the hidden activations stored by the training forward), while the
-parameter gradients are batched GEMMs over the ``[B*L, .]`` flattened adjoints (``mlp_param_grads``).
+parameter gradients are batched GEMMs over the ``[B*L, .]`` flattened adjoints
+(``mlp_param_grads``, applied inside the ``tsfast::ssm_rollout_bwd`` op). Inputs arrive
+from the ``tsfast::ssm_rollout*`` custom ops as contiguous float32 CPU tensors.
 """
 
 __all__ = [
-    "c_rollout",
+    "supports",
+    "forward_train",
+    "forward_infer",
+    "backward",
     "is_available",
 ]
 
@@ -37,7 +42,7 @@ from ..._core.kernel_c import (
     _build_flags,
     is_available,
 )
-from .core import SSMSpec, check_rollout_args, mlp_param_grads
+from .core import SSMSpec, rollout_unsupported
 
 _EXTENSIONS: dict[SSMSpec, object] = {}
 
@@ -208,40 +213,38 @@ def _run_fwd(ext, spec: SSMSpec, u, x0, params, store_z):
     return out, zs
 
 
-class _CSSMRollout(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, ext, spec, u, x0, *params):
-        u = u.contiguous()
-        x0 = x0.contiguous()
-        out, zs = _run_fwd(ext, spec, u, x0, params, store_z=True)
-        ctx.ext, ctx.spec = ext, spec
-        ctx.save_for_backward(u, x0, out, *zs, *params[0::2])
-        return out
-
-    @staticmethod
-    def backward(ctx, grad_out):
-        ext, spec = ctx.ext, ctx.spec
-        k = spec.n_linear
-        saved = ctx.saved_tensors
-        u, x0, out = saved[0], saved[1], saved[2]
-        zs = list(saved[3 : 3 + k - 1])
-        weights = list(saved[3 + k - 1 :])
-        B, L = u.shape[0], u.shape[1]
-        wts = [w.detach().t().contiguous() for w in weights]
-        gy = torch.empty(B, L, spec.n_state, dtype=torch.float32)
-        gas = [torch.empty_like(z) for z in zs]
-        gx0 = torch.empty(B, spec.n_state, dtype=torch.float32)
-        ext.ssm_bwd(grad_out.contiguous(), *zs, *wts, gy, *gas, gx0)
-        grads, du = mlp_param_grads(spec, x0, u, out, zs, gy, gas, w0=weights[0], need_du=ctx.needs_input_grad[2])
-        dx0 = gx0 if ctx.needs_input_grad[3] else None
-        return (None, None, du, dx0, *grads)
+def supports(spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor) -> str | None:
+    """Reason the generated C++ kernels cannot handle these inputs, or None when they can."""
+    reason = rollout_unsupported(spec, u, x0, "cpu")
+    if reason is not None:
+        return reason
+    if not is_available():
+        return "no host C++ toolchain / ninja"
+    return None
 
 
-def c_rollout(spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, params: list[torch.Tensor]) -> torch.Tensor:
-    """Run the rollout through the generated C++ extension (autograd-capable)."""
-    check_rollout_args(spec, u, x0, "cpu")
+def forward_train(
+    spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, params: list[torch.Tensor]
+) -> tuple[torch.Tensor, list[torch.Tensor]]:
+    """Rollout that also stores the hidden activations: returns ``(out, zs)``."""
+    return _run_fwd(_get_extension(spec), spec, u, x0, params, store_z=True)
+
+
+def forward_infer(spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, params: list[torch.Tensor]) -> torch.Tensor:
+    """Rollout without stored intermediates: returns ``out`` of shape ``[B, L, n_state]``."""
+    out, _ = _run_fwd(_get_extension(spec), spec, u, x0, params, store_z=False)
+    return out
+
+
+def backward(
+    spec: SSMSpec, grad_out: torch.Tensor, zs: list[torch.Tensor], weights: list[torch.Tensor]
+) -> tuple[torch.Tensor, list[torch.Tensor], torch.Tensor]:
+    """Reverse state-adjoint sweep: returns ``(gy, gas, gx0)`` for the shared GEMM stage."""
     ext = _get_extension(spec)
-    if not torch.is_grad_enabled() or not any(t.requires_grad for t in [u, x0, *params]):
-        out, _ = _run_fwd(ext, spec, u.contiguous(), x0.contiguous(), params, store_z=False)
-        return out
-    return _CSSMRollout.apply(ext, spec, u, x0, *params)
+    B, L = grad_out.shape[0], grad_out.shape[1]
+    wts = [w.detach().t().contiguous() for w in weights]
+    gy = torch.empty(B, L, spec.n_state, dtype=torch.float32)
+    gas = [torch.empty_like(z) for z in zs]
+    gx0 = torch.empty(B, spec.n_state, dtype=torch.float32)
+    ext.ssm_bwd(grad_out, *zs, *wts, gy, *gas, gx0)
+    return gy, gas, gx0

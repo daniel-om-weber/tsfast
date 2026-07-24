@@ -2,12 +2,15 @@
 
 __all__ = [
     "NeuralStateSpace",
+    "fused_rollout",
 ]
 
 from dataclasses import dataclass
 
 import torch
-from torch import nn
+from torch import Tensor, nn
+
+from ..._core.dispatch import get_backend, resolve
 
 _ACTS: dict[str, type[nn.Module]] = {
     "tanh": nn.Tanh,
@@ -42,6 +45,184 @@ class SSMSpec:
         return len(self.hidden) + 1
 
 
+# Fused-kernel backends, resolved through dispatch.resolve: each module exposes
+# supports(spec, u, x0) -> str | None plus forward_train/forward_infer/backward entry
+# points. The custom ops try every family native to the input's device under "auto";
+# the model-level dispatch keeps CPU "auto" non-fused (the C backend trades a one-time
+# host compilation for speed and stays opt-in).
+_FUSED = {
+    "triton": "tsfast.models.architectures.ssm.backend_triton",
+    "c": "tsfast.models.architectures.ssm.backend_c",
+    "metal": "tsfast.models.architectures.ssm.backend_metal",
+}
+_OP_AUTO = {"cuda": ("triton",), "cpu": ("c",), "mps": ("metal",)}
+_CORE_AUTO = {"cuda": ("triton",), "mps": ("metal",)}
+
+
+@torch._dynamo.assume_constant_result
+def _rollout_mode(backend: str, spec: SSMSpec, u: Tensor, x0: Tensor) -> str:
+    """Execution mode for this call: ``"eager"``, ``"compiled"``, or ``"fused"``.
+
+    ``backend`` is the instance attribute; ``"auto"`` defers to the process preference
+    (``tsfast.models.set_backend``/``use_backend``), and a ``"reference"`` preference
+    disables fused kernels even for instances that request one explicitly. An explicit
+    fused family that cannot handle the inputs warns once (via ``dispatch.resolve``)
+    and falls back to the non-fused policy: compiled on CUDA float32, eager elsewhere.
+    """
+    pref = get_backend()
+    if backend == "auto":
+        backend = pref
+    elif pref == "reference" and backend in _FUSED:
+        backend = "reference"
+    fallback = "compiled" if u.device.type == "cuda" and u.dtype == torch.float32 else "eager"
+    match backend:
+        case "eager" | "compiled":
+            return backend
+        case "reference":
+            return fallback
+        case "auto" | "triton" | "c" | "metal":
+            mod = resolve("ssm.rollout", _FUSED, _CORE_AUTO.get(u.device.type, ()), (spec, u, x0), requested=backend)
+            return "fused" if mod is not None else fallback
+        case unknown:
+            raise ValueError(f"unknown backend {unknown!r}")
+
+
+def _fused_module(spec: SSMSpec, u: Tensor, x0: Tensor):
+    """The fused backend module serving this op call, honoring the process preference.
+
+    An explicit process preference can name a family foreign to this device (e.g.
+    ``use_backend("triton")`` around a ``backend="c"`` model on CPU); the op then falls
+    back to the device's own fused family rather than failing, since the model dispatch
+    already committed to a fused rollout.
+    """
+    order = _OP_AUTO.get(u.device.type, ())
+    mod = resolve("ssm.rollout", _FUSED, order, (spec, u, x0))
+    if mod is None:
+        mod = resolve("ssm.rollout", _FUSED, order, (spec, u, x0), requested="auto")
+    if mod is None:
+        raise RuntimeError(
+            f"no fused NeuralStateSpace backend usable for device {u.device.type!r}; "
+            "use backend='eager' or backend='compiled'"
+        )
+    return mod
+
+
+# ------------------------------------------------------------------------- custom ops
+#
+# The rollout is exposed as torch.library custom ops so it composes with torch.compile
+# (no graph breaks), fake/meta tracing, and export. Spec fields cross the op boundary
+# as scalars (frozen dataclasses cannot) and are rebuilt inside the impls. The backward
+# is its own registered op so compiled autograd also sees no graph break. Tensor inputs
+# may arrive as non-contiguous views (in the backward exactly as the forward received
+# them), and the kernels index raw data pointers, so every impl materializes its inputs.
+
+
+def _spec_from(n_state: int, n_input: int, hidden: list[int], act: str) -> SSMSpec:
+    return SSMSpec(n_state, n_input, tuple(hidden), act)
+
+
+@torch.library.custom_op("tsfast::ssm_rollout", mutates_args=())
+def _ssm_rollout(
+    u: Tensor, x0: Tensor, params: list[Tensor], n_state: int, n_input: int, hidden: list[int], act: str
+) -> Tensor:
+    u, x0 = u.contiguous(), x0.contiguous()
+    params = [p.contiguous() for p in params]
+    spec = _spec_from(n_state, n_input, hidden, act)
+    return _fused_module(spec, u, x0).forward_infer(spec, u, x0, params)
+
+
+@_ssm_rollout.register_fake
+def _(u, x0, params, n_state, n_input, hidden, act):
+    return u.new_empty(u.shape[0], u.shape[1], n_state)
+
+
+@torch.library.custom_op("tsfast::ssm_rollout_train", mutates_args=())
+def _ssm_rollout_train(
+    u: Tensor, x0: Tensor, params: list[Tensor], n_state: int, n_input: int, hidden: list[int], act: str
+) -> tuple[Tensor, list[Tensor]]:
+    u, x0 = u.contiguous(), x0.contiguous()
+    params = [p.contiguous() for p in params]
+    spec = _spec_from(n_state, n_input, hidden, act)
+    out, zs = _fused_module(spec, u, x0).forward_train(spec, u, x0, params)
+    return out, zs
+
+
+@_ssm_rollout_train.register_fake
+def _(u, x0, params, n_state, n_input, hidden, act):
+    B, L = u.shape[0], u.shape[1]
+    return u.new_empty(B, L, n_state), [u.new_empty(B, L, h) for h in hidden]
+
+
+@torch.library.custom_op("tsfast::ssm_rollout_bwd", mutates_args=())
+def _ssm_rollout_bwd(
+    grad_out: Tensor | None,
+    u: Tensor,
+    x0: Tensor,
+    out: Tensor,
+    zs: list[Tensor],
+    params: list[Tensor],
+    n_state: int,
+    n_input: int,
+    hidden: list[int],
+    act: str,
+) -> tuple[Tensor, Tensor, list[Tensor]]:
+    u, x0, out = u.contiguous(), x0.contiguous(), out.contiguous()
+    g = grad_out.contiguous() if grad_out is not None else torch.zeros_like(out)
+    zs = [z.contiguous() for z in zs]
+    params = [p.contiguous() for p in params]
+    spec = _spec_from(n_state, n_input, hidden, act)
+    weights = params[0::2]
+    gy, gas, gx0 = _fused_module(spec, u, x0).backward(spec, g, zs, weights)
+    grads, du = mlp_param_grads(spec, x0, u, out, zs, gy, gas, w0=weights[0])
+    return du, gx0, grads
+
+
+@_ssm_rollout_bwd.register_fake
+def _(grad_out, u, x0, out, zs, params, n_state, n_input, hidden, act):
+    return torch.empty_like(u), torch.empty_like(x0), [torch.empty_like(p) for p in params]
+
+
+def _train_setup(ctx, inputs, output):
+    u, x0, params, n_state, n_input, hidden, act = inputs
+    out, zs = output
+    ctx.fields = (n_state, n_input, list(hidden), act)
+    ctx.save_for_backward(u, x0, out, *zs, *params)
+
+
+def _train_backward(ctx, grad_out, grad_zs):
+    n_state, n_input, hidden, act = ctx.fields
+    saved = ctx.saved_tensors
+    u, x0, out = saved[0], saved[1], saved[2]
+    zs = list(saved[3 : 3 + len(hidden)])
+    params = list(saved[3 + len(hidden) :])
+    du, dx0, dparams = _ssm_rollout_bwd(grad_out, u, x0, out, zs, params, n_state, n_input, hidden, act)
+    return du, dx0, list(dparams), None, None, ([] if not hidden else None), None
+
+
+_ssm_rollout_train.register_autograd(_train_backward, setup_context=_train_setup)
+
+
+def fused_rollout(spec: SSMSpec, u: Tensor, x0: Tensor, params: list[Tensor]) -> Tensor:
+    """Run the state rollout through the fused-kernel custom ops (autograd-capable).
+
+    Picks the training op (stores the hidden activations for the analytic BPTT backward)
+    when gradients are live, else the inference op, which keeps no intermediates.
+
+    Args:
+        spec: transition-MLP architecture.
+        u: input sequence ``[B, L, n_input]``, float32 on the fused backend's device.
+        x0: initial state ``[B, n_state]``, float32.
+        params: transition parameters ``[W_0, b_0, W_1, b_1, ...]`` in layer order.
+
+    Returns:
+        States ``x_1 .. x_L`` as ``[B, L, n_state]``.
+    """
+    fields = (spec.n_state, spec.n_input, list(spec.hidden), spec.act)
+    if torch.is_grad_enabled() and any(t.requires_grad for t in (u, x0, *params)):
+        return _ssm_rollout_train(u, x0, list(params), *fields)[0]
+    return _ssm_rollout(u, x0, list(params), *fields)
+
+
 class NeuralStateSpace(nn.Module):
     """Discrete-time neural state space model with an MLP transition and a linear observation.
 
@@ -63,13 +244,19 @@ class NeuralStateSpace(nn.Module):
       CUDA, hidden widths up to 128.
     - ``"metal"``: persistent register-resident rollout kernel with a fused BPTT backward —
       float32 on MPS (Apple GPUs), layer widths up to 128.
-    - ``"auto"``: ``triton`` when it applies, else ``compiled`` on CUDA; ``metal`` when it
-      applies on MPS; ``eager`` on CPU (select ``"c"`` explicitly to trade a one-time
-      compilation for much faster CPU training).
+    - ``"auto"``: defers to the process-wide preference (``tsfast.models.set_backend`` /
+      ``use_backend``); under an ``"auto"`` preference picks ``triton`` when it applies,
+      else ``compiled`` on CUDA; ``metal`` when it applies on MPS; ``eager`` on CPU
+      (select ``"c"`` explicitly to trade a one-time compilation for much faster CPU
+      training). A ``"reference"`` preference forces the non-fused path everywhere.
+
+    An explicit backend that cannot handle the inputs warns once per process and falls
+    back to the non-fused path instead of raising.
 
     All backends share the same parameters, so the backend can be switched at any time via
-    the ``backend`` attribute. The fused backends are loss-agnostic ``autograd.Function``s:
-    ``loss.backward()`` and every ``Learner`` feature work unchanged.
+    the ``backend`` attribute. The fused backends run as registered ``torch.library`` custom
+    ops with analytic-BPTT backward ops, so they are loss-agnostic and compose with
+    ``torch.compile``: ``loss.backward()`` and every ``Learner`` feature work unchanged.
 
     With ``return_state=True`` the model follows the stateful-model protocol
     (``forward(u, state=...) -> (out, {"x": x_last})``), so ``TbpttLearner`` state carrying
@@ -149,45 +336,17 @@ class NeuralStateSpace(nn.Module):
             x0 = u.new_zeros(u.shape[0], self.spec.n_state)
         elif x0.dim() == 3:
             x0 = x0.squeeze(1)
-        match self._resolve_backend(u):
+        match _rollout_mode(self.backend, self.spec, u, x0):
             case "eager":
                 out = self._rollout_eager(u, x0)
             case "compiled":
                 out = self._rollout_compiled(u, x0)
-            case "c":
-                from .backend_c import c_rollout
-
-                out = c_rollout(self.spec, u, x0, self._params_flat())
-            case "triton":
-                from .backend_triton import triton_rollout
-
-                out = triton_rollout(self.spec, u, x0, self._params_flat())
-            case "metal":
-                from .backend_metal import metal_rollout
-
-                out = metal_rollout(self.spec, u, x0, self._params_flat())
-            case unknown:
-                raise ValueError(f"unknown backend {unknown!r}")
+            case _:
+                out = fused_rollout(self.spec, u, x0, self._params_flat())
         y = self.output_map(out)
         if self.return_state:
             return y, {"x": out[:, -1]}
         return y
-
-    def _resolve_backend(self, u: torch.Tensor) -> str:
-        if self.backend != "auto":
-            return self.backend
-        if u.is_cuda and u.dtype == torch.float32:
-            from . import backend_triton
-
-            if backend_triton.is_available() and backend_triton.fits(self.spec):
-                return "triton"
-            return "compiled"
-        if u.device.type == "mps" and u.dtype == torch.float32:
-            from . import backend_metal
-
-            if backend_metal.is_available() and backend_metal.fits(self.spec):
-                return "metal"
-        return "eager"
 
     def _rollout_eager(self, u: torch.Tensor, x0: torch.Tensor) -> torch.Tensor:
         x = x0
@@ -206,16 +365,17 @@ class NeuralStateSpace(nn.Module):
         return self._compiled_rollout(u, x0)
 
 
-def check_rollout_args(spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, device_type: str) -> None:
-    """Validate inputs of the fused backends, which are float32-only and device-specific."""
+def rollout_unsupported(spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, device_type: str) -> str | None:
+    """Device/dtype/shape screen shared by the fused backends' ``supports``: reason or None."""
     if u.device.type != device_type:
-        raise RuntimeError(f"this backend requires {device_type} tensors, got {u.device.type}")
+        return f"input on {u.device.type}, this backend requires {device_type}"
     if u.dtype != torch.float32 or x0.dtype != torch.float32:
-        raise RuntimeError(f"this backend requires float32, got {u.dtype}")
+        return f"requires float32, got u={u.dtype}, x0={x0.dtype}"
     if u.dim() != 3 or u.shape[-1] != spec.n_input:
-        raise RuntimeError(f"expected u of shape [B, L, {spec.n_input}], got {tuple(u.shape)}")
+        return f"expected u of shape [B, L, {spec.n_input}], got {tuple(u.shape)}"
     if x0.shape != (u.shape[0], spec.n_state):
-        raise RuntimeError(f"expected x0 of shape [{u.shape[0]}, {spec.n_state}], got {tuple(x0.shape)}")
+        return f"expected x0 of shape [{u.shape[0]}, {spec.n_state}], got {tuple(x0.shape)}"
+    return None
 
 
 def mlp_param_grads(
@@ -227,14 +387,13 @@ def mlp_param_grads(
     gy: torch.Tensor,
     gas: list[torch.Tensor],
     w0: torch.Tensor,
-    need_du: bool,
-) -> tuple[list[torch.Tensor], torch.Tensor | None]:
-    """Parameter gradients of the rollout as batched GEMMs over the flattened adjoints.
+) -> tuple[list[torch.Tensor], torch.Tensor]:
+    """Parameter and input gradients of the rollout as batched GEMMs over the flattened adjoints.
 
     The state-adjoint recurrence is the only sequential part of BPTT; the parameter
     gradients ``dW_l = sum_{b,t} ga_l ⊗ z_{l-1}`` are plain reductions over all ``B*L``
-    step samples, which is exactly the batched GEMM BLAS is built for. Shared by the C
-    and Triton backends.
+    step samples, which is exactly the batched GEMM BLAS is built for. Shared by every
+    fused backend through the backward op.
 
     Args:
         x0: initial state ``[B, NX]``.
@@ -244,7 +403,6 @@ def mlp_param_grads(
         gy: total adjoint of each step output ``[B, L, NX]``.
         gas: pre-activation adjoints of the hidden layers, one ``[B, L, h]`` per layer.
         w0: first-layer weight ``[dims[1], NX+NU]``, needed for the input gradient.
-        need_du: also compute the gradient w.r.t. ``u``.
 
     Returns:
         ``(grads, du)`` where grads is ``[dW_0, db_0, dW_1, db_1, ...]`` in layer order.
@@ -260,5 +418,5 @@ def mlp_param_grads(
     for a_prev, ga in zip(acts, adjoints):
         grads.append(ga.t() @ a_prev)
         grads.append(ga.sum(0))
-    du = (adjoints[0] @ w0[:, spec.n_state :]).reshape(B, L, spec.n_input) if need_du else None
+    du = (adjoints[0] @ w0[:, spec.n_state :]).reshape(B, L, spec.n_input)
     return grads, du
