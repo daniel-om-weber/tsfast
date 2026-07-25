@@ -365,6 +365,14 @@ class NeuralStateSpace(nn.Module):
     The gated modes are chrono-initialized (``gate_tmax``), spreading the initial time
     constants over ``[1, gate_tmax - 1]`` steps.
 
+    Prefer ``"gru"`` when reaching for a gate. It is the only mode whose gradient horizon
+    actually tracks ``gate_tmax`` — the fitted time constant stays within 22% of it out to
+    ``gate_tmax=300``, against 41% for ``"leak"`` — and it subsumes ``"leak"``, which is what
+    it reduces to when the gate weight rows are zero. ``"residual"`` keeps an adjoint that
+    never decays, so its memory horizon is not a parameter of the model at all, which is the
+    wrong prior for a dissipative plant. The three are not separable on fit quality:
+    ``benchmarks/gate_ssm_gating.py`` measures both criteria and reproduces that result.
+
     The rollout over the input sequence is irreducibly sequential, so a naive per-step Python
     loop is dispatch-bound rather than FLOP-bound. Several backends implement the identical
     state rollout (the observation map is a single batched matmul applied on top and works
