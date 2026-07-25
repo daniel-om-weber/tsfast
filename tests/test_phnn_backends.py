@@ -1,6 +1,6 @@
 """Tests for the fused PHNN rollout backends (c, triton).
 
-Correctness contract in ``MATH.md``. The C backend is fp64-gradcheckable and is the
+Correctness contract in ``tsfast/models/architectures/phnn/MATH.md``. The C backend is fp64-gradcheckable and is the
 reference the Triton backend is validated against on GPU. Both run behind the
 ``tsfast::phnn_rollout*`` custom ops, entered through ``fused_rollout``.
 """
@@ -24,8 +24,16 @@ def _rel(a, b):
 
 def _randn_core(n_state, n_input, n_output, hidden, num_layers, output, bound, seed=0, dtype=torch.float64):
     torch.manual_seed(seed)
-    core = PHNNCore(n_state, n_input, n_output, hidden_size=hidden, num_layers=num_layers,
-                    dt=0.12, h_lower_bound=bound, output=output).to(dtype)
+    core = PHNNCore(
+        n_state,
+        n_input,
+        n_output,
+        hidden_size=hidden,
+        num_layers=num_layers,
+        dt=0.12,
+        h_lower_bound=bound,
+        output=output,
+    ).to(dtype)
     for p in core.parameters():
         nn.init.normal_(p, std=0.3)
     return core
