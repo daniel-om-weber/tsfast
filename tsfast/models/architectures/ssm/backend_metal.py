@@ -415,7 +415,10 @@ def _run_fwd(lib, spec: SSMSpec, u, x0, params, store_z):
 
 def supports(spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor) -> str | None:
     """Reason the persistent Metal kernels cannot handle these inputs, or None when they can."""
-    reason = rollout_unsupported(spec, u, x0, "mps")
+    # Ungated transitions only: this generator has no gate epilogue, and its sequence-parallel
+    # adjoint scan materializes explicit step Jacobians that a gate would change. Declining
+    # here is what keeps a gated spec from running against a mismatched final-layer width.
+    reason = rollout_unsupported(spec, u, x0, "mps", ("none",))
     if reason is not None:
         return reason
     if not fits(spec):
@@ -426,22 +429,31 @@ def supports(spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor) -> str | None:
 
 
 def forward_train(
-    spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, params: list[torch.Tensor]
+    spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, params: list[torch.Tensor], leak: torch.Tensor | None = None
 ) -> tuple[torch.Tensor, list[torch.Tensor]]:
     """Rollout that also stores the hidden activations: returns ``(out, zs)``."""
     return _run_fwd(_get_lib(spec), spec, u, x0, params, store_z=True)
 
 
-def forward_infer(spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, params: list[torch.Tensor]) -> torch.Tensor:
+def forward_infer(
+    spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, params: list[torch.Tensor], leak: torch.Tensor | None = None
+) -> torch.Tensor:
     """Rollout without stored intermediates: returns ``out`` of shape ``[B, L, n_state]``."""
     out, _ = _run_fwd(_get_lib(spec), spec, u, x0, params, store_z=False)
     return out
 
 
 def backward(
-    spec: SSMSpec, grad_out: torch.Tensor, zs: list[torch.Tensor], weights: list[torch.Tensor]
-) -> tuple[torch.Tensor, list[torch.Tensor], torch.Tensor]:
-    """Reverse state-adjoint sweep: returns ``(gy, gas, gx0)`` for the shared GEMM stage."""
+    spec: SSMSpec,
+    grad_out: torch.Tensor,
+    zs: list[torch.Tensor],
+    weights: list[torch.Tensor],
+    leak: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, list[torch.Tensor], torch.Tensor, None]:
+    """Reverse state-adjoint sweep: returns ``(gy, gas, gx0, None)`` for the shared GEMM stage.
+
+    This backend serves ungated transitions only, so there is never a leak gradient.
+    """
     lib = _get_lib(spec)
     B, L = grad_out.shape[0], grad_out.shape[1]
     nx = spec.n_state
@@ -465,4 +477,4 @@ def backward(
     else:
         jt = bnd = torch.zeros(1, device=dev)
     lib.ssm_bwd(gout, *zs, *ws, jt, bnd, gy, *gas, gx0, L, cl, C, threads=B * C * tpg, group_size=tpg)
-    return gy, gas, gx0
+    return gy, gas, gx0, None

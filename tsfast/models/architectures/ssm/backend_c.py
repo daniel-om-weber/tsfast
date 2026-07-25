@@ -42,15 +42,32 @@ from ..._core.kernel_c import (
     _build_flags,
     is_available,
 )
-from .core import SSMSpec, rollout_unsupported
+from .core import SSMSpec, rollout_unsupported, saved_widths
 
 _EXTENSIONS: dict[SSMSpec, object] = {}
+
+#: Gates this generator emits, screened in ``supports`` via ``rollout_unsupported``.
+_GATES = ("none", "leak", "gru", "residual")
 
 
 def _gen_source(spec: SSMSpec) -> str:
     """Emit the spec-specialized C++ forward/backward rollout."""
     dims = spec.dims
     nx, nu, k = spec.n_state, spec.n_input, spec.n_linear
+    gated = spec.gate != "none"
+    # Every gated mode scales a stored vector by its gate; they differ in which vector (the
+    # candidate offset for the lerp forms, the candidate itself for the unit-carry form), in
+    # the eps factor, and in how much of the adjoint bypasses the MLP. "leak" further takes
+    # its gate from a parameter rather than the MLP, so its final layer stays n_state wide
+    # and it stores no per-step pre-activation.
+    leaky = spec.gate == "leak"
+    residual = spec.gate == "residual"
+    gv = "cv" if residual else "dv"
+    gv_init = "xn[i]" if residual else "xn[i] - x[i]"
+    scale = "EPS * " if residual else ""
+    a_arg = ", torch::Tensor aleak" if leaky else ""
+    gl_arg = ", torch::Tensor gl" if leaky else ""
+    n_out_last = dims[k]
     darwin = sys.platform == "darwin"
     act, dact = (_ACT_C_DARWIN if darwin else _ACT_C)[spec.act]
     lines: list[str] = [
@@ -66,14 +83,18 @@ def _gen_source(spec: SSMSpec) -> str:
     lines += [
         f"constexpr int NX = {nx};",
         f"constexpr int NU = {nu};",
+        *([f"constexpr float EPS = {spec.eps!r}f;"] if residual else []),
         "",
     ]
 
     # ---------------------------------------------------------------- forward
-    z_args = "".join(f", torch::Tensor z{i}" for i in range(k - 1))
+    # The gated forward stores the candidate offset d = c - x and the gate pre-activation s
+    # alongside the hidden activations; the reverse sweep needs no other per-step state.
+    gate_store = (", torch::Tensor gd" + ("" if leaky else ", torch::Tensor gs")) if gated else ""
+    z_args = "".join(f", torch::Tensor z{i}" for i in range(k - 1)) + gate_store
     w_args = "".join(f", torch::Tensor w{i}, torch::Tensor c{i}" for i in range(k))
     lines += [
-        f"void ssm_fwd(torch::Tensor u, torch::Tensor x0{w_args}, torch::Tensor out{z_args}, bool store_z) {{",
+        f"void ssm_fwd(torch::Tensor u, torch::Tensor x0{a_arg}{w_args}, torch::Tensor out{z_args}, bool store_z) {{",
         "    const int64_t B = u.size(0), L = u.size(1);",
         "    const float* up = u.data_ptr<float>();",
         "    const float* x0p = x0.data_ptr<float>();",
@@ -84,6 +105,12 @@ def _gen_source(spec: SSMSpec) -> str:
         lines.append(f"    const float* c{i}p = c{i}.data_ptr<float>();")
     for i in range(k - 1):
         lines.append(f"    float* z{i}p = z{i}.data_ptr<float>();")
+    if gated:
+        lines.append("    float* gdp = gd.data_ptr<float>();")
+    if leaky:
+        lines.append("    const float* ap = aleak.data_ptr<float>();")
+    elif gated:
+        lines.append("    float* gsp = gs.data_ptr<float>();")
     lines += [
         "    batch_parallel(B, [&](int64_t b_begin, int64_t b_end) {",
         "    for (int64_t b = b_begin; b < b_end; ++b) {",
@@ -116,8 +143,37 @@ def _gen_source(spec: SSMSpec) -> str:
                 f"z{i}p[(b * L + t) * {n_out} + o] = {dst}[o];"
             )
         prev = dst
+    if leaky:
+        # The gate is the parameter vector ap, so xn is just the candidate; the offset it
+        # moves along is still what the reverse sweep needs for dL/da.
+        lines += [
+            "            float dv[NX];",
+            "            for (int i = 0; i < NX; ++i) dv[i] = xn[i] - x[i];",
+            "            if (store_z) for (int i = 0; i < NX; ++i) gdp[(b * L + t) * NX + i] = dv[i];",
+            "            for (int i = 0; i < NX; ++i) {",
+            "                x[i] += ap[i] * dv[i];",
+            "                outp[(b * L + t) * NX + i] = x[i];",
+            "            }",
+        ]
+    elif gated:
+        # xn holds [candidate | gate pre-activation]. The lerp moves the state a z-fraction of
+        # the way to the candidate, keeping a diag(1 - z) path in the Jacobian; "residual"
+        # instead adds a gated increment and keeps an exactly unit carry.
+        lines += [
+            f"            float {gv}[NX], sv[NX];",
+            f"            for (int i = 0; i < NX; ++i) {{ {gv}[i] = {gv_init}; sv[i] = xn[NX + i]; }}",
+            "            if (store_z) for (int i = 0; i < NX; ++i) {",
+            f"                gdp[(b * L + t) * NX + i] = {gv}[i];",
+            "                gsp[(b * L + t) * NX + i] = sv[i];",
+            "            }",
+            "            for (int i = 0; i < NX; ++i) {",
+            f"                x[i] += {scale}{gv}[i] / (1.0f + expf(-sv[i]));",
+            "                outp[(b * L + t) * NX + i] = x[i];",
+            "            }",
+        ]
+    else:
+        lines.append("            for (int i = 0; i < NX; ++i) { x[i] = xn[i]; outp[(b * L + t) * NX + i] = xn[i]; }")
     lines += [
-        "            for (int i = 0; i < NX; ++i) { x[i] = xn[i]; outp[(b * L + t) * NX + i] = xn[i]; }",
         "        }",
         "    }",
         "    });",
@@ -129,11 +185,12 @@ def _gen_source(spec: SSMSpec) -> str:
     # Reverse state-adjoint sweep. wt{i} are the transposed weights [n_in, n_out] so the
     # per-row reductions read contiguous memory. Emits gy (total per-step output adjoint),
     # ga{i} (hidden pre-activation adjoints) and gx0 (= final carry) for the GEMM stage.
-    zb_args = "".join(f", torch::Tensor z{i}" for i in range(k - 1))
+    zb_args = "".join(f", torch::Tensor z{i}" for i in range(k - 1)) + gate_store
     wt_args = "".join(f", torch::Tensor wt{i}" for i in range(k))
     ga_args = "".join(f", torch::Tensor ga{i}" for i in range(k - 1))
     lines += [
-        f"void ssm_bwd(torch::Tensor gout{zb_args}{wt_args}, torch::Tensor gy{ga_args}, torch::Tensor gx0) {{",
+        f"void ssm_bwd(torch::Tensor gout{a_arg}{zb_args}{wt_args}, torch::Tensor gy{ga_args}, "
+        f"torch::Tensor gx0{gl_arg}) {{",
         "    const int64_t B = gout.size(0), L = gout.size(1);",
         "    const float* goutp = gout.data_ptr<float>();",
         "    float* gyp = gy.data_ptr<float>();",
@@ -142,19 +199,58 @@ def _gen_source(spec: SSMSpec) -> str:
     for i in range(k - 1):
         lines.append(f"    const float* z{i}p = z{i}.data_ptr<float>();")
         lines.append(f"    float* ga{i}p = ga{i}.data_ptr<float>();")
+    if gated:
+        lines.append("    const float* gdp = gd.data_ptr<float>();")
+    if leaky:
+        lines.append("    const float* ap = aleak.data_ptr<float>();")
+        lines.append("    float* glp = gl.data_ptr<float>();")
+    elif gated:
+        lines.append("    const float* gsp = gs.data_ptr<float>();")
     for i in range(k):
         lines.append(f"    const float* wt{i}p = wt{i}.data_ptr<float>();")
     lines += [
         "    batch_parallel(B, [&](int64_t b_begin, int64_t b_end) {",
         "    for (int64_t b = b_begin; b < b_end; ++b) {",
         "        float carry[NX] = {0.0f};",
+        *(["        float glacc[NX] = {0.0f};"] if leaky else []),
         "        for (int64_t t = L - 1; t >= 0; --t) {",
-        "            float gyv[NX];",
-        "            for (int i = 0; i < NX; ++i) {",
-        "                gyv[i] = goutp[(b * L + t) * NX + i] + carry[i];",
-        "                gyp[(b * L + t) * NX + i] = gyv[i];",
-        "            }",
     ]
+    if leaky:
+        # dL/da sums g * d over batch and time; accumulate the time axis here and let the
+        # host reduce the batch, which keeps the sequential sweep free of atomics.
+        lines += [
+            "            float gyv[NX], gtot[NX], gdir[NX];",
+            "            for (int i = 0; i < NX; ++i) {",
+            "                gtot[i] = goutp[(b * L + t) * NX + i] + carry[i];",
+            "                gyv[i] = ap[i] * gtot[i];",
+            "                gdir[i] = (1.0f - ap[i]) * gtot[i];",
+            "                glacc[i] += gtot[i] * gdp[(b * L + t) * NX + i];",
+            "                gyp[(b * L + t) * NX + i] = gyv[i];",
+            "            }",
+        ]
+    elif gated:
+        # gtot is the total adjoint of x_{t+1}; it splits into the candidate and gate columns
+        # of the final linear, plus a direct path that bypasses the MLP entirely — (1 - z) of
+        # the adjoint for the lerp, all of it for the unit carry of "residual".
+        lines += [
+            f"            float gyv[{n_out_last}], gtot[NX], gdir[NX];",
+            "            for (int i = 0; i < NX; ++i) {",
+            "                gtot[i] = goutp[(b * L + t) * NX + i] + carry[i];",
+            "                const float z = 1.0f / (1.0f + expf(-gsp[(b * L + t) * NX + i]));",
+            f"                gyv[i] = {scale}z * gtot[i];",
+            f"                gyv[NX + i] = {scale}z * (1.0f - z) * gtot[i] * gdp[(b * L + t) * NX + i];",
+            "                gdir[i] = " + ("gtot[i];" if residual else "(1.0f - z) * gtot[i];"),
+            "            }",
+            f"            for (int o = 0; o < {n_out_last}; ++o) gyp[(b * L + t) * {n_out_last} + o] = gyv[o];",
+        ]
+    else:
+        lines += [
+            "            float gyv[NX];",
+            "            for (int i = 0; i < NX; ++i) {",
+            "                gyv[i] = goutp[(b * L + t) * NX + i] + carry[i];",
+            "                gyp[(b * L + t) * NX + i] = gyv[i];",
+            "            }",
+        ]
     prev = "gyv"
     for i in range(k - 1, 0, -1):  # back through linears K-1..1 onto their inputs
         n_in, n_out = dims[i], dims[i + 1]
@@ -174,10 +270,11 @@ def _gen_source(spec: SSMSpec) -> str:
         f"                const float* wr = wt0p + j * {n_out0};",
         "                float acc = 0.0f;",
         f"                for (int o = 0; o < {n_out0}; ++o) acc += wr[o] * {prev}[o];",
-        "                carry[j] = acc;",
+        "                carry[j] = acc" + (" + gdir[j];" if gated else ";"),
         "            }",
         "        }",
         "        for (int i = 0; i < NX; ++i) gx0p[b * NX + i] = carry[i];",
+        *(["        for (int i = 0; i < NX; ++i) glp[b * NX + i] = glacc[i];"] if leaky else []),
         "    }",
         "    });",
         "}",
@@ -204,18 +301,19 @@ def _get_extension(spec: SSMSpec):
     return ext
 
 
-def _run_fwd(ext, spec: SSMSpec, u, x0, params, store_z):
+def _run_fwd(ext, spec: SSMSpec, u, x0, params, store_z, leak=None):
     B, L = u.shape[0], u.shape[1]
     out = torch.empty(B, L, spec.n_state, dtype=torch.float32)
-    zs = [torch.empty(B, L, h, dtype=torch.float32) for h in spec.hidden]
+    zs = [torch.empty(B, L, w, dtype=torch.float32) for w in saved_widths(spec)]
     wb = [t.detach().contiguous() for t in params]
-    ext.ssm_fwd(u, x0, *wb, out, *zs, store_z)
+    a = [leak.detach().contiguous()] if spec.gate == "leak" else []
+    ext.ssm_fwd(u, x0, *a, *wb, out, *zs, store_z)
     return out, zs
 
 
 def supports(spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor) -> str | None:
     """Reason the generated C++ kernels cannot handle these inputs, or None when they can."""
-    reason = rollout_unsupported(spec, u, x0, "cpu")
+    reason = rollout_unsupported(spec, u, x0, "cpu", _GATES)
     if reason is not None:
         return reason
     if not is_available():
@@ -224,27 +322,37 @@ def supports(spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor) -> str | None:
 
 
 def forward_train(
-    spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, params: list[torch.Tensor]
+    spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, params: list[torch.Tensor], leak: torch.Tensor | None = None
 ) -> tuple[torch.Tensor, list[torch.Tensor]]:
     """Rollout that also stores the hidden activations: returns ``(out, zs)``."""
-    return _run_fwd(_get_extension(spec), spec, u, x0, params, store_z=True)
+    return _run_fwd(_get_extension(spec), spec, u, x0, params, store_z=True, leak=leak)
 
 
-def forward_infer(spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, params: list[torch.Tensor]) -> torch.Tensor:
+def forward_infer(
+    spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, params: list[torch.Tensor], leak: torch.Tensor | None = None
+) -> torch.Tensor:
     """Rollout without stored intermediates: returns ``out`` of shape ``[B, L, n_state]``."""
-    out, _ = _run_fwd(_get_extension(spec), spec, u, x0, params, store_z=False)
+    out, _ = _run_fwd(_get_extension(spec), spec, u, x0, params, store_z=False, leak=leak)
     return out
 
 
 def backward(
-    spec: SSMSpec, grad_out: torch.Tensor, zs: list[torch.Tensor], weights: list[torch.Tensor]
-) -> tuple[torch.Tensor, list[torch.Tensor], torch.Tensor]:
-    """Reverse state-adjoint sweep: returns ``(gy, gas, gx0)`` for the shared GEMM stage."""
+    spec: SSMSpec,
+    grad_out: torch.Tensor,
+    zs: list[torch.Tensor],
+    weights: list[torch.Tensor],
+    leak: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, list[torch.Tensor], torch.Tensor, torch.Tensor | None]:
+    """Reverse state-adjoint sweep: returns ``(gy, gas, gx0, gleak)`` for the shared GEMM stage."""
     ext = _get_extension(spec)
     B, L = grad_out.shape[0], grad_out.shape[1]
     wts = [w.detach().t().contiguous() for w in weights]
-    gy = torch.empty(B, L, spec.n_state, dtype=torch.float32)
-    gas = [torch.empty_like(z) for z in zs]
+    gy = torch.empty(B, L, spec.out_width, dtype=torch.float32)
+    gas = [torch.empty_like(z) for z in zs[: len(spec.hidden)]]
     gx0 = torch.empty(B, spec.n_state, dtype=torch.float32)
-    ext.ssm_bwd(grad_out, *zs, *wts, gy, *gas, gx0)
-    return gy, gas, gx0
+    leaky = spec.gate == "leak"
+    a = [leak.detach().contiguous()] if leaky else []
+    # per-batch partials; the batch axis of dL/da reduces on the host
+    gl = [torch.empty(B, spec.n_state, dtype=torch.float32)] if leaky else []
+    ext.ssm_bwd(grad_out, *a, *zs, *wts, gy, *gas, gx0, *gl)
+    return gy, gas, gx0, (gl[0].sum(0) if leaky else None)

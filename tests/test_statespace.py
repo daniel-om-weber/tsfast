@@ -35,13 +35,15 @@ def _run_compiled(m, backend, u, x0):
     return out, [p.grad.clone() for p in m.parameters()], u.grad.clone(), x0.grad.clone()
 
 
-def _assert_backend_parity(backend, device, hidden=(48, 32), act="tanh", tol=5e-4):
+def _assert_backend_parity(backend, device, hidden=(48, 32), act="tanh", tol=5e-4, gate="none", n_state=4, eps=1.0):
     from tsfast.models.architectures.ssm import NeuralStateSpace
 
     torch.manual_seed(0)
-    m = NeuralStateSpace(3, 2, n_state=4, hidden_size=list(hidden), act=act, backend="eager").to(device)
+    m = NeuralStateSpace(
+        3, 2, n_state=n_state, hidden_size=list(hidden), act=act, gate=gate, eps=eps, backend="eager"
+    ).to(device)
     u = torch.randn(5, 40, 3, device=device)
-    x0 = torch.randn(5, 4, device=device)
+    x0 = torch.randn(5, n_state, device=device)
     out_e, g_e, du_e, dx0_e = _run(m, "eager", u, x0)
     out_b, g_b, du_b, dx0_b = _run(m, backend, u, x0)
     assert _rel(out_b, out_e) < tol
@@ -270,6 +272,12 @@ class TestNeuralStateSpace:
         out2_e, _ = m(u, state=state_e)
         assert _rel(out2_g, out2_e) < 5e-4
 
+    def test_unknown_gate_raises(self):
+        from tsfast.models.architectures.ssm import NeuralStateSpace
+
+        with pytest.raises(ValueError):
+            NeuralStateSpace(1, 2, gate="lstm")
+
     @pytest.mark.slow
     def test_ssm_learner_fit(self, dls_simulation):
         from tsfast.training import SSMLearner
@@ -289,3 +297,274 @@ class TestNeuralStateSpace:
         lrn.fit(1, 1e-3)
         final_valid_loss = lrn.recorder[-1][1]
         assert not torch.isnan(torch.tensor(final_valid_loss))
+
+
+GATES = ("none", "leak", "gru", "residual")
+
+
+class TestGatedNeuralStateSpace:
+    """The gate variants of the state update (``NeuralStateSpace(gate=...)``)."""
+
+    @pytest.mark.parametrize("gate", GATES)
+    @pytest.mark.parametrize("hidden", [64, [], [8, 16]])
+    def test_shapes(self, gate, hidden):
+        from tsfast.models.architectures.ssm import NeuralStateSpace
+
+        m = NeuralStateSpace(3, 2, n_state=4, hidden_size=hidden, gate=gate, backend="eager")
+        assert m(torch.randn(5, 20, 3)).shape == (5, 20, 2)
+        assert m(torch.randn(5, 20, 3), torch.randn(5, 4)).shape == (5, 20, 2)
+        # the gate pre-activation widens only the final layer
+        assert m.linears[-1].out_features == (8 if gate in ("gru", "residual") else 4)
+
+    def test_ungated_default_unchanged(self):
+        """``gate="none"`` must be bit-identical to the ungated model: it is the default path."""
+        from tsfast.models.architectures.ssm import NeuralStateSpace
+
+        u = torch.randn(2, 30, 3)
+        torch.manual_seed(0)
+        plain = NeuralStateSpace(3, 2, n_state=4, backend="eager")
+        torch.manual_seed(0)
+        gated = NeuralStateSpace(3, 2, n_state=4, gate="none", backend="eager")
+        assert torch.equal(plain(u), gated(u))
+
+    @pytest.mark.parametrize("gate", ["leak", "gru", "residual"])
+    def test_chrono_init_band(self, gate):
+        """Initial retention ``1 - z`` spans ``[1/2, (tmax-1)/tmax]`` (arXiv:1804.11188)."""
+        from tsfast.models.architectures.ssm import NeuralStateSpace
+
+        tmax = 100.0
+        torch.manual_seed(0)
+        m = NeuralStateSpace(1, 1, n_state=4096, hidden_size=8, gate=gate, gate_tmax=tmax, backend="eager")
+        logit = m.leak_logit if gate == "leak" else m.linears[-1].bias[4096:]
+        retention = 1.0 - torch.sigmoid(logit)
+        assert retention.min() >= 0.5
+        assert retention.max() <= (tmax - 1.0) / tmax
+        assert retention.max() > 0.95  # the long-time-constant tail is populated
+
+    def test_leak_and_gru_start_identical(self):
+        """Zeroed gate-weight rows make ``gru`` open on exactly ``leak``'s dynamics.
+
+        This is what makes the two comparable: at step zero they differ in nothing, so any
+        later difference is the input dependence and not the initialization.
+        """
+        from tsfast.models.architectures.ssm import NeuralStateSpace
+
+        nx = 4
+        torch.manual_seed(1)
+        ml = NeuralStateSpace(3, 2, n_state=nx, hidden_size=16, num_layers=1, gate="leak", backend="eager")
+        mg = NeuralStateSpace(3, 2, n_state=nx, hidden_size=16, num_layers=1, gate="gru", backend="eager")
+        with torch.no_grad():
+            for src, dst in zip(ml.linears[:-1], mg.linears[:-1]):
+                dst.weight.copy_(src.weight)
+                dst.bias.copy_(src.bias)
+            mg.linears[-1].weight[:nx].copy_(ml.linears[-1].weight)
+            mg.linears[-1].bias[:nx].copy_(ml.linears[-1].bias)
+            mg.linears[-1].bias[nx:].copy_(ml.leak_logit)
+            mg.output_map.weight.copy_(ml.output_map.weight)
+            mg.output_map.bias.copy_(ml.output_map.bias)
+        u = torch.randn(3, 12, 3)
+        assert torch.allclose(ml(u), mg(u), atol=1e-6)
+
+    @pytest.mark.parametrize("gate", GATES)
+    def test_step_matches_closed_form(self, gate):
+        """One step against the update equations, independent of the rollout implementation."""
+        from tsfast.models.architectures.ssm import NeuralStateSpace
+
+        nx, eps = 4, 0.7
+        torch.manual_seed(0)
+        m = NeuralStateSpace(3, 2, n_state=nx, hidden_size=16, gate=gate, eps=eps, backend="eager").double()
+        u = torch.randn(2, 1, 3, dtype=torch.float64)
+        x0 = torch.randn(2, nx, dtype=torch.float64)
+        y = m.net(torch.cat((x0, u[:, 0]), dim=1))
+        match gate:
+            case "none":
+                expect = y
+            case "leak":
+                expect = x0 + torch.sigmoid(m.leak_logit) * (y - x0)
+            case "gru":
+                expect = x0 + torch.sigmoid(y[:, nx:]) * (y[:, :nx] - x0)
+            case "residual":
+                expect = x0 + eps * torch.sigmoid(y[:, nx:]) * y[:, :nx]
+        got = m(u, x0, state=None)
+        assert torch.allclose(got, m.output_map(expect).unsqueeze(1), atol=1e-12)
+
+    @pytest.mark.parametrize("gate", GATES)
+    def test_gradcheck(self, gate):
+        from tsfast.models.architectures.ssm import NeuralStateSpace
+
+        torch.manual_seed(0)
+        m = NeuralStateSpace(2, 1, n_state=3, hidden_size=8, num_layers=1, gate=gate, backend="eager").double()
+        u = torch.randn(2, 6, 2, dtype=torch.float64, requires_grad=True)
+        x0 = torch.randn(2, 3, dtype=torch.float64, requires_grad=True)
+        assert torch.autograd.gradcheck(lambda a, b: m(a, b), (u, x0), atol=1e-8)
+
+    @pytest.mark.parametrize("gate", GATES)
+    def test_stateful_chunked_equivalence(self, gate):
+        """The gate must not break exact chunking — that contract is why this is not a GRU."""
+        from tsfast.models.architectures.ssm import NeuralStateSpace
+
+        torch.manual_seed(0)
+        m = NeuralStateSpace(
+            2, 1, n_state=3, hidden_size=16, num_layers=1, gate=gate, backend="eager", return_state=True
+        )
+        u = torch.randn(4, 30, 2)
+        full, _ = m(u)
+        out1, state = m(u[:, :10])
+        out2, state = m(u[:, 10:25], state=state)
+        out3, _ = m(u[:, 25:], state=state)
+        assert _rel(torch.cat((out1, out2, out3), dim=1), full) < 1e-6
+
+    def test_auto_fallback_is_not_warned(self):
+        """Falling off the fused kernels is the designed route for a gated model, not a misuse.
+
+        An explicitly named fused family is still a request the library cannot serve, so it
+        keeps warning — only ``"auto"`` goes quiet.
+        """
+        import warnings
+
+        from tsfast.models.architectures.ssm import NeuralStateSpace
+
+        u, x0 = torch.randn(2, 8, 3), torch.randn(2, 4)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            for gate in ("leak", "gru", "residual"):
+                NeuralStateSpace(3, 2, n_state=4, hidden_size=16, gate=gate, backend="auto")(u, x0)
+
+        # metal is the one backend that serves no gate at all, and its gate screen runs
+        # before its device screen, so this reaches the warning without an MPS device.
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            NeuralStateSpace(3, 2, n_state=4, hidden_size=16, gate="gru", backend="metal")(u, x0)
+        assert any("kernel" in str(w.message) for w in caught)
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize("gate", ["leak", "gru"])
+    def test_learner_fit_tbptt(self, gate, dls_simulation):
+        """``gate`` reaches the model through ``SSMLearner(**kwargs)`` and survives TBPTT.
+
+        State carrying across chunks is where a gate could plausibly break training rather
+        than the forward pass, so this fits with ``sub_seq_len`` set.
+        """
+        from tsfast.training import SSMLearner
+
+        lrn = SSMLearner(
+            dls_simulation, hidden_size=16, num_layers=1, gate=gate, backend="eager", sub_seq_len=25, n_skip=5
+        )
+        assert lrn.model.model.spec.gate == gate
+        lrn.fit(1, 1e-3)
+        assert not torch.isnan(torch.tensor(lrn.recorder[-1][1]))
+
+    @pytest.mark.parametrize("gate", ["leak", "gru", "residual"])
+    def test_c_parity_gated(self, gate):
+        from tsfast.models.architectures.ssm import backend_c as ssm_c
+
+        if not ssm_c.is_available():
+            pytest.skip("no C++ toolchain / ninja")
+        for hidden, act in (((48, 32), "tanh"), ((), "tanh"), ((24,), "sigmoid"), ((16,), "relu")):
+            _assert_backend_parity("c", "cpu", hidden=hidden, act=act, gate=gate)
+
+    @pytest.mark.parametrize("gate", ["leak", "gru", "residual"])
+    def test_triton_parity_gated(self, gate):
+        from tsfast.models.architectures.ssm import backend_triton as ssm_triton
+
+        if not ssm_triton.is_available():
+            pytest.skip("no CUDA/triton")
+        prev = torch.backends.cuda.matmul.allow_tf32
+        torch.backends.cuda.matmul.allow_tf32 = False
+        try:
+            for hidden, act, n_state in (((48, 32), "tanh", 4), ((), "tanh", 4), ((64, 64), "sigmoid", 10)):
+                _assert_backend_parity("triton", "cuda", hidden=hidden, act=act, gate=gate, n_state=n_state)
+            # n_state off a power of two exercises the padding masks on both gate blocks
+            _assert_backend_parity("triton", "cuda", hidden=(16,), act="tanh", gate=gate, n_state=7)
+            # widest spec fits() still admits: the gate adds on-chip vectors the ungated
+            # envelope was sized without, so the boundary is worth pinning
+            _assert_backend_parity("triton", "cuda", hidden=(128,), act="tanh", gate=gate, n_state=128)
+        finally:
+            torch.backends.cuda.matmul.allow_tf32 = prev
+
+    def test_compile_fullgraph_gated_parity(self):
+        """The widened final layer and the extra saved tensors must not break the op boundary."""
+        from tsfast.models.architectures.ssm import NeuralStateSpace, backend_c
+
+        if not backend_c.is_available():
+            pytest.skip("no C++ toolchain / ninja")
+        torch.manual_seed(0)
+        m = NeuralStateSpace(3, 2, n_state=4, hidden_size=[48, 32], gate="gru", backend="eager")
+        u, x0 = torch.randn(5, 40, 3), torch.randn(5, 4)
+        out_e, g_e, du_e, dx0_e = _run(m, "eager", u, x0)
+        out_c, g_c, du_c, dx0_c = _run_compiled(m, "c", u, x0)
+        assert _rel(out_c, out_e) < 1e-4
+        assert max(_rel(a, b) for a, b in zip(g_c, g_e)) < 1e-4
+        assert _rel(du_c, du_e) < 1e-4 and _rel(dx0_c, dx0_e) < 1e-4
+
+    def test_fused_gate_matches_a_frozen_leak(self):
+        """A ``gru`` gate with zeroed weight rows is a per-state leak, and the kernel agrees.
+
+        This is the claim that justified fusing ``gru`` rather than ``leak``: the cheaper
+        variant is a special case of the fused one, not a separate architecture.
+        """
+        from tsfast.models.architectures.ssm import NeuralStateSpace, backend_c
+
+        if not backend_c.is_available():
+            pytest.skip("no C++ toolchain / ninja")
+        nx = 4
+        torch.manual_seed(3)
+        leak = NeuralStateSpace(3, 2, n_state=nx, hidden_size=16, num_layers=1, gate="leak", backend="eager")
+        gru = NeuralStateSpace(3, 2, n_state=nx, hidden_size=16, num_layers=1, gate="gru", backend="c")
+        with torch.no_grad():
+            for src, dst in zip(leak.linears[:-1], gru.linears[:-1]):
+                dst.weight.copy_(src.weight)
+                dst.bias.copy_(src.bias)
+            gru.linears[-1].weight[:nx].copy_(leak.linears[-1].weight)
+            gru.linears[-1].bias[:nx].copy_(leak.linears[-1].bias)
+            gru.linears[-1].weight[nx:].zero_()
+            gru.linears[-1].bias[nx:].copy_(leak.leak_logit)
+            gru.output_map.weight.copy_(leak.output_map.weight)
+            gru.output_map.bias.copy_(leak.output_map.bias)
+        u = torch.randn(3, 30, 3)
+        assert _rel(gru(u), leak(u)) < 5e-6
+
+    def test_metal_declines_a_gated_spec(self):
+        """Metal has no gated generator, so it must decline rather than run the ungated kernel.
+
+        The gate widens the final layer to ``2 * n_state``; a backend that accepted the spec
+        without emitting the gate would read past its own layout and return wrong results.
+        Checked through ``supports`` on any device — the gate screen runs before the device
+        screen, so this needs no MPS.
+        """
+        import torch as _torch
+
+        from tsfast.models.architectures.ssm import SSMSpec, backend_metal
+
+        spec = SSMSpec(4, 3, (16,), "tanh", "gru")
+        reason = backend_metal.supports(spec, _torch.zeros(1, 2, 3), _torch.zeros(1, 4))
+        assert reason is not None and "gate" in reason
+
+    def test_gate_keys_the_kernel_cache(self):
+        """``SSMSpec`` carries the gate, so gated and ungated specs cannot share a compiled kernel."""
+        from tsfast.models.architectures.ssm import SSMSpec
+
+        plain = SSMSpec(4, 3, (16,), "tanh")
+        assert plain.gate == "none" and plain.out_width == 4
+        assert SSMSpec(4, 3, (16,), "tanh", "gru").out_width == 8
+        assert plain != SSMSpec(4, 3, (16,), "tanh", "gru")
+        assert len({plain, SSMSpec(4, 3, (16,), "tanh", "leak"), SSMSpec(4, 3, (16,), "tanh", "gru")}) == 3
+
+    def test_eps_keys_the_kernel_cache(self):
+        """``residual`` bakes ``eps`` into the generated source, so it must key the spec too."""
+        from tsfast.models.architectures.ssm import SSMSpec, backend_c
+
+        half, one = SSMSpec(4, 3, (16,), "tanh", "residual", 0.5), SSMSpec(4, 3, (16,), "tanh", "residual", 1.0)
+        assert half != one and len({half, one}) == 2
+        assert backend_c._gen_source(half) != backend_c._gen_source(one)
+        # every other gate pins eps at 1.0, so they cannot fork the cache on a field they ignore
+        assert "EPS" not in backend_c._gen_source(SSMSpec(4, 3, (16,), "tanh", "gru"))
+
+    def test_residual_eps_parity(self):
+        """``eps`` reaches the kernel across the custom-op boundary, not just the eager path."""
+        from tsfast.models.architectures.ssm import backend_c as ssm_c
+
+        if not ssm_c.is_available():
+            pytest.skip("no C++ toolchain / ninja")
+        for eps in (0.25, 2.0):
+            _assert_backend_parity("c", "cpu", hidden=(24,), gate="residual", eps=eps)

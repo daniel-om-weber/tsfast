@@ -76,10 +76,12 @@ def backends_for(device: torch.device, include_compiled: bool) -> list[str]:
     return names
 
 
-def make_train_step(name, device, hidden, B, seq_len):
+def make_train_step(name, device, hidden, B, seq_len, gate="none"):
     """Build a training-step closure for a backend name ('<backend>' or '<backend>+graph')."""
     backend, _, graphed = name.partition("+")
-    m = NeuralStateSpace(N_INPUT, N_OUTPUT, N_STATE, hidden, backend=backend, return_state=bool(graphed)).to(device)
+    m = NeuralStateSpace(N_INPUT, N_OUTPUT, N_STATE, hidden, gate=gate, backend=backend, return_state=bool(graphed)).to(
+        device
+    )
     model = m
     if graphed:
         from tsfast.models._core.cudagraph import GraphedStatefulModel
@@ -120,6 +122,19 @@ def run(args):
             cells.append(bench(step, device) / B * 1e3)
         print(f"{name:>14s}" + "".join(f"{c:>12.2f}" for c in cells))
 
+    # What each gate costs once fused, against the ungated block above. "leak" adds a rate
+    # vector and one stored tensor per step; the input-dependent gates double the final layer
+    # and store two. A backend without a gated kernel falls back and shows what that costs.
+    for gate in args.gates:
+        print(f"\n{'gate=' + gate:>14s}" + "".join(f"{'B=' + str(b):>12s}" for b in args.batch_sizes))
+        print("-" * len(header))
+        for name in names:
+            cells = []
+            for B in args.batch_sizes:
+                step = make_train_step(name, device, hidden, B, args.seq_len, gate=gate)
+                cells.append(bench(step, device) / B * 1e3)
+            print(f"{name:>14s}" + "".join(f"{c:>12.2f}" for c in cells))
+
     print(f"\n{'inference':>14s}" + "".join(f"{'B=' + str(b):>12s}" for b in args.batch_sizes))
     print("-" * len(header))
     for name in [n for n in names if "+" not in n]:  # graph capture only pays off in training
@@ -139,6 +154,7 @@ def main():
     p.add_argument("--batch-sizes", type=int, nargs="+", default=[16, 64, 256])
     p.add_argument("--seq-len", type=int, default=300)
     p.add_argument("--hidden", type=int, nargs="+", default=[64, 64])
+    p.add_argument("--gates", nargs="+", default=["leak", "gru", "residual"], help="gated blocks to time")
     p.add_argument("--compiled", action="store_true", help="include the torch.compile backend (slow first call)")
     p.add_argument("--graphed", action="store_true", help="also wrap CUDA backends in GraphedStatefulModel")
     run(p.parse_args())

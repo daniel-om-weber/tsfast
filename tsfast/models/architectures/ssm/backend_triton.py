@@ -34,14 +34,29 @@ from pathlib import Path
 import torch
 
 from ..._core.kernel_triton import _ACT_TL, _MAX_PADDED_WIDTH, _pow2, is_available
-from .core import SSMSpec, rollout_unsupported
+from .core import SSMSpec, rollout_unsupported, saved_widths
 
 _KERNELS: dict[SSMSpec, object] = {}
+
+#: Gates this generator emits, screened in ``supports`` via ``rollout_unsupported``.
+_GATES = ("none", "leak", "gru", "residual")
+
+
+def _pdims(spec: SSMSpec) -> tuple[int, ...]:
+    """Padded layer io sizes as the kernels see them.
+
+    An input-dependent gate's final layer is emitted as two separate ``n_state``-wide GEMVs
+    — the candidate and the gate pre-activation — rather than one ``2 * n_state``-wide one.
+    Triton cannot slice a padded register tensor at an arbitrary offset, so splitting on the
+    host is what keeps the on-chip width at ``px`` and the kernel free of offset arithmetic.
+    """
+    px = _pow2(spec.n_state)
+    return (px, *(_pow2(h) for h in spec.hidden), px)
 
 
 def fits(spec: SSMSpec) -> bool:
     """Whether the persistent GEMV kernels apply: all padded widths must stay on-chip."""
-    return spec.act in _ACT_TL and max(_pow2(d) for d in (*spec.dims, spec.n_input)) <= _MAX_PADDED_WIDTH
+    return spec.act in _ACT_TL and max((*_pdims(spec), _pow2(spec.n_input))) <= _MAX_PADDED_WIDTH
 
 
 def _gen_source(spec: SSMSpec) -> str:
@@ -49,8 +64,28 @@ def _gen_source(spec: SSMSpec) -> str:
     nx, nu, k = spec.n_state, spec.n_input, spec.n_linear
     px, pu = _pow2(nx), _pow2(nu)
     ph = [_pow2(h) for h in spec.hidden]  # padded hidden widths
-    pdims = (px, *ph, px)  # padded layer io sizes (input x-part handled separately)
+    pdims = _pdims(spec)  # padded layer io sizes (input x-part handled separately)
     act, dact = _ACT_TL[spec.act]
+    gated = spec.gate != "none"
+    # Every gated mode scales a stored vector by its gate: the lerp forms store the candidate
+    # offset and keep a (1 - gate) carry, "residual" stores the candidate and keeps a unit
+    # carry. Only the input-dependent gates widen the final layer — "leak" reads its gate
+    # from a parameter vector, so its last layer stays one n_state-wide block like the
+    # ungated case and only its epilogue and adjoint differ.
+    leaky = spec.gate == "leak"
+    residual = spec.gate == "residual"
+    split = spec.gate in ("gru", "residual")
+    offset = "" if residual else " - x"
+    scale = f"{spec.eps!r} * " if residual else ""
+    a_args = "a_ptr, " if leaky else ""
+    # Suffixes of the final layer's output blocks; empty (a single block) unless the gate
+    # widens it, so the emitted source for an ungated spec is byte-identical to the
+    # pre-gate generator.
+    blocks = ("c", "s") if split else ("",)
+    # Final-layer weight names: layer 0 keeps its x/u input split when it *is* the last layer.
+    last = [(f"w0x{b}", f"w0u{b}", f"c0{b}") if k == 1 else (f"wl{b}", None, f"cl{b}") for b in blocks]
+    if not split:
+        last = [("w0x", "w0u", "c0")] if k == 1 else [(f"w{k - 1}", None, f"c{k - 1}")]
 
     ranges = sorted({px, pu, *ph})
     lines = [
@@ -65,36 +100,51 @@ def _gen_source(spec: SSMSpec) -> str:
             out.append(f"    r{n} = tl.arange(0, {n})")
 
     def emit_weight_loads(out: list[str], with_biases: bool):
-        out.append(f"    w0x = tl.load(w0x_ptr + r{px}[:, None] * {pdims[1]} + r{pdims[1]}[None, :])")
-        if with_biases:  # only the forward kernels take w0u (the backward never uses it)
-            out.append(f"    w0u = tl.load(w0u_ptr + r{pu}[:, None] * {pdims[1]} + r{pdims[1]}[None, :])")
-        if with_biases:
-            out.append(f"    c0 = tl.load(c0_ptr + r{pdims[1]})")
-        for i in range(1, k):
-            out.append(
-                f"    w{i} = tl.load(w{i}_ptr + r{pdims[i]}[:, None] * {pdims[i + 1]} + r{pdims[i + 1]}[None, :])"
-            )
+        if k > 1:  # trunk: layer 0 through k-2, the final layer is emitted per output block
+            out.append(f"    w0x = tl.load(w0x_ptr + r{px}[:, None] * {pdims[1]} + r{pdims[1]}[None, :])")
+            if with_biases:  # only the forward kernels take w0u (the backward never uses it)
+                out.append(f"    w0u = tl.load(w0u_ptr + r{pu}[:, None] * {pdims[1]} + r{pdims[1]}[None, :])")
             if with_biases:
-                out.append(f"    c{i} = tl.load(c{i}_ptr + r{pdims[i + 1]})")
+                out.append(f"    c0 = tl.load(c0_ptr + r{pdims[1]})")
+            for i in range(1, k - 1):
+                out.append(
+                    f"    w{i} = tl.load(w{i}_ptr + r{pdims[i]}[:, None] * {pdims[i + 1]} + r{pdims[i + 1]}[None, :])"
+                )
+                if with_biases:
+                    out.append(f"    c{i} = tl.load(c{i}_ptr + r{pdims[i + 1]})")
+        for wx, wu, cb in last:
+            out.append(f"    {wx} = tl.load({wx}_ptr + r{pdims[k - 1]}[:, None] * {px} + r{px}[None, :])")
+            if with_biases:
+                if k == 1:
+                    out.append(f"    {wu} = tl.load({wu}_ptr + r{pu}[:, None] * {px} + r{px}[None, :])")
+                out.append(f"    {cb} = tl.load({cb}_ptr + r{px})")
 
     def fwd_kernel(name: str, store_z: bool) -> list[str]:
-        w_args = "w0x_ptr, w0u_ptr, c0_ptr" + "".join(f", w{i}_ptr, c{i}_ptr" for i in range(1, k))
+        trunk = "w0x_ptr, w0u_ptr, c0_ptr" + "".join(f", w{i}_ptr, c{i}_ptr" for i in range(1, k - 1))
+        if k > 1:
+            w_args = trunk + "".join(f", {wx}_ptr, {cb}_ptr" for wx, _, cb in last)
+        else:
+            w_args = ", ".join(f"{wx}_ptr, {wu}_ptr, {cb}_ptr" for wx, wu, cb in last)
         z_args = "".join(f"z{i}_ptr, " for i in range(k - 1)) if store_z else ""
+        if store_z and gated:
+            z_args += "gd_ptr, gs_ptr, " if split else "gd_ptr, "
         out = [
             "@triton.jit",
-            f"def {name}(u_ptr, x0_ptr, {w_args}, out_ptr, {z_args}B, L, NUM_STAGES: tl.constexpr):",
+            f"def {name}(u_ptr, x0_ptr, {a_args}{w_args}, out_ptr, {z_args}B, L, NUM_STAGES: tl.constexpr):",
             "    pid = tl.program_id(0)",
         ]
         emit_ranges(out)
         emit_weight_loads(out, with_biases=True)
         xmask = f", mask=(r{px}[None, :] < {nx}), other=0.0" if px != nx else ""
+        if leaky:
+            out.append(f"    av = tl.load(a_ptr + r{px}[None, :]{xmask})")
         out.append(f"    x = tl.load(x0_ptr + pid * {nx} + r{px}[None, :]{xmask})")
         out.append("    for t in tl.range(0, L, num_stages=NUM_STAGES):")
         umask = f", mask=(r{pu}[None, :] < {nu}), other=0.0" if pu != nu else ""
         out.append(f"        uu = tl.load(u_ptr + pid * (L * {nu}) + t * {nu} + r{pu}[None, :]{umask})")
         prev = None
-        for i in range(k):
-            dst = "x" if i == k - 1 else f"z{i}"
+        for i in range(k - 1):
+            dst = f"z{i}"
             if i == 0:
                 expr = (
                     "tl.sum(x[:, :, None] * w0x[None, :, :], axis=1)"
@@ -102,54 +152,128 @@ def _gen_source(spec: SSMSpec) -> str:
                 )
             else:
                 expr = f"tl.sum({prev}[:, :, None] * w{i}[None, :, :], axis=1) + c{i}[None, :]"
-            if i < k - 1:
-                out.append(f"        {dst} = " + act.format(a=expr))
-                if store_z:
-                    h, p = spec.hidden[i], ph[i]
-                    zmask = f", mask=(r{p}[None, :] < {h})" if p != h else ""
-                    out.append(f"        tl.store(z{i}_ptr + pid * (L * {h}) + t * {h} + r{p}[None, :], {dst}{zmask})")
-            else:
-                out.append(f"        {dst} = {expr}")
+            out.append(f"        {dst} = " + act.format(a=expr))
+            if store_z:
+                h, p = spec.hidden[i], ph[i]
+                zmask = f", mask=(r{p}[None, :] < {h})" if p != h else ""
+                out.append(f"        tl.store(z{i}_ptr + pid * (L * {h}) + t * {h} + r{p}[None, :], {dst}{zmask})")
             prev = dst
-        omask = f", mask=(r{px}[None, :] < {nx})" if px != nx else ""
-        out.append(f"        tl.store(out_ptr + pid * (L * {nx}) + t * {nx} + r{px}[None, :], x{omask})")
+
+        def block_expr(wx, wu, cb):
+            if k == 1:
+                return (
+                    f"tl.sum(x[:, :, None] * {wx}[None, :, :], axis=1)"
+                    f" + tl.sum(uu[:, :, None] * {wu}[None, :, :], axis=1) + {cb}[None, :]"
+                )
+            return f"tl.sum({prev}[:, :, None] * {wx}[None, :, :], axis=1) + {cb}[None, :]"
+
+        smask = f", mask=(r{px}[None, :] < {nx})" if px != nx else ""
+        if leaky:
+            # The gate is the parameter vector av; the offset it moves along is still what
+            # the reverse sweep needs, this time to accumulate dL/da.
+            out.append(f"        gdv = {block_expr(*last[0])} - x")
+            if store_z:
+                out.append(f"        tl.store(gd_ptr + pid * (L * {nx}) + t * {nx} + r{px}[None, :], gdv{smask})")
+            out.append("        x = x + av * gdv")
+        elif gated:
+            # d = candidate - x is what the reverse sweep needs, and the lerp forms it anyway.
+            out.append(f"        gdv = {block_expr(*last[0])}{offset}")
+            out.append(f"        gsv = {block_expr(*last[1])}")
+            if store_z:
+                out.append(f"        tl.store(gd_ptr + pid * (L * {nx}) + t * {nx} + r{px}[None, :], gdv{smask})")
+                out.append(f"        tl.store(gs_ptr + pid * (L * {nx}) + t * {nx} + r{px}[None, :], gsv{smask})")
+            out.append(f"        x = x + {scale}gdv * tl.sigmoid(gsv)")
+        else:
+            out.append(f"        x = {block_expr(*last[0])}")
+        out.append(f"        tl.store(out_ptr + pid * (L * {nx}) + t * {nx} + r{px}[None, :], x{smask})")
         out.append("")
         return out
 
     def bwd_kernel() -> list[str]:
-        z_args = "".join(f"z{i}_ptr, " for i in range(k - 1))
-        w_args = "w0x_ptr" + "".join(f", w{i}_ptr" for i in range(1, k))
+        ow = spec.out_width
+        gate_z = ("gd_ptr, gs_ptr, " if split else "gd_ptr, ") if gated else ""
+        z_args = "".join(f"z{i}_ptr, " for i in range(k - 1)) + gate_z
+        trunk = "w0x_ptr" + "".join(f", w{i}_ptr" for i in range(1, k - 1))
+        if k > 1:
+            w_args = trunk + "".join(f", {wx}_ptr" for wx, _, _ in last)
+        else:
+            w_args = ", ".join(f"{wx}_ptr" for wx, _, _ in last)
         ga_args = "".join(f"ga{i}_ptr, " for i in range(k - 1))
         out = [
             "@triton.jit",
-            f"def ssm_bwd(gout_ptr, {z_args}{w_args}, gy_ptr, {ga_args}gx0_ptr, B, L, NUM_STAGES: tl.constexpr):",
+            f"def ssm_bwd(gout_ptr, {a_args}{z_args}{w_args}, gy_ptr, {ga_args}gx0_ptr, "
+            f"{'gl_ptr, ' if leaky else ''}B, L, NUM_STAGES: tl.constexpr):",
             "    pid = tl.program_id(0)",
         ]
         emit_ranges(out)
         emit_weight_loads(out, with_biases=False)
+        if leaky:
+            amask = f", mask=(r{px}[None, :] < {nx}), other=0.0" if px != nx else ""
+            out.append(f"    av = tl.load(a_ptr + r{px}[None, :]{amask})")
         out.append(f"    carry = tl.zeros([1, {px}], dtype=tl.float32)")
+        if leaky:
+            out.append(f"    glacc = tl.zeros([1, {px}], dtype=tl.float32)")
         out.append("    for ti in tl.range(0, L, num_stages=NUM_STAGES):")
         out.append("        t = L - 1 - ti")
         gmask = f", mask=(r{px}[None, :] < {nx}), other=0.0" if px != nx else ""
         smask = f", mask=(r{px}[None, :] < {nx})" if px != nx else ""
         out.append(f"        gout = tl.load(gout_ptr + pid * (L * {nx}) + t * {nx} + r{px}[None, :]{gmask})")
-        out.append("        gy = gout + carry")
-        out.append(f"        tl.store(gy_ptr + pid * (L * {nx}) + t * {nx} + r{px}[None, :], gy{smask})")
+        if leaky:
+            # dL/da sums g * d over batch and time; the time axis accumulates in-register
+            # here and the host reduces the batch, keeping the sequential sweep atomic-free.
+            out.append("        gtot = gout + carry")
+            out.append(f"        gdv = tl.load(gd_ptr + pid * (L * {nx}) + t * {nx} + r{px}[None, :]{gmask})")
+            out.append("        gy = av * gtot")
+            out.append("        gdir = (1.0 - av) * gtot")
+            out.append("        glacc = glacc + gtot * gdv")
+            out.append(f"        tl.store(gy_ptr + pid * (L * {nx}) + t * {nx} + r{px}[None, :], gy{smask})")
+        elif gated:
+            # The total step adjoint splits into the final layer's two output blocks plus a
+            # direct (1 - z) path that never enters the MLP.
+            out.append("        gtot = gout + carry")
+            out.append(f"        gdv = tl.load(gd_ptr + pid * (L * {nx}) + t * {nx} + r{px}[None, :]{gmask})")
+            out.append(
+                f"        zv = tl.sigmoid(tl.load(gs_ptr + pid * (L * {nx}) + t * {nx} + r{px}[None, :]{gmask}))"
+            )
+            out.append(f"        gc = {scale}zv * gtot")
+            out.append(f"        gsg = {scale}zv * (1.0 - zv) * gtot * gdv")
+            out.append("        gdir = " + ("gtot" if residual else "(1.0 - zv) * gtot"))
+            out.append(f"        tl.store(gy_ptr + pid * (L * {ow}) + t * {ow} + r{px}[None, :], gc{smask})")
+            out.append(f"        tl.store(gy_ptr + pid * (L * {ow}) + t * {ow} + {nx} + r{px}[None, :], gsg{smask})")
+        else:
+            out.append("        gy = gout + carry")
+            out.append(f"        tl.store(gy_ptr + pid * (L * {nx}) + t * {nx} + r{px}[None, :], gy{smask})")
         prev = "gy"
         for i in range(k - 1, 0, -1):
             h, p = spec.hidden[i - 1], ph[i - 1]
             zmask = f", mask=(r{p}[None, :] < {h}), other=0.0" if p != h else ""
             zsmask = f", mask=(r{p}[None, :] < {h})" if p != h else ""
             out.append(f"        zv{i - 1} = tl.load(z{i - 1}_ptr + pid * (L * {h}) + t * {h} + r{p}[None, :]{zmask})")
-            out.append(f"        gh{i - 1} = tl.sum({prev}[:, None, :] * w{i}[None, :, :], axis=2)")
+            if split and i == k - 1:
+                gh = (
+                    f"tl.sum(gc[:, None, :] * {last[0][0]}[None, :, :], axis=2)"
+                    f" + tl.sum(gsg[:, None, :] * {last[1][0]}[None, :, :], axis=2)"
+                )
+            else:
+                gh = f"tl.sum({prev}[:, None, :] * w{i}[None, :, :], axis=2)"
+            out.append(f"        gh{i - 1} = {gh}")
             out.append(f"        ga{i - 1} = gh{i - 1} * " + dact.format(z=f"zv{i - 1}"))
             out.append(
                 f"        tl.store(ga{i - 1}_ptr + pid * (L * {h}) + t * {h} + r{p}[None, :], ga{i - 1}{zsmask})"
             )
             prev = f"ga{i - 1}"
-        out.append(f"        carry = tl.sum({prev}[:, None, :] * w0x[None, :, :], axis=2)")
+        if split and k == 1:
+            carry = (
+                f"tl.sum(gc[:, None, :] * {last[0][0]}[None, :, :], axis=2)"
+                f" + tl.sum(gsg[:, None, :] * {last[1][0]}[None, :, :], axis=2)"
+            )
+        else:
+            carry = f"tl.sum({prev}[:, None, :] * w0x[None, :, :], axis=2)"
+        out.append(f"        carry = {carry}" + (" + gdir" if gated else ""))
         gx0mask = f", mask=(r{px}[None, :] < {nx})" if px != nx else ""
         out.append(f"    tl.store(gx0_ptr + pid * {nx} + r{px}[None, :], carry{gx0mask})")
+        if leaky:
+            out.append(f"    tl.store(gl_ptr + pid * {nx} + r{px}[None, :], glacc{gx0mask})")
         out.append("")
         return out
 
@@ -179,60 +303,80 @@ def _get_kernels(spec: SSMSpec):
 
 def _num_warps(spec: SSMSpec) -> int:
     # findings from the GEMV kernels: nw=2 up to width 64, nw=8 at 128 (nw=4 spills)
-    return 2 if max(_pow2(d) for d in spec.dims) <= 64 else 8
+    return 2 if max(_pdims(spec)) <= 64 else 8
 
 
 @torch.no_grad()
 def _prep_weights(spec: SSMSpec, weights: list[torch.Tensor], biases: list[torch.Tensor] | None) -> list[torch.Tensor]:
     """Pad/transpose the raw nn.Linear parameters into the kernel layout.
 
-    Returns ``[w0x, w0u, c0, w1, c1, ...]`` (biases interleaved) when biases are given —
-    the forward-kernel argument order — or just the weight buffers for the backward kernel.
+    Returns ``[w0x, w0u, c0, w1, c1, ...]`` (biases interleaved) in forward-kernel argument
+    order when biases are given, else the backward kernel's order, which omits the ``u``
+    input blocks it never reads. A gated final layer contributes one padded buffer per
+    output block (candidate, then gate), matching ``_pdims``.
     """
     nx, k = spec.n_state, spec.n_linear
     px, pu = _pow2(nx), _pow2(spec.n_input)
-    ph = [_pow2(h) for h in spec.hidden]
-    pdims = (px, *ph, px)
+    pdims = _pdims(spec)
     dev = weights[0].device
-    w0 = weights[0]
-    w0x = torch.zeros(px, pdims[1], device=dev)
-    w0x[:nx, : w0.shape[0]] = w0[:, :nx].t()
-    w0u = torch.zeros(pu, pdims[1], device=dev)
-    w0u[: spec.n_input, : w0.shape[0]] = w0[:, nx:].t()
-    bufs = [w0x, w0u]
-    if biases is not None:
-        c0p = torch.zeros(pdims[1], device=dev)
-        c0p[: biases[0].shape[0]] = biases[0]
-        bufs.append(c0p)
-    for i in range(1, k):
-        w = weights[i]
-        wp = torch.zeros(pdims[i], pdims[i + 1], device=dev)
-        wp[: w.shape[1], : w.shape[0]] = w.t()
-        bufs.append(wp)
-        if biases is not None:
-            cp = torch.zeros(pdims[i + 1], device=dev)
-            cp[: biases[i].shape[0]] = biases[i]
-            bufs.append(cp)
+    fwd = biases is not None
+    bufs: list[torch.Tensor] = []
+
+    def pad_w(mat: torch.Tensor, rows: int, cols: int) -> torch.Tensor:
+        """``mat`` is [out, in]; the kernel wants it transposed and zero-padded to [rows, cols]."""
+        wp = torch.zeros(rows, cols, device=dev)
+        wp[: mat.shape[1], : mat.shape[0]] = mat.t()
+        return wp
+
+    def pad_b(vec: torch.Tensor, n: int) -> torch.Tensor:
+        cp = torch.zeros(n, device=dev)
+        cp[: vec.shape[0]] = vec
+        return cp
+
+    if k > 1:  # trunk: layer 0 through k-2
+        w0 = weights[0]
+        bufs.append(pad_w(w0[:, :nx], px, pdims[1]))
+        if fwd:
+            bufs.append(pad_w(w0[:, nx:], pu, pdims[1]))
+            bufs.append(pad_b(biases[0], pdims[1]))
+        for i in range(1, k - 1):
+            bufs.append(pad_w(weights[i], pdims[i], pdims[i + 1]))
+            if fwd:
+                bufs.append(pad_b(biases[i], pdims[i + 1]))
+    # final layer, one block of n_state output rows per gate component
+    wl = weights[k - 1]
+    for b in range(spec.out_width // nx):
+        rows = wl[b * nx : (b + 1) * nx]
+        if k == 1:
+            bufs.append(pad_w(rows[:, :nx], px, px))
+            if fwd:
+                bufs.append(pad_w(rows[:, nx:], pu, px))
+        else:
+            bufs.append(pad_w(rows, pdims[k - 1], px))
+        if fwd:
+            bufs.append(pad_b(biases[k - 1][b * nx : (b + 1) * nx], px))
     return [b.contiguous() for b in bufs]
 
 
-def _run_fwd(mod, spec: SSMSpec, u, x0, params, store_z, num_warps):
+def _run_fwd(mod, spec: SSMSpec, u, x0, params, store_z, num_warps, leak=None):
     B, L = u.shape[0], u.shape[1]
     dev = u.device
     out = torch.empty(B, L, spec.n_state, device=dev, dtype=torch.float32)
     bufs = _prep_weights(spec, [w.detach() for w in params[0::2]], [c.detach() for c in params[1::2]])
+    # the kernel masks its load to n_state, so the rate needs no padding
+    a = [leak.detach().contiguous()] if spec.gate == "leak" else []
     if store_z:
-        zs = [torch.empty(B, L, h, device=dev, dtype=torch.float32) for h in spec.hidden]
-        mod.ssm_fwd_train[(B,)](u, x0, *bufs, out, *zs, B, L, NUM_STAGES=3, num_warps=num_warps)
+        zs = [torch.empty(B, L, w, device=dev, dtype=torch.float32) for w in saved_widths(spec)]
+        mod.ssm_fwd_train[(B,)](u, x0, *a, *bufs, out, *zs, B, L, NUM_STAGES=3, num_warps=num_warps)
     else:
         zs = []
-        mod.ssm_fwd[(B,)](u, x0, *bufs, out, B, L, NUM_STAGES=3, num_warps=num_warps)
+        mod.ssm_fwd[(B,)](u, x0, *a, *bufs, out, B, L, NUM_STAGES=3, num_warps=num_warps)
     return out, zs
 
 
 def supports(spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor) -> str | None:
     """Reason the persistent Triton kernels cannot handle these inputs, or None when they can."""
-    reason = rollout_unsupported(spec, u, x0, "cuda")
+    reason = rollout_unsupported(spec, u, x0, "cuda", _GATES)
     if reason is not None:
         return reason
     if not fits(spec):
@@ -243,29 +387,38 @@ def supports(spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor) -> str | None:
 
 
 def forward_train(
-    spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, params: list[torch.Tensor]
+    spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, params: list[torch.Tensor], leak: torch.Tensor | None = None
 ) -> tuple[torch.Tensor, list[torch.Tensor]]:
     """Rollout that also stores the hidden activations: returns ``(out, zs)``."""
-    return _run_fwd(_get_kernels(spec), spec, u, x0, params, store_z=True, num_warps=_num_warps(spec))
+    return _run_fwd(_get_kernels(spec), spec, u, x0, params, store_z=True, num_warps=_num_warps(spec), leak=leak)
 
 
-def forward_infer(spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, params: list[torch.Tensor]) -> torch.Tensor:
+def forward_infer(
+    spec: SSMSpec, u: torch.Tensor, x0: torch.Tensor, params: list[torch.Tensor], leak: torch.Tensor | None = None
+) -> torch.Tensor:
     """Rollout without stored intermediates: returns ``out`` of shape ``[B, L, n_state]``."""
-    out, _ = _run_fwd(_get_kernels(spec), spec, u, x0, params, store_z=False, num_warps=_num_warps(spec))
+    out, _ = _run_fwd(_get_kernels(spec), spec, u, x0, params, store_z=False, num_warps=_num_warps(spec), leak=leak)
     return out
 
 
 def backward(
-    spec: SSMSpec, grad_out: torch.Tensor, zs: list[torch.Tensor], weights: list[torch.Tensor]
-) -> tuple[torch.Tensor, list[torch.Tensor], torch.Tensor]:
-    """Reverse state-adjoint sweep: returns ``(gy, gas, gx0)`` for the shared GEMM stage."""
+    spec: SSMSpec,
+    grad_out: torch.Tensor,
+    zs: list[torch.Tensor],
+    weights: list[torch.Tensor],
+    leak: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, list[torch.Tensor], torch.Tensor, torch.Tensor | None]:
+    """Reverse state-adjoint sweep: returns ``(gy, gas, gx0, gleak)`` for the shared GEMM stage."""
     mod = _get_kernels(spec)
     B, L = grad_out.shape[0], grad_out.shape[1]
     dev = grad_out.device
-    bufs = _prep_weights(spec, [w.detach() for w in weights], biases=None)
-    wk = [bufs[0]] + bufs[2:]  # w0x, w1, ..., w{k-1} (w0u unused by the backward)
-    gy = torch.empty(B, L, spec.n_state, device=dev, dtype=torch.float32)
-    gas = [torch.empty_like(z) for z in zs]
+    wk = _prep_weights(spec, [w.detach() for w in weights], biases=None)
+    gy = torch.empty(B, L, spec.out_width, device=dev, dtype=torch.float32)
+    gas = [torch.empty_like(z) for z in zs[: len(spec.hidden)]]
     gx0 = torch.empty(B, spec.n_state, device=dev, dtype=torch.float32)
-    mod.ssm_bwd[(B,)](grad_out, *zs, *wk, gy, *gas, gx0, B, L, NUM_STAGES=3, num_warps=_num_warps(spec))
-    return gy, gas, gx0
+    leaky = spec.gate == "leak"
+    a = [leak.detach().contiguous()] if leaky else []
+    # per-batch partials; the batch axis of dL/da reduces on the host
+    gl = [torch.empty(B, spec.n_state, device=dev, dtype=torch.float32)] if leaky else []
+    mod.ssm_bwd[(B,)](grad_out, *a, *zs, *wk, gy, *gas, gx0, *gl, B, L, NUM_STAGES=3, num_warps=_num_warps(spec))
+    return gy, gas, gx0, (gl[0].sum(0) if leaky else None)

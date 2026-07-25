@@ -234,6 +234,11 @@ def SSMLearner(
     backends make the sequential rollout 1–2 orders of magnitude faster to train than the
     naive loop; see ``NeuralStateSpace``.
 
+    The ungated transition Jacobian is an unconstrained product of the MLP's weights, so the
+    adjoint of a long rollout vanishes within a few tens of steps and no amount of
+    ``sub_seq_len`` recovers a dependency longer than that. Pass ``gate`` (and ``gate_tmax``)
+    through to ``NeuralStateSpace`` to make the memory horizon an explicit parameter instead.
+
     Args:
         dls: DataLoaders providing training and validation data.
         n_state: latent state dimension of the state space model.
