@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 """Gate: does a contraction certificate cost accuracy, and is the certificate tight?
 
-This is a *training* experiment, not a kernel timing script. It settles the open question
-of ROADMAP entry A1 with two criteria, both of which must pass for the certified models to
-be worth their maintenance:
+This is a *training* experiment, not a kernel timing script. A certificate that holds at
+every parameter value is only worth its maintenance if it survives contact with real
+identification data, which asks two questions at once — whether constraining the model class
+costs accuracy, and whether the guarantee that buys is quantitatively meaningful. Both are
+measured here, and both have to pass:
 
 **Accuracy.** ``REN`` and ``R2DN`` trained at matched parameter count against two baselines
 on the identibench simulation benchmarks. The honest opponent is the GRU: its state is a
