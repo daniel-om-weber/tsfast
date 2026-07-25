@@ -7,6 +7,8 @@ __all__ = [
     "CRNNLearner",
     "AR_TCNLearner",
     "SSMLearner",
+    "RENLearner",
+    "R2DNLearner",
     "DynoNetLearner",
     "NarxMLPLearner",
     "LRULearner",
@@ -33,6 +35,7 @@ from ..models.architectures.lru import DeepLRU
 from ..models.architectures.mamba import DeepMamba
 from ..models.architectures.s5 import DeepS5
 from ..models.architectures.narx import NarxMLP
+from ..models.architectures.ren import REN, R2DN
 from ..models.architectures.rnn import SimpleRNN
 from ..models.architectures.ssm import NeuralStateSpace
 from ..models.architectures.subnet import SubnetSSM
@@ -271,6 +274,231 @@ def SSMLearner(
     if sub_seq_len:
         kwargs.setdefault("return_state", True)
     model = NeuralStateSpace(inp, out, n_state, hidden_size, num_layers, act=act, backend=backend, **kwargs)
+    model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
+
+    if sub_seq_len and cuda_graph:
+        model = GraphedStatefulModel(model)
+    cls = TbpttLearner if sub_seq_len else Learner
+    extra = {"sub_seq_len": sub_seq_len} if sub_seq_len else {}
+    return cls(
+        model,
+        dls,
+        loss_func=loss_func,
+        metrics=metrics,
+        lr=lr,
+        n_skip=n_skip,
+        opt_func=opt_func,
+        transforms=transforms,
+        augmentations=augmentations,
+        aux_losses=aux_losses,
+        grad_clip=grad_clip,
+        plot_fn=plot_fn,
+        device=device,
+        show_bar=show_bar,
+        **extra,
+    )
+
+
+def RENLearner(
+    dls,
+    n_state: int = 8,
+    n_nl: int = 32,
+    variant: str = "contracting",
+    alpha: float = 1.0,
+    gamma: float = 1.0,
+    act: str = "tanh",
+    backend: str = "auto",
+    loss_func=nn.MSELoss(),
+    metrics: list | None = None,
+    lr: float = 3e-3,
+    n_skip: int = 0,
+    sub_seq_len: int | None = None,
+    opt_func=torch.optim.Adam,
+    input_norm: type | None = StandardScaler,
+    output_norm: type | None = StandardScaler,
+    transforms: list | None = None,
+    augmentations: list | None = None,
+    aux_losses: list | None = None,
+    grad_clip: float | None = None,
+    plot_fn=None,
+    cuda_graph: bool = False,
+    device: torch.device | None = None,
+    show_bar: bool = True,
+    **kwargs,
+):
+    """Create a Learner with a recurrent equilibrium network, contracting by construction.
+
+    The certificate holds at every point of the optimization, so the model needs no
+    projection step, penalty term or post-hoc verification — train it like any other
+    sequence model.
+
+    ``n_skip`` follows from the contraction rate rather than from an unknown initial state:
+    the model rolls out from zeros (in normalized coordinates) and any error in that guess
+    decays at ``alpha`` per step, so the transient lasts on the order of ``1/(1-alpha)``
+    samples. The catch is that this is the same quantity as the longest time constant the
+    model can represent, so for an integrating plant there is no ``alpha`` that both forgets
+    the initial state and captures the dynamics. Those need a state estimator instead: pass
+    the model to ``FranSysLearner`` as the prognosis (``return_state=True``), which reads
+    ``x0`` off an ``(u, y)`` window.
+
+    Args:
+        dls: DataLoaders providing training and validation data.
+        n_state: state dimension of the model.
+        n_nl: neurons in the equilibrium layer; the model's nonlinear capacity.
+        variant: ``"contracting"``, ``"lipschitz"`` or ``"dissipative"`` (the latter needs
+            ``qsr=(Q, S, R)``).
+        alpha: contraction rate in ``(0, 1]``; ``1.0`` admits arbitrarily long memory.
+        gamma: certified incremental gain, for ``variant="lipschitz"``.
+        act: equilibrium-layer activation (``tanh``/``relu``/``sigmoid``).
+        backend: execution backend of the rollout, see ``REN``.
+        loss_func: loss function for training.
+        metrics: metric functions for validation, or None for default RMSE.
+        n_skip: number of initial timesteps to skip in loss and metric computation.
+        sub_seq_len: sub-sequence length for TBPTT; enables stateful training when set.
+        opt_func: optimizer constructor.
+        input_norm: scaler class for input normalization, or None to disable.
+        output_norm: scaler class for output denormalization, or None to disable.
+        transforms: list of transforms (train + valid).
+        augmentations: list of augmentation transforms (train only).
+        aux_losses: list of auxiliary loss functions.
+        grad_clip: max gradient norm for clipping, or None to disable.
+        plot_fn: plotting function for show_batch/show_results.
+        cuda_graph: if True and sub_seq_len is set, wrap the model in GraphedStatefulModel.
+        device: target device (auto-detected if None).
+        show_bar: whether to show tqdm progress bars.
+        **kwargs: additional keyword arguments forwarded to ``REN``.
+
+    Note:
+        Normalizing the output changes what ``gamma`` certifies: the bound then applies to
+        the normalized input/output pair, not to engineering units.
+
+        Prescribing ``gamma`` at all is a choice with a measured cost. It is free on some
+        plants and expensive on integrating ones, where the gain budget binds against
+        dynamics that need the range, so set it when something downstream consumes the
+        bound — a small-gain argument, a sensor-error budget — rather than by default.
+    """
+    if metrics is None:
+        metrics = [fun_rmse]
+
+    inp, out = get_io_size(dls)
+    if sub_seq_len:
+        kwargs.setdefault("return_state", True)
+    model = REN(inp, out, n_state, n_nl, variant=variant, alpha=alpha, gamma=gamma, act=act, backend=backend, **kwargs)
+    model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
+
+    if sub_seq_len and cuda_graph:
+        model = GraphedStatefulModel(model)
+    cls = TbpttLearner if sub_seq_len else Learner
+    extra = {"sub_seq_len": sub_seq_len} if sub_seq_len else {}
+    return cls(
+        model,
+        dls,
+        loss_func=loss_func,
+        metrics=metrics,
+        lr=lr,
+        n_skip=n_skip,
+        opt_func=opt_func,
+        transforms=transforms,
+        augmentations=augmentations,
+        aux_losses=aux_losses,
+        grad_clip=grad_clip,
+        plot_fn=plot_fn,
+        device=device,
+        show_bar=show_bar,
+        **extra,
+    )
+
+
+def R2DNLearner(
+    dls,
+    n_state: int = 8,
+    n_nl: int = 32,
+    depth: int = 2,
+    variant: str = "contracting",
+    alpha: float = 1.0,
+    gamma: float = 1.0,
+    act: str = "relu",
+    backend: str = "auto",
+    loss_func=nn.MSELoss(),
+    metrics: list | None = None,
+    lr: float = 3e-3,
+    n_skip: int = 0,
+    sub_seq_len: int | None = None,
+    opt_func=torch.optim.Adam,
+    input_norm: type | None = StandardScaler,
+    output_norm: type | None = StandardScaler,
+    transforms: list | None = None,
+    augmentations: list | None = None,
+    aux_losses: list | None = None,
+    grad_clip: float | None = None,
+    plot_fn=None,
+    cuda_graph: bool = False,
+    device: torch.device | None = None,
+    show_bar: bool = True,
+    **kwargs,
+):
+    """Create a Learner with a robust recurrent deep network, contracting by construction.
+
+    Certifies what ``RENLearner`` certifies — the guarantee holds at every point of the
+    optimization, with no projection step, penalty term or post-hoc verification — but buys
+    nonlinear capacity with ``depth`` in a 1-Lipschitz network instead of width in an
+    equilibrium layer, so a step is a stack of GEMMs rather than a sequential sweep. Prefer it
+    over ``RENLearner`` when the nonlinearity has to be large.
+
+    ``n_skip`` follows from the contraction rate rather than from an unknown initial state:
+    the model rolls out from zeros (in normalized coordinates) and any error in that guess
+    decays at ``alpha`` per step, so the transient lasts on the order of ``1/(1-alpha)``
+    samples. The catch is that this is the same quantity as the longest time constant the
+    model can represent, so for an integrating plant there is no ``alpha`` that both forgets
+    the initial state and captures the dynamics. Those need a state estimator instead: pass
+    the model to ``FranSysLearner`` as the prognosis (``return_state=True``), which reads
+    ``x0`` off an ``(u, y)`` window.
+
+    Args:
+        dls: DataLoaders providing training and validation data.
+        n_state: state dimension of the model.
+        n_nl: width of the interconnection with the nonlinearity, and of its hidden layers.
+        depth: number of nonlinear layers in the 1-Lipschitz network.
+        variant: ``"contracting"`` or ``"lipschitz"``.
+        alpha: contraction rate in ``(0, 1]``; ``1.0`` admits arbitrarily long memory.
+        gamma: certified incremental gain, for ``variant="lipschitz"``.
+        act: activation of the 1-Lipschitz network (``relu``/``tanh``/``sigmoid``).
+        backend: execution backend of the rollout, see ``R2DN``.
+        loss_func: loss function for training.
+        metrics: metric functions for validation, or None for default RMSE.
+        n_skip: number of initial timesteps to skip in loss and metric computation.
+        sub_seq_len: sub-sequence length for TBPTT; enables stateful training when set.
+        opt_func: optimizer constructor.
+        input_norm: scaler class for input normalization, or None to disable.
+        output_norm: scaler class for output denormalization, or None to disable.
+        transforms: list of transforms (train + valid).
+        augmentations: list of augmentation transforms (train only).
+        aux_losses: list of auxiliary loss functions.
+        grad_clip: max gradient norm for clipping, or None to disable.
+        plot_fn: plotting function for show_batch/show_results.
+        cuda_graph: if True and sub_seq_len is set, wrap the model in GraphedStatefulModel.
+        device: target device (auto-detected if None).
+        show_bar: whether to show tqdm progress bars.
+        **kwargs: additional keyword arguments forwarded to ``R2DN``.
+
+    Note:
+        Normalizing the output changes what ``gamma`` certifies: the bound then applies to
+        the normalized input/output pair, not to engineering units.
+
+        Prescribing ``gamma`` at all is a choice with a measured cost. It is free on some
+        plants and expensive on integrating ones, where the gain budget binds against
+        dynamics that need the range, so set it when something downstream consumes the
+        bound — a small-gain argument, a sensor-error budget — rather than by default.
+    """
+    if metrics is None:
+        metrics = [fun_rmse]
+
+    inp, out = get_io_size(dls)
+    if sub_seq_len:
+        kwargs.setdefault("return_state", True)
+    model = R2DN(
+        inp, out, n_state, n_nl, depth, variant=variant, alpha=alpha, gamma=gamma, act=act, backend=backend, **kwargs
+    )
     model = ScaledModel.from_dls(model, dls, input_norm, output_norm)
 
     if sub_seq_len and cuda_graph:

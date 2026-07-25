@@ -14,6 +14,7 @@ from tsfast.models.architectures.lru import *
 from tsfast.models.architectures.mamba import *
 from tsfast.models.architectures.narx import *
 from tsfast.models.architectures.phnn import *
+from tsfast.models.architectures.ren import *
 from tsfast.models.architectures.rnn import *
 from tsfast.models.architectures.s5 import *
 from tsfast.models.architectures.ssm import *
