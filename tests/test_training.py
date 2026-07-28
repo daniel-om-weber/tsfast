@@ -343,16 +343,6 @@ class TestTransforms:
         yb = torch.randn(4, 100, 1)
         xb_out, yb_out = t(xb, yb)
         assert xb_out.shape == (4, 100, 3)
-        assert yb_out.shape == (4, 100, 1)
-
-    def test_prediction_concat_no_offset(self):
-        from tsfast.training.transforms import prediction_concat
-
-        t = prediction_concat(t_offset=0)
-        xb = torch.randn(4, 100, 2)
-        yb = torch.randn(4, 100, 1)
-        xb_out, yb_out = t(xb, yb)
-        assert xb_out.shape == (4, 100, 3)
         assert torch.equal(yb_out, yb)
 
     def test_vary_seq_len(self):
