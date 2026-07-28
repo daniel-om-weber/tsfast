@@ -32,8 +32,14 @@ __all__ = [
 ]
 
 import torch
-import triton
-import triton.language as tl
+
+try:
+    import triton
+    import triton.language as tl
+
+    _HAVE_TRITON = True
+except ImportError:  # pragma: no cover - environment without triton
+    _HAVE_TRITON = False
 
 from ..kernel_triton import is_available
 
@@ -51,174 +57,173 @@ def _configs():
     ]
 
 
-@triton.jit
-def _combine_r(a1, b1, a2, b2):
-    # composition of x -> a x + b maps: second map applied after the first
-    return a1 * a2, a2 * b1 + b2
+if _HAVE_TRITON:
 
+    @triton.jit
+    def _combine_r(a1, b1, a2, b2):
+        # composition of x -> a x + b maps: second map applied after the first
+        return a1 * a2, a2 * b1 + b2
 
-@triton.jit
-def _combine_c(a1r, a1i, b1r, b1i, a2r, a2i, b2r, b2i):
-    # complex affine composition, re/im carried explicitly
-    ar = a2r * a1r - a2i * a1i
-    ai = a2r * a1i + a2i * a1r
-    br = a2r * b1r - a2i * b1i + b2r
-    bi = a2r * b1i + a2i * b1r + b2i
-    return ar, ai, br, bi
+    @triton.jit
+    def _combine_c(a1r, a1i, b1r, b1i, a2r, a2i, b2r, b2i):
+        # complex affine composition, re/im carried explicitly
+        ar = a2r * a1r - a2i * a1i
+        ai = a2r * a1i + a2i * a1r
+        br = a2r * b1r - a2i * b1i + b2r
+        bi = a2r * b1i + a2i * b1r + b2i
+        return ar, ai, br, bi
 
+    @triton.autotune(
+        configs=_configs(), key=["M", "N", "STR", "HAS_X0"]
+    )  # L excluded: L-independent grid; best config L-stable to a near-tie (<=9% at L=5000, measured) — no re-autotune per horizon length
+    @triton.jit
+    def _diag_fwd_kernel(
+        lam_ptr,
+        v_ptr,
+        x0_ptr,
+        out_ptr,
+        M,
+        L,
+        N,
+        BLOCK: tl.constexpr,
+        BLOCK_T: tl.constexpr,
+        STR: tl.constexpr,
+        HAS_X0: tl.constexpr,
+    ):
+        pid = tl.program_id(0)
+        lane = pid * BLOCK + tl.arange(0, BLOCK)
+        mask = lane < M * N
+        m = lane // N
+        c = lane % N
+        base = (m * L * N + c) * STR  # element offset of (m, t=0, c) in the re/im-interleaved buffer
 
-@triton.autotune(
-    configs=_configs(), key=["M", "N", "STR", "HAS_X0"]
-)  # L excluded: L-independent grid; best config L-stable to a near-tie (<=9% at L=5000, measured) — no re-autotune per horizon length
-@triton.jit
-def _diag_fwd_kernel(
-    lam_ptr,
-    v_ptr,
-    x0_ptr,
-    out_ptr,
-    M,
-    L,
-    N,
-    BLOCK: tl.constexpr,
-    BLOCK_T: tl.constexpr,
-    STR: tl.constexpr,
-    HAS_X0: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    lane = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = lane < M * N
-    m = lane // N
-    c = lane % N
-    base = (m * L * N + c) * STR  # element offset of (m, t=0, c) in the re/im-interleaved buffer
-
-    lr = tl.load(lam_ptr + lane * STR, mask=mask)
-    li = tl.load(lam_ptr + lane * STR + 1, mask=mask) if STR == 2 else 0.0
-    if HAS_X0:
-        xr = tl.load(x0_ptr + lane * STR, mask=mask)
-        xi = tl.load(x0_ptr + lane * STR + 1, mask=mask) if STR == 2 else 0.0
-    else:
-        xr = tl.zeros([BLOCK], dtype=tl.float32)
-        xi = tl.zeros([BLOCK], dtype=tl.float32)
-
-    rows = tl.arange(0, BLOCK_T)
-    last = rows[:, None] == BLOCK_T - 1
-    for tc in tl.range(0, tl.cdiv(L, BLOCK_T)):
-        offs_t = tc * BLOCK_T + rows
-        m2 = (offs_t < L)[:, None] & mask[None, :]
-        off = base[None, :] + offs_t[:, None] * (N * STR)
-        vr = tl.load(v_ptr + off, mask=m2, other=0.0)
-        # masked rows compose as exactly the identity map (a=1, b=0), so the carry extracted
-        # from the last row is x_{L-1} even in a partial final tile
-        ar = tl.where(m2, lr[None, :], 1.0)
-        if STR == 2:
-            vi = tl.load(v_ptr + off + 1, mask=m2, other=0.0)
-            ai = tl.where(m2, li[None, :], 0.0)
-            car, cai, cbr, cbi = tl.associative_scan((ar, ai, vr, vi), 0, _combine_c)
-            xr_c = cbr + car * xr[None, :] - cai * xi[None, :]
-            xi_c = cbi + car * xi[None, :] + cai * xr[None, :]
-            tl.store(out_ptr + off, xr_c, mask=m2)
-            tl.store(out_ptr + off + 1, xi_c, mask=m2)
-            xi = tl.sum(tl.where(last, xi_c, 0.0), axis=0)
-        else:
-            car, cbr = tl.associative_scan((ar, vr), 0, _combine_r)
-            xr_c = cbr + car * xr[None, :]
-            tl.store(out_ptr + off, xr_c, mask=m2)
-        xr = tl.sum(tl.where(last, xr_c, 0.0), axis=0)
-
-
-@triton.autotune(
-    configs=_configs(), key=["M", "N", "STR", "HAS_X0"]
-)  # L excluded: L-independent grid; best config L-stable to a near-tie (<=9% at L=5000, measured) — no re-autotune per horizon length
-@triton.jit
-def _diag_bwd_kernel(
-    g_ptr,
-    lam_ptr,
-    out_ptr,
-    x0_ptr,
-    gv_ptr,
-    glam_ptr,
-    gx0_ptr,
-    M,
-    L,
-    N,
-    BLOCK: tl.constexpr,
-    BLOCK_T: tl.constexpr,
-    STR: tl.constexpr,
-    HAS_X0: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    lane = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = lane < M * N
-    m = lane // N
-    c = lane % N
-    base = (m * L * N + c) * STR
-
-    lr = tl.load(lam_ptr + lane * STR, mask=mask)
-    li = tl.load(lam_ptr + lane * STR + 1, mask=mask) if STR == 2 else 0.0
-    # adjoint coefficient conj(lam) = (lr, -li)
-    if HAS_X0:
-        x0r = tl.load(x0_ptr + lane * STR, mask=mask)
-        x0i = tl.load(x0_ptr + lane * STR + 1, mask=mask) if STR == 2 else 0.0
-    else:
-        x0r = tl.zeros([BLOCK], dtype=tl.float32)
-        x0i = tl.zeros([BLOCK], dtype=tl.float32)
-
-    Gr = tl.zeros([BLOCK], dtype=tl.float32)
-    Gi = tl.zeros([BLOCK], dtype=tl.float32)
-    glr = tl.zeros([BLOCK], dtype=tl.float32)
-    gli = tl.zeros([BLOCK], dtype=tl.float32)
-
-    rows = tl.arange(0, BLOCK_T)
-    first = rows[:, None] == 0
-    for ci in tl.range(0, tl.cdiv(L, BLOCK_T)):
-        # tiles run backwards through time (the adjoint carry G flows that way); inside a tile
-        # the reverse=True scan carries G from the last row down to the first.
-        tc = tl.cdiv(L, BLOCK_T) - 1 - ci
-        offs_t = tc * BLOCK_T + rows
-        mask_t = offs_t < L
-        m2 = mask_t[:, None] & mask[None, :]
-        off = base[None, :] + offs_t[:, None] * (N * STR)
-        gr = tl.load(g_ptr + off, mask=m2, other=0.0)
-        ar = tl.where(m2, lr[None, :], 1.0)
-        # x_{t-1}: previous output for t>0, else x0 (or 0); zeroed on masked rows so the
-        # grad_lam accumulation only picks up valid steps
-        poff = base[None, :] + (offs_t - 1)[:, None] * (N * STR)
-        m_prev = (mask_t & (offs_t > 0))[:, None] & mask[None, :]
-        xpr = tl.load(out_ptr + poff, mask=m_prev, other=0.0)
+        lr = tl.load(lam_ptr + lane * STR, mask=mask)
+        li = tl.load(lam_ptr + lane * STR + 1, mask=mask) if STR == 2 else 0.0
         if HAS_X0:
-            at0 = (offs_t == 0)[:, None] & mask[None, :]
-            xpr = tl.where(at0, x0r[None, :], xpr)
-        if STR == 2:
-            gi = tl.load(g_ptr + off + 1, mask=m2, other=0.0)
-            ai = tl.where(m2, -li[None, :], 0.0)
-            xpi = tl.load(out_ptr + poff + 1, mask=m_prev, other=0.0)
-            if HAS_X0:
-                xpi = tl.where(at0, x0i[None, :], xpi)
-            car, cai, cbr, cbi = tl.associative_scan((ar, ai, gr, gi), 0, _combine_c, reverse=True)
-            # G_t = g_t + conj(lam) G_{t+1}: compose the tile's reverse scan with the carry
-            Gr_c = cbr + car * Gr[None, :] - cai * Gi[None, :]
-            Gi_c = cbi + car * Gi[None, :] + cai * Gr[None, :]
-            tl.store(gv_ptr + off, Gr_c, mask=m2)
-            tl.store(gv_ptr + off + 1, Gi_c, mask=m2)
-            # grad_lam += G_t * conj(x_{t-1})
-            glr += tl.sum(Gr_c * xpr + Gi_c * xpi, axis=0)
-            gli += tl.sum(Gi_c * xpr - Gr_c * xpi, axis=0)
-            Gi = tl.sum(tl.where(first, Gi_c, 0.0), axis=0)
+            xr = tl.load(x0_ptr + lane * STR, mask=mask)
+            xi = tl.load(x0_ptr + lane * STR + 1, mask=mask) if STR == 2 else 0.0
         else:
-            car, cbr = tl.associative_scan((ar, gr), 0, _combine_r, reverse=True)
-            Gr_c = cbr + car * Gr[None, :]
-            tl.store(gv_ptr + off, Gr_c, mask=m2)
-            glr += tl.sum(Gr_c * xpr, axis=0)
-        Gr = tl.sum(tl.where(first, Gr_c, 0.0), axis=0)
+            xr = tl.zeros([BLOCK], dtype=tl.float32)
+            xi = tl.zeros([BLOCK], dtype=tl.float32)
 
-    tl.store(glam_ptr + lane * STR, glr, mask=mask)
-    if STR == 2:
-        tl.store(glam_ptr + lane * STR + 1, gli, mask=mask)
-    if HAS_X0:
-        # grad_x0 = conj(lam) * G_0 (G holds G at t=0 after the reverse sweep)
-        tl.store(gx0_ptr + lane * STR, lr * Gr + li * Gi, mask=mask)
+        rows = tl.arange(0, BLOCK_T)
+        last = rows[:, None] == BLOCK_T - 1
+        for tc in tl.range(0, tl.cdiv(L, BLOCK_T)):
+            offs_t = tc * BLOCK_T + rows
+            m2 = (offs_t < L)[:, None] & mask[None, :]
+            off = base[None, :] + offs_t[:, None] * (N * STR)
+            vr = tl.load(v_ptr + off, mask=m2, other=0.0)
+            # masked rows compose as exactly the identity map (a=1, b=0), so the carry extracted
+            # from the last row is x_{L-1} even in a partial final tile
+            ar = tl.where(m2, lr[None, :], 1.0)
+            if STR == 2:
+                vi = tl.load(v_ptr + off + 1, mask=m2, other=0.0)
+                ai = tl.where(m2, li[None, :], 0.0)
+                car, cai, cbr, cbi = tl.associative_scan((ar, ai, vr, vi), 0, _combine_c)
+                xr_c = cbr + car * xr[None, :] - cai * xi[None, :]
+                xi_c = cbi + car * xi[None, :] + cai * xr[None, :]
+                tl.store(out_ptr + off, xr_c, mask=m2)
+                tl.store(out_ptr + off + 1, xi_c, mask=m2)
+                xi = tl.sum(tl.where(last, xi_c, 0.0), axis=0)
+            else:
+                car, cbr = tl.associative_scan((ar, vr), 0, _combine_r)
+                xr_c = cbr + car * xr[None, :]
+                tl.store(out_ptr + off, xr_c, mask=m2)
+            xr = tl.sum(tl.where(last, xr_c, 0.0), axis=0)
+
+    @triton.autotune(
+        configs=_configs(), key=["M", "N", "STR", "HAS_X0"]
+    )  # L excluded: L-independent grid; best config L-stable to a near-tie (<=9% at L=5000, measured) — no re-autotune per horizon length
+    @triton.jit
+    def _diag_bwd_kernel(
+        g_ptr,
+        lam_ptr,
+        out_ptr,
+        x0_ptr,
+        gv_ptr,
+        glam_ptr,
+        gx0_ptr,
+        M,
+        L,
+        N,
+        BLOCK: tl.constexpr,
+        BLOCK_T: tl.constexpr,
+        STR: tl.constexpr,
+        HAS_X0: tl.constexpr,
+    ):
+        pid = tl.program_id(0)
+        lane = pid * BLOCK + tl.arange(0, BLOCK)
+        mask = lane < M * N
+        m = lane // N
+        c = lane % N
+        base = (m * L * N + c) * STR
+
+        lr = tl.load(lam_ptr + lane * STR, mask=mask)
+        li = tl.load(lam_ptr + lane * STR + 1, mask=mask) if STR == 2 else 0.0
+        # adjoint coefficient conj(lam) = (lr, -li)
+        if HAS_X0:
+            x0r = tl.load(x0_ptr + lane * STR, mask=mask)
+            x0i = tl.load(x0_ptr + lane * STR + 1, mask=mask) if STR == 2 else 0.0
+        else:
+            x0r = tl.zeros([BLOCK], dtype=tl.float32)
+            x0i = tl.zeros([BLOCK], dtype=tl.float32)
+
+        Gr = tl.zeros([BLOCK], dtype=tl.float32)
+        Gi = tl.zeros([BLOCK], dtype=tl.float32)
+        glr = tl.zeros([BLOCK], dtype=tl.float32)
+        gli = tl.zeros([BLOCK], dtype=tl.float32)
+
+        rows = tl.arange(0, BLOCK_T)
+        first = rows[:, None] == 0
+        for ci in tl.range(0, tl.cdiv(L, BLOCK_T)):
+            # tiles run backwards through time (the adjoint carry G flows that way); inside a tile
+            # the reverse=True scan carries G from the last row down to the first.
+            tc = tl.cdiv(L, BLOCK_T) - 1 - ci
+            offs_t = tc * BLOCK_T + rows
+            mask_t = offs_t < L
+            m2 = mask_t[:, None] & mask[None, :]
+            off = base[None, :] + offs_t[:, None] * (N * STR)
+            gr = tl.load(g_ptr + off, mask=m2, other=0.0)
+            ar = tl.where(m2, lr[None, :], 1.0)
+            # x_{t-1}: previous output for t>0, else x0 (or 0); zeroed on masked rows so the
+            # grad_lam accumulation only picks up valid steps
+            poff = base[None, :] + (offs_t - 1)[:, None] * (N * STR)
+            m_prev = (mask_t & (offs_t > 0))[:, None] & mask[None, :]
+            xpr = tl.load(out_ptr + poff, mask=m_prev, other=0.0)
+            if HAS_X0:
+                at0 = (offs_t == 0)[:, None] & mask[None, :]
+                xpr = tl.where(at0, x0r[None, :], xpr)
+            if STR == 2:
+                gi = tl.load(g_ptr + off + 1, mask=m2, other=0.0)
+                ai = tl.where(m2, -li[None, :], 0.0)
+                xpi = tl.load(out_ptr + poff + 1, mask=m_prev, other=0.0)
+                if HAS_X0:
+                    xpi = tl.where(at0, x0i[None, :], xpi)
+                car, cai, cbr, cbi = tl.associative_scan((ar, ai, gr, gi), 0, _combine_c, reverse=True)
+                # G_t = g_t + conj(lam) G_{t+1}: compose the tile's reverse scan with the carry
+                Gr_c = cbr + car * Gr[None, :] - cai * Gi[None, :]
+                Gi_c = cbi + car * Gi[None, :] + cai * Gr[None, :]
+                tl.store(gv_ptr + off, Gr_c, mask=m2)
+                tl.store(gv_ptr + off + 1, Gi_c, mask=m2)
+                # grad_lam += G_t * conj(x_{t-1})
+                glr += tl.sum(Gr_c * xpr + Gi_c * xpi, axis=0)
+                gli += tl.sum(Gi_c * xpr - Gr_c * xpi, axis=0)
+                Gi = tl.sum(tl.where(first, Gi_c, 0.0), axis=0)
+            else:
+                car, cbr = tl.associative_scan((ar, gr), 0, _combine_r, reverse=True)
+                Gr_c = cbr + car * Gr[None, :]
+                tl.store(gv_ptr + off, Gr_c, mask=m2)
+                glr += tl.sum(Gr_c * xpr, axis=0)
+            Gr = tl.sum(tl.where(first, Gr_c, 0.0), axis=0)
+
+        tl.store(glam_ptr + lane * STR, glr, mask=mask)
         if STR == 2:
-            tl.store(gx0_ptr + lane * STR + 1, lr * Gi - li * Gr, mask=mask)
+            tl.store(glam_ptr + lane * STR + 1, gli, mask=mask)
+        if HAS_X0:
+            # grad_x0 = conj(lam) * G_0 (G holds G at t=0 after the reverse sweep)
+            tl.store(gx0_ptr + lane * STR, lr * Gr + li * Gi, mask=mask)
+            if STR == 2:
+                tl.store(gx0_ptr + lane * STR + 1, lr * Gi - li * Gr, mask=mask)
 
 
 def _as_real(t: torch.Tensor) -> torch.Tensor:
