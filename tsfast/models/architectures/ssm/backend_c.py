@@ -14,8 +14,9 @@ and pybind11 buys nothing at a boundary that only passes pointers.
 
 Requires a host C++ toolchain (g++/clang); ``is_available`` verifies this by building a tiny
 probe once per process (disk-cached afterwards). The object targets the host CPU
-(``-march=native``/``-mcpu=native``), so a kernel cache shared between machines of different
-CPU generations must not be reused.
+(``-march=native``/``-mcpu=native``), which the cache key accounts for, so a cache directory
+shared between machines of different CPU generations yields one object per microarchitecture
+rather than a mismatch.
 
 Backward follows the split-BPTT design: the sequential state-adjoint recurrence runs in C++
 (reverse sweep re-using the hidden activations stored by the training forward), while the

@@ -8,7 +8,9 @@ than on any one model's module.
 
 ``is_available`` compiles a trivial probe once per process (disk-cached) to confirm the host
 can build the generated code; it is intentionally spec-free, so a model kernel that fails to
-compile for its own reasons does not make the toolchain look unavailable to the others.
+compile for its own reasons does not make the toolchain look unavailable to the others. The
+probe also reports the threading macros it was built with, which is what turns a wrong
+``-fopenmp`` decision into a warning rather than a silently single-threaded kernel.
 
 ``load_cabi`` builds a generated translation unit into a shared object and loads it with
 ``ctypes``. Kernels built through it must not include ``torch/extension.h``: that header
@@ -29,6 +31,7 @@ import ctypes
 import hashlib
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -106,29 +109,49 @@ static void batch_parallel(int64_t n, const F& f) {
 
 _AVAILABLE: bool | None = None
 
+# Apple clang rejects -march=native on arm64; -mcpu=native is its equivalent.
+_ARCH_FLAG = "-mcpu=native" if sys.platform == "darwin" else "-march=native"
+
+
+def _aten_parallel_backend() -> str:
+    """Which ``at::parallel_for`` implementation the generated kernels compile against.
+
+    Read from ``ATen/Config.h`` — the header the kernels themselves include — rather than from
+    ``torch.__config__.parallel_info()``, whose OpenMP banner reports only that torch was built
+    with OpenMP available and appears even when ATen's intra-op backend is the native thread
+    pool. Defining ``AT_PARALLEL_*`` on the command line cannot change the answer either:
+    Config.h defines both unconditionally and is included last, so the header always wins.
+
+    Returns:
+        ``"openmp"``, ``"native"``, or ``"unknown"`` when no readable Config.h was found.
+    """
+    from torch.utils.cpp_extension import include_paths
+
+    for p in include_paths():
+        cfg = Path(p) / "ATen" / "Config.h"
+        if not cfg.is_file():
+            continue
+        m = re.search(r"^\s*#define\s+AT_PARALLEL_OPENMP\s+(\d+)", cfg.read_text(), re.M)
+        if m is not None:
+            return "native" if m.group(1) == "0" else "openmp"
+    return "unknown"
+
 
 def _build_flags() -> tuple[list[str], list[str]]:
-    """Compile/link flags matched to the host toolchain and torch's intra-op backend.
+    """Compile/link flags matched to the host toolchain and ATen's intra-op backend.
 
-    On macOS the generated source parallelizes via Grand Central Dispatch (part of
-    libSystem, always available to Apple clang), so no threading flags are needed.
-    Elsewhere it uses ``at::parallel_for``, which is only parallel when the ``AT_PARALLEL_*``
-    macro matching the backend torch was built with is defined: with ``AT_PARALLEL_OPENMP``
-    its implementation is an inline OpenMP pragma (so the extension itself must be compiled
-    as OpenMP), while with ``AT_PARALLEL_NATIVE`` it calls torch's own thread pool and
-    needs no extra flags. Without either macro it silently degrades to a serial loop.
+    On macOS the generated source parallelizes via Grand Central Dispatch (part of libSystem,
+    always available to Apple clang), so no threading flags are needed. Elsewhere it uses
+    ``at::parallel_for``, whose OpenMP form is an inline pragma in ``ATen/Parallel.h``: unless
+    the extension is itself compiled with ``-fopenmp`` that pragma is ignored and the kernel
+    runs on one thread with no diagnostic. Against a native-thread-pool ATen the flag is inert,
+    so an undetermined backend takes it as well; ``is_available``'s probe reports the pairing
+    that was actually built.
     """
-    if sys.platform == "darwin":
-        # Apple clang rejects -march=native on arm64; -mcpu=native is its equivalent.
-        return ["-O3", "-mcpu=native", "-ffast-math"], []
-    cflags = ["-O3", "-march=native", "-ffast-math"]
-    ldflags: list[str] = []
-    if "OpenMP" in torch.__config__.parallel_info():
-        cflags += ["-DAT_PARALLEL_OPENMP=1", "-fopenmp"]
-        ldflags.append("-fopenmp")
-    else:
-        cflags.append("-DAT_PARALLEL_NATIVE=1")
-    return cflags, ldflags
+    cflags = ["-O3", _ARCH_FLAG, "-ffast-math"]
+    if sys.platform == "darwin" or _aten_parallel_backend() == "native":
+        return cflags, []
+    return [*cflags, "-fopenmp"], ["-fopenmp"]
 
 
 def _compiler() -> str | None:
@@ -160,21 +183,33 @@ def _cache_dir() -> Path:
     return d
 
 
-def _toolchain_id() -> str:
-    """Everything outside the source that changes the emitted object.
+def _target_id(cxx: str | None) -> str:
+    """Digest of the preprocessor macros the host-targeting flag resolves to.
 
-    ``-march=native`` hashes as itself, so it cannot separate two CPU generations sharing a
-    cache; ``platform.machine()`` only catches a change of architecture. A cache directory
-    still must not be shared between hosts of differing microarchitecture.
+    ``-E -dM`` on empty input is understood by both gcc and clang and reports the ISA feature
+    macros ``-march=native``/``-mcpu=native`` selected, along with the compiler's own version
+    macros. Hashing that instead of the literal flag — which reads identically on every host —
+    is what keeps two CPU generations sharing a cache directory from loading each other's
+    objects, whose SIGILL no ``except`` can catch. Falls back to the version string.
     """
+    if cxx is None:
+        return "no-compiler"
+    try:
+        r = subprocess.run([cxx, _ARCH_FLAG, "-E", "-dM", "-x", "c++", "-"], input="", capture_output=True, text=True)
+        if r.returncode == 0:
+            return hashlib.sha256(r.stdout.encode()).hexdigest()[:16]
+        return subprocess.run([cxx, "--version"], capture_output=True, text=True).stdout.splitlines()[0]
+    except (OSError, IndexError):
+        return str(cxx)
+
+
+def _toolchain_id() -> str:
+    """Everything outside the source that changes the emitted object."""
     global _TOOLCHAIN_ID
     if _TOOLCHAIN_ID is None:
         cxx = _compiler()
-        try:
-            ver = subprocess.run([cxx, "--version"], capture_output=True, text=True).stdout.splitlines()[0]
-        except (OSError, IndexError):
-            ver = str(cxx)
-        _TOOLCHAIN_ID = f"{cxx}|{ver}|{torch.__version__}|{platform.machine()}|{sys.platform}"
+        tgt = _target_id(cxx)
+        _TOOLCHAIN_ID = f"{cxx}|{tgt}|{torch.__version__}|{platform.machine()}|{sys.platform}"
     return _TOOLCHAIN_ID
 
 
@@ -185,9 +220,9 @@ def load_cabi(source: str, prefix: str) -> ctypes.CDLL:
     """Build a generated translation unit and load it with ``ctypes``.
 
     The object is keyed by a hash of the source, the flags it was built with, and the
-    toolchain identity, cached on disk under ``XDG_CACHE_HOME``, and memoised per process.
-    Because the build targets the host CPU, a cache directory must not be shared between
-    machines of different CPU generations.
+    toolchain identity — which resolves the host-targeting flag to the ISA it selected, so a
+    cache directory shared between machines of different CPU generations yields one object per
+    microarchitecture. Cached on disk under ``XDG_CACHE_HOME`` and memoised per process.
 
     Args:
         source: complete translation unit; entry points must be declared ``extern "C"``.
@@ -239,10 +274,23 @@ def _build(source: str, path: Path, cflags: list[str], ldflags: list[str]) -> No
         os.replace(so, path)
 
 
+# Reports what the toolchain actually produced rather than what was requested, so a threading
+# pairing the flags got wrong surfaces as a warning instead of as a kernel that silently runs
+# on one thread. at::get_num_threads keeps a real libtorch_cpu symbol in the probe, so a
+# broken rpath still fails here rather than in a model's first rollout.
 _PROBE_SRC = """\
 #include <ATen/Parallel.h>
 #include <cstdint>
-extern "C" int64_t tsfast_kernel_probe() { return at::get_num_threads(); }
+extern "C" int64_t tsfast_kernel_probe() {
+    int64_t f = at::get_num_threads() > 0 ? 4 : 0;
+#if AT_PARALLEL_OPENMP
+    f |= 1;
+#endif
+#ifdef _OPENMP
+    f |= 2;
+#endif
+    return f;
+}
 """
 
 
@@ -280,8 +328,15 @@ def _probe() -> bool:
     if _compiler() is None or not _load_inline_toolchain():
         return False
     try:
-        load_cabi(_PROBE_SRC, "tsfast_kernel_probe")
+        fn = load_cabi(_PROBE_SRC, "tsfast_kernel_probe").tsfast_kernel_probe
+        fn.argtypes, fn.restype = [], ctypes.c_int64
+        flags = fn()
     except Exception as e:
         warnings.warn(f"C backend disabled, probe build failed: {e}")
         return False
+    if flags & 1 and not flags & 2:
+        warnings.warn(
+            "ATen's intra-op backend is OpenMP but the generated kernels built without -fopenmp: "
+            "at::parallel_for will run them on a single thread"
+        )
     return True
