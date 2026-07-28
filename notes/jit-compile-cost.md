@@ -250,7 +250,8 @@ implementation work, and the swap needs care around the autograd boundary.
 
 Ordered by measured payoff per unit of work.
 
-1. **Replace `torch/extension.h` with a C ABI + `ctypes` in `kernel_c`** (§3.2). 21–44× on
+1. **Replace `torch/extension.h` with a C ABI + `ctypes` in `kernel_c`** (§3.2) — done for
+   `ssm` (§5); §9 carries it to the rest. 21–44× on
    every generated backend, bit-exact, no runtime cost, and it is a change to one shared
    toolkit plus the six generators' signature emission. Prefer the `<ATen/Parallel.h>` variant
    (0.39 s) over the raw-OpenMP one (0.19 s) to keep `at::parallel_for` semantics.
@@ -510,7 +511,84 @@ all 4 gates × `hidden ∈ {(), (8,), (8,6)}` — 24 signatures, all matching, n
 processes produced one object and no leftover temp directories); `restype` on `void` entry
 points; rpath resolution and the absence of a duplicate OpenMP runtime.
 
-## 9. Open questions
+## 9. Roadmap: retiring `load_inline` and the ninja dependency
+
+The goal is not dependency hygiene. Today a C backend needs **ninja and `Python.h`** on top of a
+compiler, because `load_inline` builds a pybind11 module; on any host missing either — slim
+containers, a system Python without `python3-dev` — every generated-C++ backend silently
+declines. After migration they need only a C++ compiler. The build-time savings of §6 come
+along, but the availability change is the larger prize.
+
+Ninja cannot simply be dropped first. `load_inline` calls `verify_ninja_availability()`
+unconditionally inside `_write_ninja_file_and_build_library`, confirmed by running it with ninja
+off `PATH` (**measured**):
+
+```
+with ninja:     load_inline: OK
+without ninja:  RuntimeError: Ninja is required to load C++ extensions
+```
+
+So the dependency comes out only after the last backend leaves `load_inline`.
+
+### Surface per backend
+
+| backend | `AT_DISPATCH` sites | optional tensors | `.size()` to hoist | notes |
+|---|---|---|---|---|
+| `diagonal_c` | 0 | 0 | **0** | already passes `M, L, N` and its flags explicitly; `using cf = c10::complex<float>` disappears with the tensors |
+| `narx` | 0 | 0 | 4 | conversion already prototyped and measured at 0.43 s (§6) |
+| `selective_c` | 0 | 0 | 6 | same shape as `ssm` |
+| `ren` | 2 | 0 | 11 | dtype dispatch; bodies already templated on `scalar_t` |
+| `phnn` | 2 | 4 | 4 | dtype dispatch, optional tensors, `double` scalar params |
+
+### Order, one commit each
+
+1. **`diagonal_c`** — least work of all (no sizes to hoist), and exercises the complex path.
+2. **`narx`** — the only remaining backend whose build cost recurs with spec count, and its 20×
+   is measured rather than projected.
+3. **`selective_c`** — mechanical.
+4. **`ren`** — first backend needing dtype dispatch. Either keep `AT_DISPATCH_FLOATING_TYPES`
+   and pass the scalar type in as a code (`<ATen/Dispatch.h>` costs 0.39 s), or emit both
+   `float`/`double` instantiations and select on an int flag. Neither touches the maths.
+5. **`phnn`** — same dispatch question plus NULL pointers for the optional tensors and
+   `c_double` for the scalar params.
+
+### The invariant every step must hold
+
+A C ABI cannot reject a wrong dtype, and the consequence is memory unsafety rather than a bad
+number: a dtype narrower than the kernel assumes makes it read past the end of the allocation
+(§8, defect 2). **Every migrated backend needs its own boundary validation before its first
+call**, on the pattern of `ssm`'s `_call` — dtype, device and contiguity, once per rollout, not
+per step. Costed at ~2 % on the `ssm` reference case. Screening in `supports()` is not
+sufficient: it does not see the parameters, and `backward` does not pass through it.
+
+Each step verifies with the full suite plus a cold-cache run of that backend's own test file,
+compared against the numbers in §6.
+
+### Cleanup once the last one lands
+
+- Delete the ninja and `Python.h` gate from `_probe`; `is_available` becomes a compiler check
+  plus the `load_cabi` probe.
+- Remove `cpp = ["ninja"]` from `pyproject.toml` entirely and drop `ninja` from `dev`.
+- Reword the 11 test skip reasons that read `"no C++ toolchain / ninja"`.
+- Delete the stale `~/.cache/torch_extensions` entries (96 MB on this host); nothing writes
+  there any more.
+
+### Risks carried through the migration
+
+- **Windows.** `load_inline` has a Windows branch (`.lib`, `/LIBPATH:`) that `load_cabi` lacks.
+  Currently moot — `_compiler()` looks for `c++`/`g++`, so the C backends are already
+  unavailable under MSVC — but the migration removes a latent path rather than a live one.
+- **macOS.** Lower risk than it looks: torch's own `_prepare_ldflags` uses the same
+  non-Windows branch for Linux and macOS (`-L{TORCH_LIB_PATH} -lc10 -ltorch_cpu
+  -Wl,-rpath,{TORCH_LIB_PATH}`), which `_torch_flags` already mirrors. Untested here — no macOS
+  host available — so it stays untested rather than verified.
+- The coupling to torch is thin and worth keeping that way: the built kernels import exactly
+  seven symbols — `at::get_num_threads`, `get_thread_num`, `init_num_threads`,
+  `in_parallel_region`, `internal::set_thread_num`, and `c10::ParallelGuard`'s constructor and
+  destructor. All ATen threading. If a future backend needs more than that, the cheap-header
+  premise should be re-measured rather than assumed.
+
+## 10. Open questions
 
 - What does the spec distribution look like in real use? Strategy B's viability depends on
   whether a small catalogue covers most models — currently unknown. The cached build counts in
@@ -527,7 +605,7 @@ points; rpath resolution and the absence of a duplicate OpenMP runtime.
 - What is the equivalent story for the triton backends? The 3.93 s per-process cost above
   suggests a separate, unrelated caching problem.
 
-## 6. Reproducing
+## 11. Reproducing
 
 ```bash
 # the 36x cold/warm gap
