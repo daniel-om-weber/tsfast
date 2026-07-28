@@ -133,8 +133,9 @@ the safer default; the macOS/GCD path is unaffected either way.
 
 Costs to weigh: hand-written `ctypes` signatures replace pybind's type checking, so argument
 count/order/dtype/contiguity become our invariant to hold rather than the binding layer's. A
-mismatch is a segfault, not a `TypeError`. Mitigation is to build the `argtypes` list from the
-same `spec` that generates the source, so both sides derive from one description.
+mismatch is a segfault, not a `TypeError`. Mitigation is to derive both the shapes and the
+`argtypes` list from the same `spec` that generates the source, so both sides come from one
+description — implemented in §12.3.
 
 ### 3.3 Batch several specs into one extension
 
@@ -194,7 +195,9 @@ paying for at all.
 `x86-64-v3` 2.967 ms, `x86-64-v2` 3.010 ms, baseline `x86-64` 2.939 ms. Within run-to-run
 noise. The current docstring's warning that a shared cache "must not be reused" across CPU
 generations is therefore a constraint we could simply drop by targeting a portable baseline —
-**which is what makes shipping prebuilt binaries feasible at all.**
+**which is what makes shipping prebuilt binaries feasible at all.** (The safety half of that
+constraint is closed independently in §12: the cache key now hashes the resolved target rather
+than the literal flag, so a shared cache separates microarchitectures instead of colliding.)
 
 **Is dim specialization load-bearing?** Partly. A hand-written generic kernel taking dims as
 runtime arguments — one compiled copy serving every spec, **0.19 s** to build, once, ever —
@@ -488,11 +491,6 @@ Also hardened: the cache key now folds in the compiler identity and version, `to
 
 ### Accepted, not fixed
 
-- **`-march=native` cannot be hashed.** It enters the key as the literal string, identical on
-  every host, so two CPU generations sharing `~/.cache` over NFS collide and the loser takes
-  SIGILL — which `_probe`'s `except Exception` cannot catch, so the process dies. Pre-existing
-  with `load_inline`, not a regression, and not fixable by hashing; §3.4 argues for dropping
-  `-march=native` anyway, which would also close this.
 - **`ctypes` releases the GIL where pybind11 held it.** Two Python threads can now enter
   `at::parallel_for` concurrently, each opening its own OpenMP team, so a multi-threaded
   inference server could oversubscribe. Correctness is unaffected (ATen's `in_parallel_region`
@@ -501,6 +499,8 @@ Also hardened: the cache key now folds in the compiler identity and version, `to
   unannotated instead of surfacing as the `RuntimeError("kernel build failed…")` the
   surrounding code implies, and `TemporaryDirectory` leaks a `tmpXXXX` inside the cache on
   SIGKILL.
+- **The kernel cache has no eviction.** Each distinct spec adds ~30 KB and nothing ever removes
+  it. Small next to the 96 MB `load_inline` left behind, but unbounded.
 
 ### Checked and clean
 
@@ -554,12 +554,13 @@ So the dependency comes out only after the last backend leaves `load_inline`.
 
 ### The invariant every step must hold
 
-A C ABI cannot reject a wrong dtype, and the consequence is memory unsafety rather than a bad
-number: a dtype narrower than the kernel assumes makes it read past the end of the allocation
+A C ABI cannot reject a wrong dtype or a short buffer, and the consequence is memory unsafety
+rather than a bad number: either makes the kernel read past the end of the allocation
 (§8, defect 2). **Every migrated backend needs its own boundary validation before its first
-call**, on the pattern of `ssm`'s `_call` — dtype, device and contiguity, once per rollout, not
-per step. Costed at ~2 % on the `ssm` reference case. Screening in `supports()` is not
-sufficient: it does not see the parameters, and `backward` does not pass through it.
+call**, on the pattern of `ssm`'s `_call` — dtype, device, contiguity and shape, plus pinned
+`argtypes`, once per rollout rather than per step (§12.3). Costed at ~2 % on the `ssm`
+reference case. Screening in `supports()` is not sufficient: it does not see the parameters,
+and `backward` does not pass through it.
 
 Each step verifies with the full suite plus a cold-cache run of that backend's own test file,
 compared against the numbers in §6.
@@ -593,8 +594,10 @@ compared against the numbers in §6.
 - What does the spec distribution look like in real use? Strategy B's viability depends on
   whether a small catalogue covers most models — currently unknown. The cached build counts in
   §6 are a test-suite artefact, not a usage measurement.
-- Is `supports()` a tight enough screen now that `ctypes` will not catch a bad tensor? Worth a
-  deliberate look at every path reaching `forward_train`/`backward` from outside the custom op.
+- Does the `-fopenmp` detection hold on a torch built `ATEN_THREADING=NATIVE`? §12.1's reading
+  of `ATen/Config.h` is exact by construction, but the failure it replaced was only reasoned,
+  not reproduced — no native-thread-pool build was available. The probe now reports the pairing
+  it actually built, so the first such host will say so rather than run silently serial.
 - Why is compile-time `n` ~3× slower than runtime `n` for `phnn`'s O(n³) term at n=16 (§7)? The
   over-unrolling explanation survives a code-size check but not a `-fno-unroll-loops` test.
   Worth resolving before anyone specializes that kernel — and worth checking whether the same
@@ -623,3 +626,123 @@ printf '#include <ATen/Parallel.h>\nint f(){return 0;}\n'   > /tmp/a.cpp
 time g++ $FLAGS $INC /tmp/h.cpp -o /tmp/h.so    # 8.42 s
 time g++ $FLAGS $INC /tmp/a.cpp -o /tmp/a.so    # 0.20 s
 ```
+
+## 12. Hardening pass: threading detection, cache identity, ABI boundary, activations
+
+A review of the shipped C-ABI backend against the assumptions this document records. Four
+changes landed; three separate hypotheses were tested and killed first, and they are recorded
+here because they are the ones a future reviewer will re-propose.
+
+### 12.1 The `-fopenmp` decision was inferred from a diagnostic string
+
+`_build_flags` chose the OpenMP branch on `"OpenMP" in torch.__config__.parallel_info()` and
+passed `-DAT_PARALLEL_OPENMP=1` / `-DAT_PARALLEL_NATIVE=1` to select ATen's threading
+implementation. Three measurements against this torch (2.12.1):
+
+- `ATen/Config.h` defines **both** macros unconditionally (`AT_PARALLEL_OPENMP 1`,
+  `AT_PARALLEL_NATIVE 0`) and is included last, so the command-line defines never took effect;
+  the mismatched one produced `warning: "AT_PARALLEL_NATIVE" redefined`. They were inert.
+- The load-bearing flag is `-fopenmp` alone. Building the same TU both ways and counting the
+  distinct threads that enter `at::parallel_for`: **24 with `-fopenmp`, 1 without** — a silent
+  24× loss with no error.
+- The matched substring is the OpenMP *availability* banner, not the `ATen parallel backend:`
+  line. A torch built `ATEN_THREADING=NATIVE` with OpenMP present still prints it
+  (**inferred** — no native-thread-pool build available to confirm).
+
+The backend is now read from `ATen/Config.h`, the header the kernels themselves compile
+against; the inert `-D` flags are gone. `-fopenmp` costs nothing against a native ATen — the
+generated source has no `omp` pragma of its own, so the flag only links libgomp
+(**inferred**) — which is why an unreadable Config.h takes it rather than risking the serial
+path. The probe closes the loop by reporting `AT_PARALLEL_OPENMP` and `_OPENMP` from the object
+that was actually built, so future drift warns instead of quietly costing 24× throughput.
+Verified in both directions: the matched build warns not at all, and a deliberately
+`-fopenmp`-less build emits the warning.
+
+### 12.2 `-march=native` is hashable after all
+
+§8 recorded "not fixable by hashing" among the accepted risks. It is fixable:
+`c++ -march=native -E -dM -x c++ -` dumps the ISA feature macros the flag resolved to, in
+**4 ms**, and works on gcc and clang alike. Measured digests (**measured**):
+
+```
+       -march=native -> 32748c72871fef13      (alderlake on this host)
+       -march=x86-64 -> 172d562dc2dcd62d
+    -march=x86-64-v2 -> 2959705d93be5c1f
+    -march=x86-64-v3 -> 5d73e981dc46234f
+-march=skylake-avx512 -> 25161c3aa979d698
+```
+
+Every target separates. `_toolchain_id` now folds that digest in place of the compiler version
+string (which the macro dump already contains), so a cache directory shared over NFS between
+two CPU generations no longer hands one host the other's instruction set — a failure whose
+SIGILL `_probe`'s `except Exception` cannot catch. Independent of whether §3.4's portable
+baseline is later adopted.
+
+### 12.3 The `ctypes` boundary now holds the invariant §9 demands
+
+§3.2 proposed deriving the `argtypes` list from the same spec that generates the source; that
+was not implemented, and `_call` checked dtype, device and contiguity but not size. Both are
+closed: `_call` validates every argument's shape against the spec alongside its layout, and
+pins `argtypes`/`restype` on first use. A wrong parameter shape is now
+`ValueError: ssm_fwd expects an argument of shape (16, 7), got (16, 6)`, and a marshalling list
+that has drifted from the generated signature is `TypeError: this function takes at least 11
+arguments (5 given)` rather than a read off the end of the stack. Still one pass per rollout.
+
+The same reasoning applies to the backends that reach their kernels through pybind: `supports`
+in `narx`, `ren`, `selective_c` and `diagonal_c` now screens contiguity, which
+`data_ptr<float>()` never checked either. Live callers already materialize their inputs
+(`scan.py` calls `.contiguous()` before dispatch), so this is defence in depth rather than a
+live fix — but `supports` reads like a guard and was not one.
+
+### 12.4 The macOS tanh polynomial is faster than libmvec on Linux too
+
+`_ACT_C_DARWIN` existed because macOS ships no vector libm. On glibc the generated kernels used
+`tanhf`/`expf`, which `-ffast-math` does route through libmvec (confirmed: the objects import
+`_ZGVdN8v_tanhf@GLIBC_2.35`). The polynomial still wins (**measured**, `forward_infer`,
+B=32 L=512, best of 5×300, both thread counts):
+
+| act | hidden | libm | polynomial | speedup |
+|---|---|---|---|---|
+| tanh | (16,) | 0.5576 ms | 0.4747 ms | **1.17×** |
+| tanh | (48,32) | 2.0582 ms | 1.6625 ms | **1.24×** |
+| tanh | (128,128) | 10.5942 ms | 8.8921 ms | **1.19×** |
+| sigmoid | (16,) | 0.6994 ms | 0.4972 ms | **1.41×** |
+| sigmoid | (48,32) | 1.7543 ms | 1.6863 ms | 1.04× |
+| sigmoid | (128,128) | 9.4200 ms | 9.0609 ms | 1.04× |
+
+(1 thread; at 24 threads the same ratios hold: tanh 1.11–1.21×, sigmoid 1.00–1.39×.)
+
+Activation is worth measuring because it is **36 %** of the reference spec's runtime (replacing
+tanh with the identity: 2.080 → 1.324 ms). Accuracy is unaffected: against eager with default
+init, polynomial and libm agree to 2.5e-07–4.8e-07 across tanh/sigmoid/relu × three widths,
+the same order as the pre-existing float32 disagreement; `relu` is bit-identical since it never
+called libm. The tables merged into one `_ACT_C`, which also removes a reproducibility wart —
+the same model no longer computes different numbers on macOS and Linux.
+
+Scope: one host (Alder Lake, AVX2, glibc 2.35, gcc). On an AVX-512 host libmvec's 16-wide form
+may close the gap; this has not been measured.
+
+> The gate sigmoid in the `gru`/`residual` update is still open-coded as `1/(1+expf(-s))` and
+> was left alone — it runs `n_state` times per step against the hidden widths, and it was not
+> part of what was measured here.
+
+### 12.5 Tested and killed
+
+Three plausible explanations that did not survive. None of them is worth re-proposing without
+new evidence.
+
+- **`-ffast-math` breaking non-finite semantics.** `-ffinite-math-only` licenses the compiler to
+  assume no NaN/Inf, so a diverging run might look healthy under the C backend. **Falsified:**
+  NaN counts and positions match eager exactly for tanh/relu/sigmoid, and Inf inputs agree with
+  eager to the last digit (both saturate through the activation).
+- **GEMV loop orientation.** The first layer's row-dot reduces over only `n_state + n_input`
+  elements, which vectorizes poorly. Rewritten as a transposed-weight AXPY (unit-stride, no
+  horizontal reduction): **1.13×**, 32.2 → 36.5 GFLOP/s. Real but not the limiter, and it would
+  cost a second weight layout.
+- **Per-step dependency chain.** `x → h0 → h1 → xn → x` serializes, so tiling several sequences
+  per task should fill the pipeline. **Falsified:** batch-tile 4 = 0.98×, tile 8 = 0.99×,
+  bit-identical output. The compiler already had the ILP it needed.
+
+The kernel runs at ~32 GFLOP/s on one core, about 25 % of this core's AVX2 FMA peak. The two
+obvious explanations for the remaining gap are both dead; anyone chasing it should start from a
+profile rather than from a structural hypothesis.
