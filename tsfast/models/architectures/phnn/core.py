@@ -283,7 +283,7 @@ class PHNN(nn.Module):
     def _rollout_compiled(self, u_future: torch.Tensor, x0: torch.Tensor) -> torch.Tensor:
         if self._compiled_step is None:
             # The bump covers per-batch-shape recompiles (e.g. the last, smaller
-            # batch of an epoch); graph size no longer depends on sequence length.
+            # batch of an epoch); graph size does not depend on sequence length.
             torch._dynamo.config.cache_size_limit = max(torch._dynamo.config.cache_size_limit, 64)
             self._compiled_step = torch.compile(self.core.step, dynamic=False)
         return self._rollout(u_future, x0, step=self._compiled_step)

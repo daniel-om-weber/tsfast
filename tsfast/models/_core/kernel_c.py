@@ -11,8 +11,7 @@ than on any one model's module.
 spec-free, so a model kernel that fails to compile for its own reasons does not make the
 toolchain look unavailable to the others.
 
-Names are kept underscore-prefixed and identical to their original definitions so the
-backends import them unchanged (only the module path moved).
+Names stay underscore-prefixed: they are a shared internal toolkit, not public API.
 """
 
 __all__ = [

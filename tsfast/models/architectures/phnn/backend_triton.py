@@ -17,9 +17,9 @@ activations, EMITS the per-stage output-layer/Hamiltonian adjoint seeds to globa
 memory, and keeps just the sequential ``bq`` chains needed for the ``bx`` carry and
 ``du``. All parameter gradients are then batched cuBLAS GEMMs over the ``[B*L*4, .]``
 flattened seeds on the host (``_param_grads``), following ``MATH.md`` (section 3).
-This removes the per-lane gradient tiles and their read-modify-write traffic from the
-kernel, which previously spilled catastrophically (4346 spill slots) and made ptxas
-intractable at ``hidden=128``.
+Keeping the per-lane gradient tiles and their read-modify-write traffic inside the kernel
+instead spills catastrophically (4346 spill slots) and makes ptxas intractable at
+``hidden=128``.
 """
 
 __all__ = [

@@ -139,7 +139,8 @@ class TestCertificates:
         torch.manual_seed(0)
         m = _perturb(_model(nu=nu, ny=ny, variant="lipschitz", gamma=gamma), "rescale", 3.0)
         empirical = _empirical_gain(m)
-        # Phase 4 gates on this ratio, so report it rather than only asserting on it.
+        # Print the ratio as well as asserting it: how tight the certificate is matters
+        # as much as that it holds.
         with capsys.disabled():
             print(f"\n  gamma={gamma} nu={nu} ny={ny}: empirical/certified = {empirical / gamma:.3f}")
         assert empirical <= gamma * (1 + 1e-6)

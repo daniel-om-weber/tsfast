@@ -128,7 +128,7 @@ def _sandwich_forward(e: ExplicitSandwich, h: Tensor, act: Callable) -> Tensor:
 def lbdn_forward(layers: tuple[ExplicitSandwich, ...], h: Tensor, act: Callable, gamma: float = 1.0) -> Tensor:
     """Evaluate an LBDN from its explicit realization alone.
 
-    Split out from :class:`LBDN` so a caller that builds the realization once — a rollout
+    Separate from :class:`LBDN` so a caller that builds the realization once — a rollout
     reusing it at every timestep — never pays for the Cayley transforms again, and so the
     evaluation depends on plain tensors rather than on module state.
 
