@@ -5,9 +5,9 @@ PHNN step is far more intricate — four component nets, a closed-form Hamiltoni
 state-gradient, and a 4-stage RK4 update — so this backend compiles ONE generic,
 scalar-templated kernel (``float`` and ``double``) with the dimensions passed at
 runtime. Being fp64-capable it is the ``torch.autograd.gradcheck`` vehicle; it is also
-the fast CPU path. The batch lanes run in parallel (ATen thread pool / OpenMP); each
-lane owns a private slice of the per-lane gradient buffers, summed to parameter
-gradients in Python (no locks, no races).
+the fast CPU path. The batch lanes run in parallel through the platform's batch-parallel
+driver from ``kernel_c``; each lane owns a private slice of the per-lane gradient buffers,
+summed to parameter gradients in Python (no locks, no races).
 
 The forward stores only the per-step input states (B×L×n); the backward recomputes
 each step's intra-step activations and runs the hand-derived reverse pass in
@@ -26,21 +26,30 @@ __all__ = [
 ]
 
 import hashlib
+import sys
 
 import torch
 
-from ..._core.kernel_c import _build_flags, is_available  # toolchain probe + flags shared
+from ..._core.kernel_c import (  # toolchain probe + flags shared
+    _BATCH_PARALLEL_ATEN,
+    _BATCH_PARALLEL_GCD,
+    _build_flags,
+    is_available,
+)
 from .common import PHNNSpec, spec_caps, split_params
 
 _EXTENSION = None
 
-_SRC = r"""
+_SRC_HEAD = r"""
 #include <torch/extension.h>
 #include <pybind11/stl.h>
 #include <ATen/Parallel.h>
+#include <algorithm>
 #include <vector>
 #include <cmath>
+"""
 
+_SRC_BODY = r"""
 constexpr int MAXH = 512;    // max hidden width
 constexpr int MAXHID = 4;    // max hidden layers (K-1)
 constexpr int MAXNN = 1152;  // max n_state*n_state (n_state <= 32) and other n-sized vectors
@@ -236,7 +245,7 @@ void fill_params(Params<S>& P,
 template <typename S>
 void fwd_impl(const Params<S>& P, const S* x0, const S* u, S* out, S* xstates, int64_t B, int64_t L) {
   const int n = P.n, nu = P.nu, ny = P.ny;
-  at::parallel_for(0, B, 1, [&](int64_t b0, int64_t b1) {
+  batch_parallel(B, [&](int64_t b0, int64_t b1) {
     // single-stage scratch reused across all steps
     std::vector<S> Hz((P.K - 1) * P.nh), Hgz((P.K - 1) * P.nh), Hgp((P.K - 1) * P.nh), draw(n);
     std::vector<S> Jz((P.K - 1) * P.nh), Rz((P.K - 1) * P.nh), Gz((P.K - 1) * P.nh);
@@ -274,7 +283,7 @@ void bwd_impl(const Params<S>& P, const S* u, const S* xstates, const S* grad_ou
               Grads<S>* lane, S* du, S* gx0, int64_t B, int64_t L, int64_t pf_stride,
               S* pf) {  // pf: [B, pf_stride] flat per-lane param grads (lane->pointers index into it)
   const int n = P.n, nu = P.nu, ny = P.ny, nh = P.nh, K = P.K;
-  at::parallel_for(0, B, 1, [&](int64_t b0, int64_t b1) {
+  batch_parallel(B, [&](int64_t b0, int64_t b1) {
     // 4-stage bundles
     int hlen = (K - 1) * nh;
     std::vector<S> Hz(4 * hlen), Hgz(4 * hlen), Hgp(4 * hlen), draw(4 * n);
@@ -427,16 +436,23 @@ void phnn_bwd(
 """
 
 
+def _gen_source() -> str:
+    """The kernel source with the platform's batch-parallel driver spliced in."""
+    driver = _BATCH_PARALLEL_GCD if sys.platform == "darwin" else _BATCH_PARALLEL_ATEN
+    return _SRC_HEAD + driver + _SRC_BODY
+
+
 def _get_extension():
     global _EXTENSION
     if _EXTENSION is None:
         from torch.utils.cpp_extension import load_inline
 
+        src = _gen_source()
         cflags, ldflags = _build_flags()
-        tag = hashlib.md5("".join((_SRC, *cflags, *ldflags)).encode(), usedforsecurity=False).hexdigest()[:10]
+        tag = hashlib.md5("".join((src, *cflags, *ldflags)).encode()).hexdigest()[:10]
         _EXTENSION = load_inline(
             name=f"tsfast_phnn_c_{tag}",
-            cpp_sources=_SRC,
+            cpp_sources=src,
             functions=["phnn_fwd", "phnn_bwd"],
             extra_cflags=cflags,
             extra_ldflags=ldflags,
