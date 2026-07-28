@@ -233,7 +233,7 @@ def _get_kernels(spec: R2DNSpec):
     mod = _KERNELS.get(spec)
     if mod is None:
         src = _gen_source(spec)
-        tag = hashlib.md5(src.encode()).hexdigest()[:10]
+        tag = hashlib.md5(src.encode(), usedforsecurity=False).hexdigest()[:10]
         cache_dir = Path(os.environ.get("XDG_CACHE_HOME", "~/.cache")).expanduser() / "tsfast" / "r2dn_triton"
         cache_dir.mkdir(parents=True, exist_ok=True)
         path = cache_dir / f"r2dn_{tag}.py"

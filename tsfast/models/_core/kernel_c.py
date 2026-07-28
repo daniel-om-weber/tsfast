@@ -227,7 +227,7 @@ def load_cabi(source: str, prefix: str) -> ctypes.CDLL:
     cflags, ldflags = _build_flags()
     inc, torch_ld = _torch_flags()
     key = "".join((source, *cflags, *ldflags, *inc, _toolchain_id()))
-    name = f"{prefix}_{hashlib.md5(key.encode()).hexdigest()[:10]}"
+    name = f"{prefix}_{hashlib.md5(key.encode(), usedforsecurity=False).hexdigest()[:10]}"
     lib = _LIBS.get(name)
     if lib is None:
         path = _cache_dir() / f"{name}.so"

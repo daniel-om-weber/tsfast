@@ -467,7 +467,7 @@ def _get_ext():
 
         src = _source()
         cflags, ldflags = _build_flags()
-        tag = hashlib.md5("".join((src, *cflags, *ldflags)).encode()).hexdigest()[:10]
+        tag = hashlib.md5("".join((src, *cflags, *ldflags)).encode(), usedforsecurity=False).hexdigest()[:10]
         _EXT = load_inline(
             name=f"tsfast_diag_c_{tag}",
             cpp_sources=src,

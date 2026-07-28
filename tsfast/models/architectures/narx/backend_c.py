@@ -219,7 +219,7 @@ def _get_extension(spec: NarxSpec):
 
         src = _gen_source(spec)
         cflags, ldflags = _build_flags()
-        tag = hashlib.md5("".join((src, *cflags, *ldflags)).encode()).hexdigest()[:10]
+        tag = hashlib.md5("".join((src, *cflags, *ldflags)).encode(), usedforsecurity=False).hexdigest()[:10]
         ext = load_inline(
             name=f"tsfast_narx_c_{tag}",
             cpp_sources=src,

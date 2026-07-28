@@ -129,7 +129,7 @@ def _get_extension():
 
         src = _source()
         cflags, ldflags = _build_flags()
-        tag = hashlib.md5("".join((src, *cflags, *ldflags)).encode()).hexdigest()[:10]
+        tag = hashlib.md5("".join((src, *cflags, *ldflags)).encode(), usedforsecurity=False).hexdigest()[:10]
         _EXTENSION = load_inline(
             name=f"tsfast_scan_selective_c_{tag}",
             cpp_sources=src,

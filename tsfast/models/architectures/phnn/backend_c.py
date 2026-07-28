@@ -433,7 +433,7 @@ def _get_extension():
         from torch.utils.cpp_extension import load_inline
 
         cflags, ldflags = _build_flags()
-        tag = hashlib.md5("".join((_SRC, *cflags, *ldflags)).encode()).hexdigest()[:10]
+        tag = hashlib.md5("".join((_SRC, *cflags, *ldflags)).encode(), usedforsecurity=False).hexdigest()[:10]
         _EXTENSION = load_inline(
             name=f"tsfast_phnn_c_{tag}",
             cpp_sources=_SRC,

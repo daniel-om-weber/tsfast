@@ -126,7 +126,7 @@ def _get_kernels(na: int):
     mod = _KERNELS.get(na)
     if mod is None:
         src = _gen_source(na)
-        tag = hashlib.md5(src.encode()).hexdigest()[:10]
+        tag = hashlib.md5(src.encode(), usedforsecurity=False).hexdigest()[:10]
         cache_dir = Path(os.environ.get("XDG_CACHE_HOME", "~/.cache")).expanduser() / "tsfast" / "allpole_triton"
         cache_dir.mkdir(parents=True, exist_ok=True)
         path = cache_dir / f"allpole_{tag}.py"
