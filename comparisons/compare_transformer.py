@@ -15,9 +15,9 @@ final ``ln_f``); the embeddings rename as ``encoder_wte -> encoder_wte_noRNN``
 (linear context path), ``encoder_wte_patch -> encoder_wte`` and
 ``rnn_patch -> RNN`` (recurrent-patching path), ``decoder_wte_init ->
 decoder_wte1``, ``decoder_wte_new -> decoder_wte2``, ``head_mean/head_logvar ->
-lm_head_mean/lm_head_logvar``. Sinusoidal positional-encoding buffers are
-deterministic and excluded from the transplant (they differ only in ``max_len``);
-the reference's ``encoder_wte2`` is unused by its forward and stays untouched.
+lm_head_mean/lm_head_logvar``. The sinusoidal positional-encoding tables differ
+only in ``max_len``, so they are copied row-wise rather than by name; the
+reference's ``encoder_wte2`` is unused by its forward and stays untouched.
 
 The data interface differs by design: the reference takes separate context,
 query, and initial-condition tensors, while tsfast reads one
@@ -92,12 +92,26 @@ def map_name(name: str) -> str:
 
 
 def transplant(model: TSTransformer, ref: torch.nn.Module):
-    """Copy tsfast parameters into the reference model; PE buffers stay deterministic."""
+    """Copy tsfast parameters into the reference model, positional-encoding tables included.
+
+    Both tables come from the same formula but are built at different ``max_len``, and torch's
+    elementwise kernels are not bitwise reproducible across chunkings: whether an element takes
+    the vectorized path or the scalar tail depends on the tensor's size and on the intra-op
+    thread count. Those one-ulp disagreements amplify through the recurrent patching path to
+    ~1e-10, past TOL. Sharing one table keeps this a comparison of the two architectures.
+    """
     state = {map_name(k): v for k, v in model.state_dict().items() if not k.endswith("wpe.pe")}
     missing, unexpected = ref.load_state_dict(state, strict=False)
     assert not unexpected, unexpected
     leftovers = [m for m in missing if not (m.endswith("wpe.pe") or m.startswith("encoder_wte2."))]
     assert not leftovers, leftovers
+    ours = dict(model.named_buffers())
+    with torch.no_grad():
+        for name, theirs in ref.named_buffers():
+            if name.endswith("wpe.pe"):
+                rows = ours[name].shape[0]
+                assert theirs.shape[0] >= rows, f"{name}: reference table shorter than ours"
+                theirs[:rows] = ours[name].to(theirs.dtype)
 
 
 def compare(ref_mod, label, n_u, n_y, m, n_in, n_query, d_model, n_heads, n_layers, d_rnn=16):
