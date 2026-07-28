@@ -29,14 +29,18 @@ utilities.
   (Truncated Backpropagation Through Time) support.
 - **Benchmark Datasets** — One-line access to Silverbox,
   Wiener-Hammerstein, Cascaded Tanks, and more via `identibench`.
-- **Time Series Models** — RNNs (DenseNet, Residual), TCNs, CRNNs
-  with layer normalization, and combined architectures.
+- **Time Series Models** — RNNs (DenseNet, Residual), TCNs, CRNNs,
+  transformers, NARX, state-space models (NeuralStateSpace, S5, LRU,
+  Mamba), dynoNet, port-Hamiltonian networks (PHNN), and
+  certified-by-construction REN/R2DN models, with fused Triton/C++
+  kernels for the recurrent architectures.
 - **Integrated Training** — `RNNLearner`, `TCNLearner`, `CRNNLearner`
   with custom losses (`nrmse`, `cut_loss`) and composable transforms.
 - **System Identification** — Simulation, N-step prediction, FranSys,
   and autoregressive models with `InferenceWrapper` for deployment.
 - **Physics-Informed NNs** — Embed governing equations into training
-  via `CollocationLoss`, `PhysicsLoss`, and `PIRNN`.
+  via `CollocationLoss`, `PhysicsLoss`, and `PIRNN`, or train
+  physics-only surrogates without measured data (DD-PINN, PINC).
 - **Hyperparameter Optimization** — Ray Tune integration via
   `HPOptimizer`.
 - **Deployment** — Model save/load, `InferenceWrapper` for

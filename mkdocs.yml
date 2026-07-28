@@ -103,6 +103,8 @@ nav:
     - FranSys: examples/notebooks/10_fransys.ipynb
     - Autoregressive Models: examples/notebooks/11_autoregressive.ipynb
     - Physics-Informed NNs: examples/notebooks/12_pinn.ipynb
+    - DD-PINN Surrogates: examples/notebooks/12a_ddpinn_surrogate.ipynb
+    - DD-PINN vs PIRNN: examples/notebooks/12b_ddpinn_vs_pirnn.ipynb
     - IdentiBench: examples/notebooks/13_identibench.ipynb
     - Seq-to-Scalar: examples/notebooks/14_seq_to_scalar.ipynb
     - Hyperparameter Optimization: examples/notebooks/15_hyperparameter_optimization.ipynb
@@ -131,6 +133,8 @@ nav:
       - Layers: api/models/layers.md
       - RNN: api/models/rnn.md
       - CNN / TCN: api/models/cnn.md
+      - DynoNet: api/models/dynonet.md
+      - REN / R2DN: api/models/ren.md
       - Scaling: api/models/scaling.md
       - State: api/models/state.md
       - CUDA Graphs: api/models/cudagraph.md
@@ -142,6 +146,8 @@ nav:
       - ONNX: api/inference/onnx.md
     - PINN:
       - PIRNN: api/pinn/pirnn.md
+      - DD-PINN: api/pinn/ddpinn.md
+      - PINC: api/pinn/pinc.md
       - Signal Generation: api/pinn/signals.md
       - Differentiation: api/pinn/differentiation.md
       - Auxiliary Losses: api/pinn/aux_losses.md
