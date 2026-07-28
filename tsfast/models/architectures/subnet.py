@@ -134,7 +134,7 @@ class SubnetSSM(nn.Module):
         if max(na, nb) > n_init:
             raise ValueError(f"encoder windows na={na}, nb={nb} cannot exceed n_init={n_init}")
         self.n_input, self.n_output, self.n_init = n_input, n_output, n_init
-        self.core = NeuralStateSpace(n_input, n_output, n_state, hidden_size, num_layers, act, backend)
+        self.core = NeuralStateSpace(n_input, n_output, n_state, hidden_size, num_layers, act, backend=backend)
         self.encoder = SubnetEncoder(n_input, n_output, n_state, na, nb, enc_hidden_size, enc_num_layers)
 
     @property
