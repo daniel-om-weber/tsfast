@@ -34,6 +34,29 @@ def _fused_conv(x, tail, weight, bias):
     return None if mod is None else mod.run(x, tail, weight, bias)
 
 
+def _causal_depthwise_silu(x, tail, weight, bias):
+    """Causal depthwise convolution + SiLU as ``d_conv`` shifted multiply-adds.
+
+    Written as shifts rather than as ``F.conv1d(..., groups=d_inner)`` because a grouped
+    convolution has no fused CPU path without oneDNN: it decomposes into one implicit-GEMM
+    call per channel, whose dispatch cost scales with ``batch * d_inner`` and dwarfs the few
+    multiply-adds a width-``d_conv`` depthwise kernel is. Staying channel-last also keeps the
+    two transposes around a ``[B, d_inner, L]`` convolution out of the layer.
+
+    Args:
+        x: input sequence ``[batch, seq, d_inner]``.
+        tail: carried causal left context ``[batch, d_inner, d_conv - 1]``.
+        weight: depthwise kernel ``[d_inner, 1, d_conv]``.
+        bias: per-channel bias ``[d_inner]``.
+    """
+    L, w = x.shape[1], weight[:, 0]
+    buf = torch.cat((tail.mT, x), dim=1)
+    y = bias + w[:, 0] * buf[:, :L]
+    for i in range(1, weight.shape[-1]):
+        y = y + w[:, i] * buf[:, i : i + L]
+    return F.silu(y)
+
+
 def _fused_ssm(draw, A, B_t, C_t, u, z, Dp, h0):
     """Dispatch the fused Mamba SSM kernel; None means run the generic scan path.
 
@@ -140,7 +163,10 @@ class MambaLayer(nn.Module):
                 h = _diagonal_recurrence_sequential(lam.flatten(-2), v.flatten(-2), h0)
             case unknown:
                 raise ValueError(f"unknown backend {unknown!r}, expected 'scan' or 'eager'")
-        y = (h.view(B_sz, L, self.d_inner, self.d_state) @ C_t.unsqueeze(-1)).squeeze(-1)
+        # multiply-reduce rather than a matmul against C_t[..., None]: the contraction is one
+        # dot product per (step, channel), which a batched GEMM turns into batch*seq BLAS calls
+        # on tiny [d_state] vectors — dispatch that costs far more than the reduction itself.
+        y = (h.view(B_sz, L, self.d_inner, self.d_state) * C_t.unsqueeze(-2)).sum(-1)
         return (y + self.D * x) * F.silu(z), h[..., -1, :]
 
     def forward(self, u: torch.Tensor, state: dict | None = None, return_state: bool = False):
@@ -170,8 +196,7 @@ class MambaLayer(nn.Module):
         # the carried tail replaces the zero left-padding of a cold-started causal convolution
         x_conv = _fused_conv(x, conv_tail, self.conv1d.weight, self.conv1d.bias) if self.backend == "scan" else None
         if x_conv is None:
-            x_buf = torch.cat((conv_tail, x.transpose(1, 2)), dim=-1)
-            x_conv = F.silu(F.conv1d(x_buf, self.conv1d.weight, self.conv1d.bias, groups=self.d_inner)).transpose(1, 2)
+            x_conv = _causal_depthwise_silu(x, conv_tail, self.conv1d.weight, self.conv1d.bias)
         y, h_last = self._ssm(x_conv, z, h0)
         out = self.out_proj(y)
         if not return_state:
