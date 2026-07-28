@@ -1,0 +1,67 @@
+{
+  "host": "2x RTX 4090, driver 595.84, Compute Mode Default, no MIG",
+  "workload": "RIANN GRU, num_layers=2, bs=64, win=9000, sub_seq_len=1800, cuda_graph=True",
+  "harness": "tsfast.training.profiling.measure_packing_curve, measure_seconds=30, warmup=10",
+  "note": "aggregate steps/s; baseline and MPS both on GPU 1, same session",
+  "gpu1_no_mps": {
+    "200": {
+      "1": 4.023,
+      "2": 3.955,
+      "4": 3.956
+    }
+  },
+  "gpu1_mps": {
+    "200": {
+      "1": 3.826,
+      "2": 6.195,
+      "4": 9.366,
+      "6": 11.53
+    },
+    "10": {
+      "1": 9.26,
+      "2": 18.13,
+      "4": 31.84
+    }
+  },
+  "gpu0_no_mps_crosscheck": {
+    "10": {
+      "1": 9.303,
+      "2": 17.8,
+      "4": 32.144
+    },
+    "200": {
+      "1": 3.957,
+      "2": 3.875,
+      "4": 3.873
+    }
+  },
+  "probe": {
+    "10": {
+      "footprint_gb": 0.95,
+      "context_gb": 0.48,
+      "busy": 0.25,
+      "power": 0.14,
+      "k": 7,
+      "k_mem": 22,
+      "k_compute": 7,
+      "k_compute_conservative": 4,
+      "measured_knee": 4
+    },
+    "200": {
+      "footprint_gb": 3.3,
+      "context_gb": 0.6,
+      "busy": 0.97,
+      "power": 0.35,
+      "k": 3,
+      "k_mem": 6,
+      "k_compute": 3,
+      "k_compute_conservative": 1,
+      "measured_knee": 1
+    }
+  },
+  "cuda_graph_under_mps": {
+    "hidden": 200,
+    "workers_graphed": "2/2",
+    "capture_failures": 0
+  }
+}
