@@ -23,10 +23,15 @@ import functools
 import warnings
 from collections.abc import Callable
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import Tensor
+
+if TYPE_CHECKING:
+    from ..tsdata.norm import NormPair
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -133,7 +138,7 @@ def cut_loss(fn: Callable, l_cut: int = 0, r_cut: int | None = None) -> Callable
     return _inner
 
 
-def norm_loss(fn: Callable, norm_stats, scaler_cls: type | None = None) -> Callable:
+def norm_loss(fn: Callable, norm_stats: "NormPair", scaler_cls: type | None = None) -> Callable:
     """Loss wrapper that normalizes predictions and targets before computing loss.
 
     Args:

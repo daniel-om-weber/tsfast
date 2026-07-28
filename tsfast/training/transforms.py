@@ -11,7 +11,7 @@ __all__ = [
 ]
 
 import random
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 import torch
 from torch import Tensor
@@ -104,7 +104,7 @@ class noise_grouped:
         p: probability of applying the augmentation
     """
 
-    def __init__(self, std_std, std_idx, p: float = 1.0):
+    def __init__(self, std_std: Sequence[float] | Tensor, std_idx: Sequence[int] | Tensor, p: float = 1.0):
         self.std_std = torch.as_tensor(std_std, dtype=torch.float)
         self.std_idx = torch.as_tensor(std_idx, dtype=torch.long)
         self.p = p

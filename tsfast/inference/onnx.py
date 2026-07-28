@@ -4,6 +4,7 @@ __all__ = ["export_onnx", "OnnxInferenceWrapper"]
 
 import copy
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -107,7 +108,7 @@ class OnnxInferenceWrapper:
         session_options: additional keyword arguments forwarded to onnxruntime.InferenceSession
     """
 
-    def __init__(self, path: str | Path, **session_options):
+    def __init__(self, path: str | Path, **session_options: Any):
         import onnxruntime as ort
 
         self.session = ort.InferenceSession(str(path), **session_options)

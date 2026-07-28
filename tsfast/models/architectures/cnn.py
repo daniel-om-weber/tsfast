@@ -12,6 +12,8 @@ __all__ = [
     "SeperateCRNN",
 ]
 
+from typing import Any
+
 import numpy as np
 import torch
 from torch import Tensor, nn
@@ -30,7 +32,7 @@ def Conv1D(
     activation: type[nn.Module] | None = Mish,
     wn: bool = True,
     bn: bool = False,
-    **kwargs,
+    **kwargs: Any,
 ) -> nn.Sequential:
     """Create a 1D convolutional block with optional activation and batch norm.
 
@@ -133,7 +135,7 @@ def CConv1D(
     activation: type[nn.Module] | None = Mish,
     wn: bool = True,
     bn: bool = False,
-    **kwargs,
+    **kwargs: Any,
 ) -> nn.Sequential:
     """Create a causal 1D convolutional block with optional weight norm and batch norm.
 
@@ -180,7 +182,7 @@ class TCN_Block(nn.Module):
         wn: bool = True,
         bn: bool = False,
         dropout: float = 0.0,
-        **kwargs,
+        **kwargs: Any,
     ):
         super().__init__()
 

@@ -9,9 +9,14 @@ __all__ = [
     "unwrap_model",
 ]
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 import torch
 from torch import nn
+
+if TYPE_CHECKING:
+    from ...tsdata.pipeline import DataLoaders
 
 
 class Scaler(nn.Module):
@@ -53,7 +58,7 @@ class StandardScaler(Scaler):
 
     _epsilon = 1e-16
 
-    def __init__(self, mean, std):
+    def __init__(self, mean: np.ndarray | torch.Tensor, std: np.ndarray | torch.Tensor):
         super().__init__()
         self.register_buffer("mean", _ensure_tensor(mean))
         self.register_buffer("std", _ensure_tensor(std) + self._epsilon)
@@ -84,7 +89,12 @@ class MinMaxScaler(Scaler):
 
     _epsilon = 1e-16
 
-    def __init__(self, min_val, max_val, feature_range: tuple[float, float] = (0.0, 1.0)):
+    def __init__(
+        self,
+        min_val: np.ndarray | torch.Tensor,
+        max_val: np.ndarray | torch.Tensor,
+        feature_range: tuple[float, float] = (0.0, 1.0),
+    ):
         super().__init__()
         self.feature_range = feature_range
         self.register_buffer("min_val", _ensure_tensor(min_val))
@@ -120,7 +130,7 @@ class MaxAbsScaler(Scaler):
 
     _epsilon = 1e-16
 
-    def __init__(self, min_val, max_val):
+    def __init__(self, min_val: np.ndarray | torch.Tensor, max_val: np.ndarray | torch.Tensor):
         super().__init__()
         self.register_buffer(
             "max_abs", torch.max(torch.abs(_ensure_tensor(min_val)), torch.abs(_ensure_tensor(max_val))) + self._epsilon
@@ -167,7 +177,7 @@ class ScaledModel(nn.Module):
     def from_dls(
         cls,
         model: nn.Module,
-        dls,
+        dls: "DataLoaders",
         input_norm: type[Scaler] | None = StandardScaler,
         output_norm: type[Scaler] | None = None,
         *,

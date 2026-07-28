@@ -8,6 +8,7 @@ from typing import NamedTuple
 import h5py
 import numpy as np
 import torch
+from torch.utils.data import DataLoader
 
 
 @dataclass(frozen=True)
@@ -40,7 +41,7 @@ class NormPair:
 class NormStats(NamedTuple):
     """Normalization statistics for input and output signals.
 
-    Args:
+    Attributes:
         u: normalization stats for input signals
         y: normalization stats for output signals
     """
@@ -106,7 +107,7 @@ def compute_stats_from_files(files: list, signals: list[str]) -> NormPair | None
     )
 
 
-def compute_stats(dl, n_batches: int = 10) -> tuple[NormPair, ...]:
+def compute_stats(dl: DataLoader, n_batches: int = 10) -> tuple[NormPair, ...]:
     """Estimate per-feature mean/std/min/max from training batches.
 
     Args:

@@ -32,6 +32,9 @@ __all__ = [
     "fused_rollout",
 ]
 
+from collections.abc import Callable
+from typing import Any
+
 import torch
 from torch import Tensor, nn
 
@@ -39,7 +42,7 @@ from ..._core.dispatch import get_backend, resolve
 from .common import _ACTS, _EPS, ExplicitREN, RENSpec, _lecun_normal_, cayley_contraction, parameter_cache_key
 
 
-def equilibrium_sweep(b: Tensor, d11: Tensor, act) -> Tensor:
+def equilibrium_sweep(b: Tensor, d11: Tensor, act: Callable[[Tensor], Tensor]) -> Tensor:
     """Solve ``w = act(w D11ᵀ + b)`` by forward substitution over the neurons.
 
     ``D11`` is strictly lower triangular by construction, so neuron ``i`` depends only on
@@ -508,7 +511,7 @@ class RENCore(nn.Module):
         **kwargs: forwarded to :class:`RENParameterization`.
     """
 
-    def __init__(self, spec: RENSpec, **kwargs):
+    def __init__(self, spec: RENSpec, **kwargs: Any):
         super().__init__()
         if spec.act not in _ACTS:
             raise ValueError(f"unknown activation {spec.act!r}, expected one of {sorted(_ACTS)}")
@@ -679,7 +682,7 @@ class REN(nn.Module):
     def gamma(self, value: float) -> None:
         self.core.parameterization.gamma = value
 
-    def forward(self, u: Tensor, x0: Tensor | None = None, state: dict | None = None):
+    def forward(self, u: Tensor, x0: Tensor | None = None, state: dict | None = None) -> Tensor | tuple[Tensor, dict]:
         """Roll the certified dynamics over the input sequence.
 
         Args:

@@ -9,7 +9,7 @@ __all__ = [
     "grad_norm",
 ]
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 
 import numpy as np
 import torch
@@ -131,7 +131,7 @@ def plot_grad_flow(named_parameters: Iterator) -> None:
     )
 
 
-def grad_norm(parameters) -> float:
+def grad_norm(parameters: Iterable[torch.nn.Parameter]) -> float:
     """Compute the total gradient norm across all parameters.
 
     Args:

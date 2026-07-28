@@ -12,8 +12,12 @@ __all__ = [
 import os
 import tempfile
 from contextlib import contextmanager
+from typing import TYPE_CHECKING
 
 import torch
+
+if TYPE_CHECKING:
+    from .training.learner import Learner
 
 try:
     import ray
@@ -24,7 +28,7 @@ except ImportError:
 
 
 @contextmanager
-def report_metrics(lrn, checkpoint_every: int | None = 1):
+def report_metrics(lrn: "Learner", checkpoint_every: int | None = 1):
     """Wrap a Learner's ``log_epoch`` to also report metrics and checkpoints to Ray Tune.
 
     The original ``log_epoch`` (progress bar, custom loggers, etc.) still runs;
@@ -160,7 +164,9 @@ def trial_resources(k: int, n_cpus: float = 1.0) -> dict:
     return {"cpu": n_cpus, "gpu": 1.0 / k}
 
 
-def apply_gpu_quota(share: float, context_bytes: int = 0, margin: float = 0.9, device=None) -> None:
+def apply_gpu_quota(
+    share: float, context_bytes: int = 0, margin: float = 0.9, device: int | str | torch.device | None = None
+) -> None:
     """Cap this process's CUDA caching allocator to its slice of the device (packing step 4: enforce).
 
     Call at the top of the trainable. Makes OOM deterministic: a config fails iff it

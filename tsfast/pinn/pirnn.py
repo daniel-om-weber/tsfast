@@ -8,8 +8,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from collections.abc import Callable
+from typing import Any
 
 from ..training import Learner, fun_rmse, prediction_concat, truncate_sequence
+from ..tsdata.pipeline import DataLoaders
 from ..models._core.layers import SeqLinear
 from ..models._core.scaling import ScaledModel, StandardScaler
 from ..models._core.state import discover_state_spec, unflatten_state
@@ -61,7 +63,7 @@ class PIRNN(nn.Module):
         default_encoder_mode: str = "sequence",
         p_state_encoder: float = 0.0,
         init_sz_range: tuple[int, int] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ):
         super().__init__()
         n_y_supervised = n_y_supervised if n_y_supervised is not None else n_y
@@ -253,7 +255,7 @@ class AuxiliaryOutputLoss:
 
 
 def PIRNNLearner(
-    dls,
+    dls: DataLoaders,
     init_sz: int,
     n_aux_outputs: int = 0,
     attach_output: bool = False,
@@ -273,7 +275,7 @@ def PIRNNLearner(
     rnn_layer: int = 1,
     device: torch.device | None = None,
     show_bar: bool = True,
-    **kwargs,
+    **kwargs: Any,
 ) -> Learner:
     """Create PIRNN learner with appropriate configuration.
 

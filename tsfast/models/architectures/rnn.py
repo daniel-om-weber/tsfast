@@ -12,6 +12,7 @@ __all__ = [
 ]
 
 import warnings
+from typing import Any
 
 import torch
 import torch.nn.functional as F
@@ -121,7 +122,7 @@ class RNN(nn.Module):
         rnn_type: str = "gru",
         ret_full_hidden: bool = False,
         normalization: str = "",
-        **kwargs,
+        **kwargs: Any,
     ):
         super().__init__()
         self.input_size = input_size
@@ -263,7 +264,7 @@ class SimpleRNN(nn.Module):
         hidden_size: int = 100,
         linear_layers: int = 0,
         return_state: bool = False,
-        **kwargs,
+        **kwargs: Any,
     ):
         super().__init__()
         self.return_state = return_state
@@ -287,7 +288,7 @@ class ResidualBlock_RNN(nn.Module):
         **kwargs: additional keyword arguments forwarded to ``RNN``.
     """
 
-    def __init__(self, input_size: int, hidden_size: int, **kwargs):
+    def __init__(self, input_size: int, hidden_size: int, **kwargs: Any):
         super().__init__()
         self.rnn1 = RNN(input_size, hidden_size, num_layers=1, **kwargs)
         self.rnn2 = RNN(hidden_size, hidden_size, num_layers=1, **kwargs)
@@ -312,7 +313,7 @@ class SimpleResidualRNN(nn.Sequential):
         **kwargs: additional keyword arguments forwarded to ``ResidualBlock_RNN``.
     """
 
-    def __init__(self, input_size: int, output_size: int, num_blocks: int = 1, hidden_size: int = 100, **kwargs):
+    def __init__(self, input_size: int, output_size: int, num_blocks: int = 1, hidden_size: int = 100, **kwargs: Any):
         super().__init__()
         for i in range(num_blocks):
             self.add_module(
@@ -331,7 +332,7 @@ class DenseLayer_RNN(nn.Module):
         **kwargs: additional keyword arguments forwarded to ``RNN``.
     """
 
-    def __init__(self, input_size: int, hidden_size: int, **kwargs):
+    def __init__(self, input_size: int, hidden_size: int, **kwargs: Any):
         super().__init__()
         self.rnn1 = RNN(input_size, hidden_size, num_layers=1, **kwargs)
         self.rnn2 = RNN(hidden_size, hidden_size, num_layers=1, **kwargs)
@@ -352,7 +353,7 @@ class DenseBlock_RNN(nn.Sequential):
         **kwargs: additional keyword arguments forwarded to ``DenseLayer_RNN``.
     """
 
-    def __init__(self, num_layers: int, num_input_features: int, growth_rate: int, **kwargs):
+    def __init__(self, num_layers: int, num_input_features: int, growth_rate: int, **kwargs: Any):
         super().__init__()
         for i in range(num_layers):
             self.add_module(
@@ -379,7 +380,7 @@ class DenseNet_RNN(nn.Sequential):
         growth_rate: int = 32,
         block_config: tuple = (3, 3),
         num_init_features: int = 32,
-        **kwargs,
+        **kwargs: Any,
     ):
         super().__init__()
         self.add_module("rnn0", Sequential_RNN(input_size, num_init_features, 1, **kwargs))
@@ -416,7 +417,7 @@ class SeperateRNN(nn.Module):
         num_layers: int = 1,
         hidden_size: int = 100,
         linear_layers: int = 1,
-        **kwargs,
+        **kwargs: Any,
     ):
         super().__init__()
         self.input_list = input_list

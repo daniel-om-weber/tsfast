@@ -15,6 +15,7 @@ from pathlib import Path
 
 import torch
 from torch import Tensor, nn
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from ..models._core.state import detach_state
@@ -277,7 +278,7 @@ class Learner:
 
     # ── epoch loop ────────────────────────────────────────────────────────
 
-    def train_one_epoch(self, pbar=None, epoch: int = 0, n_epoch: int = 1) -> float:
+    def train_one_epoch(self, pbar: tqdm | None = None, epoch: int = 0, n_epoch: int = 1) -> float:
         """Run one training epoch.
 
         Args:
@@ -310,7 +311,7 @@ class Learner:
 
     # ── validation ────────────────────────────────────────────────────────
 
-    def validate(self, dl=None, chunk_sz: int | None = None) -> tuple[float, dict[str, float]]:
+    def validate(self, dl: DataLoader | None = None, chunk_sz: int | None = None) -> tuple[float, dict[str, float]]:
         """Run validation and compute loss + metrics on concatenated predictions.
 
         Args:
@@ -430,7 +431,7 @@ class Learner:
 
     # ── predictions ───────────────────────────────────────────────────────
 
-    def get_preds(self, dl=None, with_inputs: bool = False, chunk_sz: int | None = None):
+    def get_preds(self, dl: DataLoader | None = None, with_inputs: bool = False, chunk_sz: int | None = None):
         """Batch-concatenated predictions and targets.
 
         Args:
@@ -603,7 +604,7 @@ class TbpttLearner(Learner):
             return float("nan")
         return sum(losses) / len(losses)
 
-    def get_preds(self, dl=None, with_inputs: bool = False, chunk_sz: int | None = None):
+    def get_preds(self, dl: DataLoader | None = None, with_inputs: bool = False, chunk_sz: int | None = None):
         """Defaults ``chunk_sz`` to ``sub_seq_len`` so validation reuses CUDA graph shapes."""
         if chunk_sz is None:
             chunk_sz = self.sub_seq_len

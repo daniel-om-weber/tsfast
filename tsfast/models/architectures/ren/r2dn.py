@@ -42,6 +42,7 @@ __all__ = [
 ]
 
 from dataclasses import dataclass, fields
+from typing import Any
 
 import torch
 from torch import Tensor, nn
@@ -574,7 +575,7 @@ class R2DNCore(nn.Module):
         **kwargs: forwarded to :class:`R2DNParameterization`.
     """
 
-    def __init__(self, spec: R2DNSpec, **kwargs):
+    def __init__(self, spec: R2DNSpec, **kwargs: Any):
         super().__init__()
         if spec.act not in _ACTS:
             raise ValueError(f"unknown activation {spec.act!r}, expected one of {sorted(_ACTS)}")
@@ -761,7 +762,7 @@ class R2DN(nn.Module):
     def gamma(self, value: float) -> None:
         self.core.parameterization.gamma = value
 
-    def forward(self, u: Tensor, x0: Tensor | None = None, state: dict | None = None):
+    def forward(self, u: Tensor, x0: Tensor | None = None, state: dict | None = None) -> Tensor | tuple[Tensor, dict]:
         """Roll the certified dynamics over the input sequence.
 
         Args:

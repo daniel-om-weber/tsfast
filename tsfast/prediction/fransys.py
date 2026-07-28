@@ -10,12 +10,14 @@ __all__ = [
 ]
 
 import random
+from collections.abc import Callable
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
 from ..training import Learner, fun_rmse, prediction_concat, truncate_sequence
+from ..tsdata.pipeline import DataLoaders
 from ..models.architectures.cnn import TCN
 from ..models._core.layers import AR_Model, SeqLinear
 from ..models._core.scaling import ScaledModel, StandardScaler
@@ -295,18 +297,18 @@ class FranSys(nn.Module):
 
 
 def FranSysLearner(
-    dls,
+    dls: DataLoaders,
     init_sz: int,
     attach_output: bool = False,
-    loss_func=nn.L1Loss(),
+    loss_func: Callable = nn.L1Loss(),
     metrics: list | None = None,
-    opt_func=torch.optim.Adam,
+    opt_func: Callable = torch.optim.Adam,
     lr: float = 3e-3,
     transforms: list | None = None,
     augmentations: list | None = None,
     aux_losses: list | None = None,
     grad_clip: float | None = None,
-    plot_fn=None,
+    plot_fn: Callable | None = None,
     input_norm: type | None = StandardScaler,
     output_norm: type | None = None,
     prognosis: nn.Module | None = None,

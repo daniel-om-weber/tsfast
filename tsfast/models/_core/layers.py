@@ -38,7 +38,7 @@ class SeqLinear(nn.Module):
         output_size: int,
         hidden_size: int = 100,
         hidden_layer: int = 1,
-        act=Mish,
+        act: type[nn.Module] = Mish,
         batch_first: bool = True,
     ):
         super().__init__()

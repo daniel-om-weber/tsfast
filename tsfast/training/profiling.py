@@ -14,10 +14,14 @@ import warnings
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
+
+if TYPE_CHECKING:
+    from .learner import Learner
 
 __all__ = [
     "DataProfiler",
@@ -147,7 +151,7 @@ class DataProfiler:
 
     @classmethod
     @contextmanager
-    def profile(cls, learner, stall_threshold: float = 0.005):
+    def profile(cls, learner: Learner, stall_threshold: float = 0.005):
         """Instrument a Learner's training loop to measure data vs step time.
 
         Args:
@@ -184,7 +188,7 @@ def benchmark_dataloaders(
     dls_factory: Callable,
     num_workers_list: list[int] | None = None,
     n_batches: int = 100,
-    **factory_kwargs,
+    **factory_kwargs: Any,
 ) -> dict[int, dict[str, float]]:
     """Benchmark data loading speed across different ``num_workers`` values.
 
@@ -380,7 +384,7 @@ def time_training_module(
     return _print_device_table("Training Step Timing", run, devices)
 
 
-def time_training_learner(learner, n_batches: int = 20, n_warmup: int = 3) -> dict[str, float]:
+def time_training_learner(learner: Learner, n_batches: int = 20, n_warmup: int = 3) -> dict[str, float]:
     """Measure real training-loop speed and extrapolate epoch time.
 
     Runs the learner's actual training loop — dataloader, transforms,
@@ -676,7 +680,7 @@ def probe_gpu_saturation(
     n_steps_busy: int = 50,
     warmup: int = 10,
     busy_subset: int = 3,
-    device=None,
+    device: int | str | torch.device | None = None,
 ) -> SaturationProbe:
     """Measure memory footprint and GPU saturation of a workload's config distribution (packing step 1: measure).
 
@@ -953,7 +957,7 @@ def measure_packing_curve(
     ks: tuple[int, ...] = (1, 2, 4),
     warmup: int = 10,
     measure_seconds: float = 30.0,
-    device=None,
+    device: int | str | torch.device | None = None,
 ) -> PackingCurve:
     """Measure ground-truth aggregate throughput of k co-located training processes (packing step 3: verify).
 

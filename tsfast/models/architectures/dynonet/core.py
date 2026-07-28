@@ -189,7 +189,9 @@ class LinearDynamicalOperator(nn.Module):
         shift = torch.eye(self.na, dtype=a.dtype, device=a.device)[:-1].expand(self.n_pairs, self.na - 1, self.na)
         return torch.cat((-a.unsqueeze(1), shift), dim=1)
 
-    def forward(self, u: torch.Tensor, state: dict | None = None, return_state: bool = False):
+    def forward(
+        self, u: torch.Tensor, state: dict | None = None, return_state: bool = False
+    ) -> torch.Tensor | tuple[torch.Tensor, dict]:
         """Filter the input sequence through all channel pairs and sum over inputs.
 
         Args:
@@ -314,7 +316,7 @@ class DynoNet(nn.Module):
             if isinstance(m, LinearDynamicalOperator):
                 m.backend = value
 
-    def forward(self, u: torch.Tensor, state: dict | None = None):
+    def forward(self, u: torch.Tensor, state: dict | None = None) -> torch.Tensor | tuple[torch.Tensor, dict]:
         """Run the block interconnection over the input sequence.
 
         Args:

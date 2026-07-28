@@ -5,11 +5,16 @@ __all__ = ["InferenceWrapper", "load_model"]
 import warnings
 from pathlib import Path
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 import torch
 
 from ..models._core.scaling import ScaledModel, unwrap_model
 from ..training.transforms import prediction_concat
+
+if TYPE_CHECKING:
+    from ..training.learner import Learner
 
 
 def _find_prediction_concat(learner):
@@ -63,7 +68,7 @@ class InferenceWrapper:
 
     def __init__(
         self,
-        learner,
+        learner: "Learner",
         device: str | torch.device = "cpu",
         max_seq_len: int | None = None,
     ):
