@@ -2,16 +2,20 @@
 
 The per-step Python dispatch of the naive rollout dominates its runtime on CPU. This backend
 generates a C++ rollout specialized to the layer spec (dims baked as compile-time constants so
-the tiny GEMVs fully unroll and vectorize), compiles it once per spec via
-``torch.utils.cpp_extension.load_inline``, and parallelizes over the batch: with ATen's
-intra-op thread pool (``at::parallel_for``) where the toolchain matches torch's threading
-backend, and with Grand Central Dispatch on macOS, which ships with the OS and frees the
-user from providing an OpenMP runtime for Apple clang.
+the tiny GEMVs fully unroll and vectorize), builds it once per spec through ``load_cabi``, and
+parallelizes over the batch: with ATen's intra-op thread pool (``at::parallel_for``) where the
+toolchain matches torch's threading backend, and with Grand Central Dispatch on macOS, which
+ships with the OS and frees the user from providing an OpenMP runtime for Apple clang.
 
-Requires a host C++ toolchain (g++/clang) and ninja; ``is_available`` verifies this by
-building a tiny probe extension once per process (disk-cached afterwards). The compiled
-extension targets the host CPU (``-march=native``/``-mcpu=native``), so a torch-extensions
-cache shared between machines of different CPU generations must not be reused.
+The entry points are plain ``extern "C"`` functions over ``float*`` and the two sizes, called
+through ``ctypes``. Keeping ``torch/extension.h`` out of the translation unit is what makes the
+per-spec build cheap: that header costs some forty times what a kernel body costs to compile,
+and pybind11 buys nothing at a boundary that only passes pointers.
+
+Requires a host C++ toolchain (g++/clang); ``is_available`` verifies this by building a tiny
+probe once per process (disk-cached afterwards). The object targets the host CPU
+(``-march=native``/``-mcpu=native``), so a kernel cache shared between machines of different
+CPU generations must not be reused.
 
 Backward follows the split-BPTT design: the sequential state-adjoint recurrence runs in C++
 (reverse sweep re-using the hidden activations stored by the training forward), while the
@@ -28,7 +32,7 @@ __all__ = [
     "is_available",
 ]
 
-import hashlib
+import ctypes
 import sys
 
 import torch
@@ -39,8 +43,8 @@ from ..._core.kernel_c import (
     _BATCH_PARALLEL_ATEN,
     _BATCH_PARALLEL_GCD,
     _FAST_TANH_C,
-    _build_flags,
     is_available,
+    load_cabi,
 )
 from .core import SSMSpec, rollout_unsupported, saved_widths
 
@@ -65,16 +69,16 @@ def _gen_source(spec: SSMSpec) -> str:
     gv = "cv" if residual else "dv"
     gv_init = "xn[i]" if residual else "xn[i] - x[i]"
     scale = "EPS * " if residual else ""
-    a_arg = ", torch::Tensor aleak" if leaky else ""
-    gl_arg = ", torch::Tensor gl" if leaky else ""
+    a_arg = ", const float* ap" if leaky else ""
+    gl_arg = ", float* glp" if leaky else ""
     n_out_last = dims[k]
     darwin = sys.platform == "darwin"
     act, dact = (_ACT_C_DARWIN if darwin else _ACT_C)[spec.act]
     lines: list[str] = [
-        "#include <torch/extension.h>",
         "#include <ATen/Parallel.h>",
         "#include <algorithm>",
         "#include <cmath>",
+        "#include <cstdint>",
         "",
         _BATCH_PARALLEL_GCD if darwin else _BATCH_PARALLEL_ATEN,
     ]
@@ -90,28 +94,12 @@ def _gen_source(spec: SSMSpec) -> str:
     # ---------------------------------------------------------------- forward
     # The gated forward stores the candidate offset d = c - x and the gate pre-activation s
     # alongside the hidden activations; the reverse sweep needs no other per-step state.
-    gate_store = (", torch::Tensor gd" + ("" if leaky else ", torch::Tensor gs")) if gated else ""
-    z_args = "".join(f", torch::Tensor z{i}" for i in range(k - 1)) + gate_store
-    w_args = "".join(f", torch::Tensor w{i}, torch::Tensor c{i}" for i in range(k))
+    gate_store = (", float* gdp" + ("" if leaky else ", float* gsp")) if gated else ""
+    z_args = "".join(f", float* z{i}p" for i in range(k - 1)) + gate_store
+    w_args = "".join(f", const float* w{i}p, const float* c{i}p" for i in range(k))
     lines += [
-        f"void ssm_fwd(torch::Tensor u, torch::Tensor x0{a_arg}{w_args}, torch::Tensor out{z_args}, bool store_z) {{",
-        "    const int64_t B = u.size(0), L = u.size(1);",
-        "    const float* up = u.data_ptr<float>();",
-        "    const float* x0p = x0.data_ptr<float>();",
-        "    float* outp = out.data_ptr<float>();",
-    ]
-    for i in range(k):
-        lines.append(f"    const float* w{i}p = w{i}.data_ptr<float>();")
-        lines.append(f"    const float* c{i}p = c{i}.data_ptr<float>();")
-    for i in range(k - 1):
-        lines.append(f"    float* z{i}p = z{i}.data_ptr<float>();")
-    if gated:
-        lines.append("    float* gdp = gd.data_ptr<float>();")
-    if leaky:
-        lines.append("    const float* ap = aleak.data_ptr<float>();")
-    elif gated:
-        lines.append("    float* gsp = gs.data_ptr<float>();")
-    lines += [
+        f'extern "C" void ssm_fwd(int64_t B, int64_t L, const float* up, const float* x0p{a_arg}{w_args}, '
+        f"float* outp{z_args}, bool store_z) {{",
         "    batch_parallel(B, [&](int64_t b_begin, int64_t b_end) {",
         "    for (int64_t b = b_begin; b < b_end; ++b) {",
         "        float x[NX];",
@@ -185,30 +173,13 @@ def _gen_source(spec: SSMSpec) -> str:
     # Reverse state-adjoint sweep. wt{i} are the transposed weights [n_in, n_out] so the
     # per-row reductions read contiguous memory. Emits gy (total per-step output adjoint),
     # ga{i} (hidden pre-activation adjoints) and gx0 (= final carry) for the GEMM stage.
-    zb_args = "".join(f", torch::Tensor z{i}" for i in range(k - 1)) + gate_store
-    wt_args = "".join(f", torch::Tensor wt{i}" for i in range(k))
-    ga_args = "".join(f", torch::Tensor ga{i}" for i in range(k - 1))
+    gate_read = (", const float* gdp" + ("" if leaky else ", const float* gsp")) if gated else ""
+    zb_args = "".join(f", const float* z{i}p" for i in range(k - 1)) + gate_read
+    wt_args = "".join(f", const float* wt{i}p" for i in range(k))
+    ga_args = "".join(f", float* ga{i}p" for i in range(k - 1))
     lines += [
-        f"void ssm_bwd(torch::Tensor gout{a_arg}{zb_args}{wt_args}, torch::Tensor gy{ga_args}, "
-        f"torch::Tensor gx0{gl_arg}) {{",
-        "    const int64_t B = gout.size(0), L = gout.size(1);",
-        "    const float* goutp = gout.data_ptr<float>();",
-        "    float* gyp = gy.data_ptr<float>();",
-        "    float* gx0p = gx0.data_ptr<float>();",
-    ]
-    for i in range(k - 1):
-        lines.append(f"    const float* z{i}p = z{i}.data_ptr<float>();")
-        lines.append(f"    float* ga{i}p = ga{i}.data_ptr<float>();")
-    if gated:
-        lines.append("    const float* gdp = gd.data_ptr<float>();")
-    if leaky:
-        lines.append("    const float* ap = aleak.data_ptr<float>();")
-        lines.append("    float* glp = gl.data_ptr<float>();")
-    elif gated:
-        lines.append("    const float* gsp = gs.data_ptr<float>();")
-    for i in range(k):
-        lines.append(f"    const float* wt{i}p = wt{i}.data_ptr<float>();")
-    lines += [
+        f'extern "C" void ssm_bwd(int64_t B, int64_t L, const float* goutp{a_arg}{zb_args}{wt_args}, '
+        f"float* gyp{ga_args}, float* gx0p{gl_arg}) {{",
         "    batch_parallel(B, [&](int64_t b_begin, int64_t b_end) {",
         "    for (int64_t b = b_begin; b < b_end; ++b) {",
         "        float carry[NX] = {0.0f};",
@@ -285,20 +256,27 @@ def _gen_source(spec: SSMSpec) -> str:
 def _get_extension(spec: SSMSpec):
     ext = _EXTENSIONS.get(spec)
     if ext is None:
-        from torch.utils.cpp_extension import load_inline
-
-        src = _gen_source(spec)
-        cflags, ldflags = _build_flags()
-        tag = hashlib.md5("".join((src, *cflags, *ldflags)).encode()).hexdigest()[:10]
-        ext = load_inline(
-            name=f"tsfast_ssm_c_{tag}",
-            cpp_sources=src,
-            functions=["ssm_fwd", "ssm_bwd"],
-            extra_cflags=cflags,
-            extra_ldflags=ldflags,
-        )
+        ext = load_cabi(_gen_source(spec), "tsfast_ssm_c")
         _EXTENSIONS[spec] = ext
     return ext
+
+
+def _call(fn, B: int, L: int, tensors: list[torch.Tensor], *tail) -> None:
+    """Invoke a generated entry point on the tensors' raw storage.
+
+    The kernels index every argument as contiguous float32, and a C ABI has no way to notice
+    otherwise: a narrower dtype makes the kernel read past the end of the allocation. So the
+    layout is checked here rather than trusted from the callers — ``supports`` screens the
+    rollout inputs but not the parameters, and ``backward`` does not pass through it at all.
+    The check is per rollout, not per step.
+    """
+    for t in tensors:
+        if t.dtype is not torch.float32 or t.device.type != "cpu" or not t.is_contiguous():
+            raise TypeError(
+                "the C backend requires contiguous float32 CPU tensors, got "
+                f"{t.dtype} on {t.device}{'' if t.is_contiguous() else ' (non-contiguous)'}"
+            )
+    fn(ctypes.c_int64(B), ctypes.c_int64(L), *(ctypes.c_void_p(t.data_ptr()) for t in tensors), *tail)
 
 
 def _run_fwd(ext, spec: SSMSpec, u, x0, params, store_z, leak=None):
@@ -307,7 +285,7 @@ def _run_fwd(ext, spec: SSMSpec, u, x0, params, store_z, leak=None):
     zs = [torch.empty(B, L, w, dtype=torch.float32) for w in saved_widths(spec)]
     wb = [t.detach().contiguous() for t in params]
     a = [leak.detach().contiguous()] if spec.gate == "leak" else []
-    ext.ssm_fwd(u, x0, *a, *wb, out, *zs, store_z)
+    _call(ext.ssm_fwd, B, L, [u, x0, *a, *wb, out, *zs], ctypes.c_bool(store_z))
     return out, zs
 
 
@@ -354,5 +332,5 @@ def backward(
     a = [leak.detach().contiguous()] if leaky else []
     # per-batch partials; the batch axis of dL/da reduces on the host
     gl = [torch.empty(B, spec.n_state, dtype=torch.float32)] if leaky else []
-    ext.ssm_bwd(grad_out, *a, *zs, *wts, gy, *gas, gx0, *gl)
+    _call(ext.ssm_bwd, B, L, [grad_out, *a, *zs, *wts, gy, *gas, gx0, *gl])
     return gy, gas, gx0, (gl[0].sum(0) if leaky else None)

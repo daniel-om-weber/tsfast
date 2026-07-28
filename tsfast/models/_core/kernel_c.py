@@ -6,21 +6,36 @@ C++ backend (NeuralStateSpace, NARX, port-Hamiltonian, and the diagonal/selectiv
 backends). They live here so those backends depend on a shared kernel toolkit rather
 than on any one model's module.
 
-``is_available`` compiles a trivial probe extension once per process (disk-cached by
-``load_inline``) to confirm the host can build the generated code; it is intentionally
-spec-free, so a model kernel that fails to compile for its own reasons does not make the
-toolchain look unavailable to the others.
+``is_available`` compiles a trivial probe once per process (disk-cached) to confirm the host
+can build the generated code; it is intentionally spec-free, so a model kernel that fails to
+compile for its own reasons does not make the toolchain look unavailable to the others.
+
+``load_cabi`` builds a generated translation unit into a shared object and loads it with
+``ctypes``. Kernels built through it must not include ``torch/extension.h``: that header
+carries the whole torch C++ frontend and pybind11, and parsing it costs some forty times what
+a kernel body costs to compile. The kernels exchange nothing but float pointers and sizes, so
+they need none of it — ``ATen/Parallel.h`` alone keeps ``at::parallel_for``, and with it
+``torch.set_num_threads``, governing the batch split.
 
 Names stay underscore-prefixed: they are a shared internal toolkit, not public API.
 """
 
 __all__ = [
     "is_available",
+    "load_cabi",
 ]
 
+import ctypes
+import hashlib
+import os
+import platform
 import shutil
+import subprocess
 import sys
+import sysconfig
+import tempfile
 import warnings
+from pathlib import Path
 
 import torch
 
@@ -116,11 +131,126 @@ def _build_flags() -> tuple[list[str], list[str]]:
     return cflags, ldflags
 
 
-def is_available() -> bool:
-    """True if the host toolchain can build a generated extension.
+def _compiler() -> str | None:
+    return shutil.which("c++") or shutil.which("g++")
 
-    Verified by compiling a trivial spec-free probe on first call (a few seconds, then
-    disk-cached by ``load_inline``); the result is cached for the process.
+
+def _torch_flags() -> tuple[list[str], list[str]]:
+    """Include and link flags for the ATen threading header the generated kernels use.
+
+    ``at::parallel_for`` resolves to real symbols in ``libtorch_cpu`` even where its OpenMP
+    form is an inline pragma, so the object has to link and carry an rpath: nothing guarantees
+    torch's own libraries were loaded with their symbols made globally visible.
+    """
+    from torch.utils.cpp_extension import include_paths
+
+    libdir = str(Path(torch.__file__).parent / "lib")
+    return (
+        [f"-I{p}" for p in include_paths()],
+        [f"-L{libdir}", "-ltorch_cpu", "-lc10", f"-Wl,-rpath,{libdir}"],
+    )
+
+
+_LIBS: dict[str, ctypes.CDLL] = {}
+
+
+def _cache_dir() -> Path:
+    d = Path(os.environ.get("XDG_CACHE_HOME", "~/.cache")).expanduser() / "tsfast" / "kernel_c"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _toolchain_id() -> str:
+    """Everything outside the source that changes the emitted object.
+
+    ``-march=native`` hashes as itself, so it cannot separate two CPU generations sharing a
+    cache; ``platform.machine()`` only catches a change of architecture. A cache directory
+    still must not be shared between hosts of differing microarchitecture.
+    """
+    global _TOOLCHAIN_ID
+    if _TOOLCHAIN_ID is None:
+        cxx = _compiler()
+        try:
+            ver = subprocess.run([cxx, "--version"], capture_output=True, text=True).stdout.splitlines()[0]
+        except (OSError, IndexError):
+            ver = str(cxx)
+        _TOOLCHAIN_ID = f"{cxx}|{ver}|{torch.__version__}|{platform.machine()}|{sys.platform}"
+    return _TOOLCHAIN_ID
+
+
+_TOOLCHAIN_ID: str | None = None
+
+
+def load_cabi(source: str, prefix: str) -> ctypes.CDLL:
+    """Build a generated translation unit and load it with ``ctypes``.
+
+    The object is keyed by a hash of the source, the flags it was built with, and the
+    toolchain identity, cached on disk under ``XDG_CACHE_HOME``, and memoised per process.
+    Because the build targets the host CPU, a cache directory must not be shared between
+    machines of different CPU generations.
+
+    Args:
+        source: complete translation unit; entry points must be declared ``extern "C"``.
+        prefix: readable stem for the cached object, with the source hash appended.
+    """
+    cflags, ldflags = _build_flags()
+    inc, torch_ld = _torch_flags()
+    key = "".join((source, *cflags, *ldflags, *inc, _toolchain_id()))
+    name = f"{prefix}_{hashlib.md5(key.encode()).hexdigest()[:10]}"
+    lib = _LIBS.get(name)
+    if lib is None:
+        path = _cache_dir() / f"{name}.so"
+        if not path.exists():
+            _build(source, path, [*cflags, *inc], [*ldflags, *torch_ld])
+        try:
+            lib = ctypes.CDLL(str(path))
+        except OSError:
+            # A truncated object (interrupted write, partially copied cache) would otherwise
+            # fail for every future process; drop it and build once more.
+            path.unlink(missing_ok=True)
+            _build(source, path, [*cflags, *inc], [*ldflags, *torch_ld])
+            lib = ctypes.CDLL(str(path))
+        _LIBS[name] = lib
+    return lib
+
+
+def _build(source: str, path: Path, cflags: list[str], ldflags: list[str]) -> None:
+    cxx = _compiler()
+    if cxx is None:
+        raise RuntimeError("no host C++ compiler (c++/g++) on PATH")
+    # Built into a scratch directory and moved into place, so concurrent builders racing on
+    # the same spec cannot expose a half-written object to a third process's CDLL.
+    with tempfile.TemporaryDirectory(dir=path.parent) as tmp:
+        src, o, so = Path(tmp) / "kernel.cpp", Path(tmp) / "kernel.o", Path(tmp) / "kernel.so"
+        src.write_text(source)
+        # Compile and link are separate steps because ``-ffast-math`` must not reach the link
+        # line: there it pulls in crtfastmath.o, whose ELF constructor sets FTZ/DAZ in MXCSR
+        # when the object is dlopened. That would silently flush denormals to zero for every
+        # subsequent torch operation in the process, not just for this kernel.
+        for cmd in (
+            [cxx, *cflags, "-std=c++17", "-fPIC", "-c", str(src), "-o", str(o)],
+            [cxx, "-shared", str(o), "-o", str(so), *ldflags],
+        ):
+            r = subprocess.run(cmd, capture_output=True, text=True)
+            if r.returncode != 0:
+                raise RuntimeError(f"kernel build failed:\n{' '.join(cmd)}\n{r.stderr}")
+        with open(so, "rb") as f:
+            os.fsync(f.fileno())  # the rename is atomic; the contents behind it must be durable
+        os.replace(so, path)
+
+
+_PROBE_SRC = """\
+#include <ATen/Parallel.h>
+#include <cstdint>
+extern "C" int64_t tsfast_kernel_probe() { return at::get_num_threads(); }
+"""
+
+
+def is_available() -> bool:
+    """True if the host toolchain can build a generated kernel.
+
+    Verified by building a trivial spec-free probe on first call (disk-cached afterwards);
+    the result is cached for the process.
     """
     global _AVAILABLE
     if _AVAILABLE is None:
@@ -128,25 +258,30 @@ def is_available() -> bool:
     return _AVAILABLE
 
 
-def _probe() -> bool:
-    if shutil.which("c++") is None and shutil.which("g++") is None:
-        return False
+def _load_inline_toolchain() -> bool:
+    """Whether the heavier ``load_inline`` path could build.
+
+    This gate covers more than ``load_cabi`` needs, because every generated-C++ backend shares
+    ``is_available`` and the ones built through ``load_inline`` need ninja and a pybind11
+    translation unit — which means the Python development headers. Probing that by compiling
+    would cost the seconds ``load_cabi`` exists to avoid, so the headers are checked by
+    presence instead.
+    """
     try:
         import torch.utils.cpp_extension as ce
 
         ce.verify_ninja_availability()
     except (ImportError, RuntimeError):
         return False
+    return (Path(sysconfig.get_paths()["include"]) / "Python.h").is_file()
+
+
+def _probe() -> bool:
+    if _compiler() is None or not _load_inline_toolchain():
+        return False
     try:
-        cflags, ldflags = _build_flags()
-        ce.load_inline(
-            name="tsfast_kernel_c_probe",
-            cpp_sources="int64_t tsfast_kernel_probe() { return 0; }",
-            functions=["tsfast_kernel_probe"],
-            extra_cflags=cflags,
-            extra_ldflags=ldflags,
-        )
+        load_cabi(_PROBE_SRC, "tsfast_kernel_probe")
     except Exception as e:
-        warnings.warn(f"C backend disabled, probe compilation failed: {e}")
+        warnings.warn(f"C backend disabled, probe build failed: {e}")
         return False
     return True
