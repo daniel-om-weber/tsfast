@@ -181,4 +181,7 @@ def supports(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None) -> str
             return f"x0 must be float32, got {x0.dtype}"
         if tuple(x0.shape) != tuple(expected):
             return f"x0.shape {tuple(x0.shape)} != expected {tuple(expected)}"
+    # The kernel indexes raw data pointers, so a non-dense layout reads the wrong elements.
+    if not all(t.is_contiguous() for t in (lam, v, x0) if t is not None):
+        return "inputs must be contiguous"
     return None

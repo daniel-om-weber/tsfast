@@ -56,6 +56,9 @@ def supports(spec: NarxSpec, hu: torch.Tensor, y_true: torch.Tensor) -> str | No
         return f"expected hu of shape [B, L, {spec.hidden[0]}], got {tuple(hu.shape)}"
     if y_true.shape != (*hu.shape[:2], spec.n_y):
         return f"expected y_true of shape [{hu.shape[0]}, {hu.shape[1]}, {spec.n_y}], got {tuple(y_true.shape)}"
+    # The kernel indexes raw data pointers, so a non-dense layout reads the wrong elements.
+    if not hu.is_contiguous() or not y_true.is_contiguous():
+        return "inputs must be contiguous"
     return None
 
 

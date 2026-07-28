@@ -262,31 +262,61 @@ def _get_extension(spec: SSMSpec):
     return ext
 
 
-def _call(fn, B: int, L: int, tensors: list[torch.Tensor], *tail) -> None:
+def _param_shapes(spec: SSMSpec) -> list[tuple[int, ...]]:
+    """Transition-MLP weight and bias shapes, in the order the kernels take them."""
+    dims = spec.dims
+    return [s for i in range(spec.n_linear) for s in ((dims[i + 1], dims[i]), (dims[i + 1],))]
+
+
+def _call(ext, name: str, B: int, L: int, tensors: list[torch.Tensor], shapes: list[tuple[int, ...]], *tail) -> None:
     """Invoke a generated entry point on the tensors' raw storage.
 
-    The kernels index every argument as contiguous float32, and a C ABI has no way to notice
-    otherwise: a narrower dtype makes the kernel read past the end of the allocation. So the
-    layout is checked here rather than trusted from the callers — ``supports`` screens the
-    rollout inputs but not the parameters, and ``backward`` does not pass through it at all.
-    The check is per rollout, not per step.
+    The kernels index every argument as contiguous float32 of a size the spec fixes, and a C
+    ABI has no way to notice otherwise: a narrower dtype or a short buffer makes the kernel
+    read past the end of the allocation. Both are checked here rather than trusted from the
+    callers — ``supports`` screens the rollout inputs but not the parameters, and ``backward``
+    does not pass through it at all. Pinning ``argtypes`` covers the remaining failure, a
+    marshalling list that has drifted from the generated signature, which ``ctypes`` would
+    otherwise turn into a bad read rather than an error. One pass per rollout, not per step.
     """
-    for t in tensors:
+    for t, shape in zip(tensors, shapes, strict=True):
         if t.dtype is not torch.float32 or t.device.type != "cpu" or not t.is_contiguous():
             raise TypeError(
                 "the C backend requires contiguous float32 CPU tensors, got "
                 f"{t.dtype} on {t.device}{'' if t.is_contiguous() else ' (non-contiguous)'}"
             )
-    fn(ctypes.c_int64(B), ctypes.c_int64(L), *(ctypes.c_void_p(t.data_ptr()) for t in tensors), *tail)
+        if tuple(t.shape) != shape:
+            raise ValueError(f"{name} expects an argument of shape {shape}, got {tuple(t.shape)}")
+    fn = getattr(ext, name)
+    if fn.argtypes is None:
+        fn.argtypes = [ctypes.c_int64, ctypes.c_int64, *([ctypes.c_void_p] * len(tensors)), *(type(v) for v in tail)]
+        fn.restype = None
+    fn(B, L, *(ctypes.c_void_p(t.data_ptr()) for t in tensors), *tail)
 
 
 def _run_fwd(ext, spec: SSMSpec, u, x0, params, store_z, leak=None):
     B, L = u.shape[0], u.shape[1]
-    out = torch.empty(B, L, spec.n_state, dtype=torch.float32)
-    zs = [torch.empty(B, L, w, dtype=torch.float32) for w in saved_widths(spec)]
+    nx, widths = spec.n_state, saved_widths(spec)
+    out = torch.empty(B, L, nx, dtype=torch.float32)
+    zs = [torch.empty(B, L, w, dtype=torch.float32) for w in widths]
     wb = [t.detach().contiguous() for t in params]
     a = [leak.detach().contiguous()] if spec.gate == "leak" else []
-    _call(ext.ssm_fwd, B, L, [u, x0, *a, *wb, out, *zs], ctypes.c_bool(store_z))
+    _call(
+        ext,
+        "ssm_fwd",
+        B,
+        L,
+        [u, x0, *a, *wb, out, *zs],
+        [
+            (B, L, spec.n_input),
+            (B, nx),
+            *([(nx,)] * len(a)),
+            *_param_shapes(spec),
+            (B, L, nx),
+            *[(B, L, w) for w in widths],
+        ],
+        ctypes.c_bool(store_z),
+    )
     return out, zs
 
 
@@ -325,13 +355,30 @@ def backward(
     """Reverse state-adjoint sweep: returns ``(gy, gas, gx0, gleak)`` for the shared GEMM stage."""
     ext = _get_extension(spec)
     B, L = grad_out.shape[0], grad_out.shape[1]
+    dims, nx, widths = spec.dims, spec.n_state, saved_widths(spec)
     wts = [w.detach().t().contiguous() for w in weights]
     gy = torch.empty(B, L, spec.out_width, dtype=torch.float32)
     gas = [torch.empty_like(z) for z in zs[: len(spec.hidden)]]
-    gx0 = torch.empty(B, spec.n_state, dtype=torch.float32)
+    gx0 = torch.empty(B, nx, dtype=torch.float32)
     leaky = spec.gate == "leak"
     a = [leak.detach().contiguous()] if leaky else []
     # per-batch partials; the batch axis of dL/da reduces on the host
-    gl = [torch.empty(B, spec.n_state, dtype=torch.float32)] if leaky else []
-    _call(ext.ssm_bwd, B, L, [grad_out, *a, *zs, *wts, gy, *gas, gx0, *gl])
+    gl = [torch.empty(B, nx, dtype=torch.float32)] if leaky else []
+    _call(
+        ext,
+        "ssm_bwd",
+        B,
+        L,
+        [grad_out, *a, *zs, *wts, gy, *gas, gx0, *gl],
+        [
+            (B, L, nx),
+            *([(nx,)] * len(a)),
+            *[(B, L, w) for w in widths],
+            *[(dims[i], dims[i + 1]) for i in range(spec.n_linear)],
+            (B, L, spec.out_width),
+            *[(B, L, w) for w in spec.hidden],
+            (B, nx),
+            *([(B, nx)] * len(gl)),
+        ],
+    )
     return gy, gas, gx0, (gl[0].sum(0) if leaky else None)

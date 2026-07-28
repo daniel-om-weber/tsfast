@@ -235,6 +235,9 @@ def supports(spec: RENSpec, u: torch.Tensor, x0: torch.Tensor) -> str | None:
         return (
             f"spec exceeds the kernel caps (n_state<={MAX_NX}, n_nl<={MAX_NV}, n_input<={MAX_NU}, n_output<={MAX_NY})"
         )
+    # The kernel indexes raw data pointers, so a non-dense layout reads the wrong elements.
+    if not u.is_contiguous() or not x0.is_contiguous():
+        return "inputs must be contiguous"
     if not is_available():
         return "no host C++ toolchain / ninja"
     return None

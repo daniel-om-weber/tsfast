@@ -492,6 +492,9 @@ def supports(lam: torch.Tensor, v: torch.Tensor, x0: torch.Tensor | None) -> str
         return "v must have at least a time and a state axis"
     if lam.shape[-1] != v.shape[-1]:
         return f"state dim mismatch: lam {tuple(lam.shape)} vs v {tuple(v.shape)}"
+    # The kernel indexes raw data pointers, so a non-dense layout reads the wrong elements.
+    if not all(t.is_contiguous() for t in (lam, v, x0) if t is not None):
+        return "inputs must be contiguous"
     if not is_available():
         return "no host C++ toolchain / ninja"
     return None
