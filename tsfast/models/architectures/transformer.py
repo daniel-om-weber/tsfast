@@ -89,12 +89,16 @@ class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, dropout: float = 0.0, max_len: int = 5000):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
-        position = torch.arange(max_len).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
-        pe = torch.zeros(max_len, d_model)
+        # Built in float64 and rounded once. The arguments run to ~max_len radians, where a
+        # float32 sine loses up to 4e-06 to argument reduction, and torch's float32 kernels are
+        # not bitwise reproducible across chunkings — the table would otherwise depend on both
+        # max_len and the intra-op thread count in effect at construction.
+        position = torch.arange(max_len, dtype=torch.float64).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2, dtype=torch.float64) * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(max_len, d_model, dtype=torch.float64)
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
-        self.register_buffer("pe", pe)
+        self.register_buffer("pe", pe.to(torch.get_default_dtype()))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.dropout(x + self.pe[: x.size(1), :])
