@@ -330,7 +330,9 @@ def _probe() -> bool:
     except Exception as e:
         warnings.warn(f"C backend disabled, probe build failed: {e}")
         return False
-    if flags & 1 and not flags & 2:
+    # Only the hosts served by _BATCH_PARALLEL_ATEN reach at::parallel_for; on macOS every
+    # kernel splices the GCD driver instead, so the missing -fopenmp there costs nothing.
+    if sys.platform != "darwin" and flags & 1 and not flags & 2:
         warnings.warn(
             "ATen's intra-op backend is OpenMP but the generated kernels built without -fopenmp: "
             "at::parallel_for will run them on a single thread"
