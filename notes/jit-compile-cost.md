@@ -315,11 +315,17 @@ when pybind would have raised.
 
 ## 6. Transfer to the other C backends
 
-The decisive structural fact is that **only `ssm` and `narx` generate spec-specialized source.**
-`ren`, `phnn`, `diagonal_c` and `selective_c` take no spec at all — their dims are runtime
-arguments, so they build once, not once per configuration. The build counts cached on this host
-measure it directly (**measured**): `ssm` 88, `narx` 6, `diagonal` 3, `ren` 1, `phnn` 1,
-`selective` 1.
+The decisive structural fact is that **only `ssm`, `narx` and `mamba` generate spec-specialized
+source.** `ren`, `phnn`, `diagonal_c` and `selective_c` take no spec at all — their dims are
+runtime arguments, so they build once, not once per configuration. The build counts cached on
+this host measure it directly (**measured**): `ssm` 88, `narx` 6, `diagonal` 3, `ren` 1,
+`phnn` 1, `selective` 1.
+
+`mamba` (the fused selective-SSM section) is spec-specialized on the state dimension alone —
+`d_inner`, batch and length stay runtime arguments — so its build count is the number of
+distinct `d_state` values a process sees, typically one. Written against `load_cabi` from the
+start, it costs **0.61-0.70 s** cold per state dimension and nothing warm (**measured**), which
+is the C-ABI column of the table below rather than the `load_inline` one.
 
 So `ssm` was 88 of ~100 builds. The remaining five are worth ~45 s once on a fully cold cache,
 plus whatever `narx` accumulates across distinct specs — a real prize, but a much smaller one.

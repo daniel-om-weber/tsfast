@@ -248,6 +248,86 @@ class TestDeepMamba:
         assert not torch.isnan(torch.tensor(final_valid_loss))
 
 
+class TestMambaCBackend:
+    """The fused generated-C++ SSM kernel that serves CPU under "auto"."""
+
+    @staticmethod
+    def _skip_without_toolchain():
+        from tsfast.models._core.kernel_c import is_available
+
+        if not is_available():
+            pytest.skip("no host C++ toolchain")
+
+    @staticmethod
+    def _run(layer, u, backend, state=None):
+        from tsfast.models import use_backend
+
+        for p in layer.parameters():
+            p.grad = None
+        u = u.clone().requires_grad_()
+        st = None if state is None else {k: v.clone().requires_grad_() for k, v in state.items()}
+        with use_backend(backend):
+            out, new_state = layer(u, st, return_state=True)
+        (out.square().mean() + new_state["ssm"].square().mean()).backward()
+        grads = [p.grad.clone() for p in layer.parameters()]
+        state_grads = [] if st is None else [st["ssm"].grad.clone(), st["conv"].grad.clone()]
+        return [out.detach(), new_state["ssm"].detach(), u.grad.clone(), *grads, *state_grads]
+
+    @pytest.mark.parametrize(
+        "batch,seq,d_model,d_state",
+        [
+            (4, 50, 16, 16),
+            (2, 33, 8, 8),  # sequence length not a multiple of the checkpoint interval
+            (1, 7, 4, 32),  # sequence shorter than one checkpoint chunk
+            (2, 64, 10, 16),  # d_inner=20: partial trailing channel block
+            (2, 40, 12, 12),  # state dimension not a power of two
+        ],
+    )
+    def test_parity_with_reference(self, batch, seq, d_model, d_state):
+        """Output, carried state and every gradient match the generic scan path."""
+        self._skip_without_toolchain()
+        torch.manual_seed(0)
+        layer = MambaLayer(d_model, d_state=d_state)
+        u = torch.randn(batch, seq, d_model)
+        state = {
+            "conv": torch.randn(batch, layer.d_inner, layer.d_conv - 1),
+            "ssm": torch.randn(batch, layer.d_inner * d_state) * 0.1,
+        }
+        fused = self._run(layer, u, "c", state)
+        ref = self._run(layer, u, "reference", state)
+        assert max(_rel(a, b) for a, b in zip(fused, ref)) < 5e-5
+
+    def test_stateful_chunked_equivalence(self):
+        """Chunked rollouts through the kernel's h0/h_last path match the full pass."""
+        self._skip_without_toolchain()
+        from tsfast.models import use_backend
+
+        torch.manual_seed(0)
+        m = DeepMamba(2, 1, d_model=8, d_state=4, n_layers=2, return_state=True)
+        u = torch.randn(4, 70, 2)
+        with torch.no_grad(), use_backend("c"):
+            full, _ = m(u)
+            out1, state = m(u[:, :17])
+            out2, state = m(u[:, 17:19], state=state)
+            out3, _ = m(u[:, 19:], state=state)
+        assert _rel(torch.cat((out1, out2, out3), dim=1), full) < 1e-5
+
+    def test_fullgraph_compile(self):
+        """The fused CPU custom ops must not graph-break under torch.compile."""
+        self._skip_without_toolchain()
+        from tsfast.models import use_backend
+
+        torch.manual_seed(0)
+        m = DeepMamba(3, 2, d_model=16, d_state=8, n_layers=2)
+        u = torch.randn(2, 32, 3)
+        with use_backend("c"):
+            eager = m(u)
+            out = torch.compile(m, fullgraph=True)(u)
+            out.square().mean().backward()
+        assert _rel(out, eager) < 1e-4
+        assert all(p.grad is not None for p in m.parameters())
+
+
 class TestMambaCompile:
     def test_deepmamba_fullgraph_compile_cuda(self):
         """The fused conv/scan custom ops must not graph-break under torch.compile."""

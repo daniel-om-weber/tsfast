@@ -13,13 +13,14 @@ from torch import nn
 
 from ..._core.dispatch import resolve
 from ..._core.scan import _diagonal_recurrence_sequential, selective_recurrence
-from . import conv_triton, mamba_triton
+from . import backend_c, conv_triton, mamba_triton
 
 # Module objects, not import paths: this dispatch runs inside potentially-compiled
 # forwards, and Dynamo can trace a supports() shape check but not an importlib call.
-# Both modules import safely without triton (their kernels are guarded).
+# The triton modules import safely without triton (their kernels are guarded).
 _CONV_BACKENDS = {"triton": conv_triton}
-_SSM_BACKENDS = {"triton": mamba_triton}
+_SSM_BACKENDS = {"triton": mamba_triton, "c": backend_c}
+_SSM_AUTO_ORDER = {"cuda": ("triton",), "cpu": ("c",)}
 
 
 def _fused_conv(x, tail, weight, bias):
@@ -60,10 +61,11 @@ def _causal_depthwise_silu(x, tail, weight, bias):
 def _fused_ssm(draw, A, B_t, C_t, u, z, Dp, h0):
     """Dispatch the fused Mamba SSM kernel; None means run the generic scan path.
 
-    Same policy as ``_fused_conv``; on non-CUDA devices the generic selective scan
-    (which applies its own backend dispatch) is the intended path and silence is correct.
+    Same policy as ``_fused_conv``: the Triton kernel serves CUDA and the generated-C++ one
+    serves CPU under "auto", either can be forced by name, and a candidate that declines
+    warns once per process before the generic selective scan takes over.
     """
-    order = ("triton",) if draw.device.type == "cuda" else ()
+    order = _SSM_AUTO_ORDER.get(draw.device.type, ())
     mod = resolve("mamba.ssm", _SSM_BACKENDS, order, (draw, A, B_t, C_t, u, z, Dp, h0))
     return None if mod is None else mod.run(draw, A, B_t, C_t, u, z, Dp, h0)
 
@@ -95,9 +97,10 @@ class MambaLayer(nn.Module):
         dt_rank: rank of the ``Delta`` projection bottleneck; ``ceil(d_model / 16)`` if None.
         dt_min: lower bound of the timestep initialization.
         dt_max: upper bound of the timestep initialization.
-        backend: ``"scan"`` (fused Triton kernels for the convolution and the selective
-            scan on CUDA float32, otherwise the eager convolution and the generic
-            parallel scan; both honor the process preference set via
+        backend: ``"scan"`` (fused kernels for the SSM section — Triton on CUDA float32,
+            generated C++ on CPU float32 — plus the fused Triton convolution on CUDA,
+            falling back to the eager convolution and the generic parallel scan
+            elsewhere; all honor the process preference set via
             ``tsfast.models.set_backend``/``use_backend``) or ``"eager"``
             (sequential loop).
     """
