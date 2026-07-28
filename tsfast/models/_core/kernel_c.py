@@ -42,16 +42,10 @@ from pathlib import Path
 
 import torch
 
-_ACT_C = {
-    "tanh": ("tanhf({a})", "(1.0f - {z} * {z})"),
-    "sigmoid": ("1.0f / (1.0f + expf(-({a})))", "({z} * (1.0f - {z}))"),
-    "relu": ("({a} > 0.0f ? {a} : 0.0f)", "({z} > 0.0f ? 1.0f : 0.0f)"),
-}
-
-# Rational tanh approximation (Eigen's single-precision coefficients), accurate to a few
-# ulp on the clamped range. Plain arithmetic instead of libm so the activation loop stays
-# auto-vectorizable on macOS, which ships no vector libm — a scalar tanhf call per element
-# otherwise dominates the rollout.
+# Rational tanh approximation (Eigen's single-precision coefficients), accurate to 2.4e-07
+# absolute over the clamped range. Plain arithmetic instead of libm keeps the activation loop
+# auto-vectorizable on every host: macOS ships no vector libm at all, and where glibc's libmvec
+# does supply one the polynomial still measures faster than it (1.15-1.26x on the whole rollout).
 _FAST_TANH_C = """\
 static inline float fast_tanhf(float x) {
     x = fminf(7.90531110763549805f, fmaxf(-7.90531110763549805f, x));
@@ -72,10 +66,12 @@ static inline float fast_tanhf(float x) {
 }
 """
 
-_ACT_C_DARWIN = {
-    **_ACT_C,
-    "tanh": ("fast_tanhf({a})", _ACT_C["tanh"][1]),
-    "sigmoid": ("(0.5f + 0.5f * fast_tanhf(0.5f * ({a})))", _ACT_C["sigmoid"][1]),
+#: Activation expression and its derivative in terms of the stored post-activation ``z``.
+#: A generator that emits an entry naming ``fast_tanhf`` must also emit ``_FAST_TANH_C``.
+_ACT_C = {
+    "tanh": ("fast_tanhf({a})", "(1.0f - {z} * {z})"),
+    "sigmoid": ("(0.5f + 0.5f * fast_tanhf(0.5f * ({a})))", "({z} * (1.0f - {z}))"),
+    "relu": ("({a} > 0.0f ? {a} : 0.0f)", "({z} > 0.0f ? 1.0f : 0.0f)"),
 }
 
 # Chunked to at::get_num_threads() tasks so torch.set_num_threads() is honored; GCD picks

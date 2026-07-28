@@ -40,7 +40,6 @@ import torch
 
 from ..._core.kernel_c import (
     _ACT_C,
-    _ACT_C_DARWIN,
     _BATCH_PARALLEL_ATEN,
     _BATCH_PARALLEL_GCD,
     _FAST_TANH_C,
@@ -74,7 +73,7 @@ def _gen_source(spec: SSMSpec) -> str:
     gl_arg = ", float* glp" if leaky else ""
     n_out_last = dims[k]
     darwin = sys.platform == "darwin"
-    act, dact = (_ACT_C_DARWIN if darwin else _ACT_C)[spec.act]
+    act, dact = _ACT_C[spec.act]
     lines: list[str] = [
         "#include <ATen/Parallel.h>",
         "#include <algorithm>",
@@ -83,7 +82,7 @@ def _gen_source(spec: SSMSpec) -> str:
         "",
         _BATCH_PARALLEL_GCD if darwin else _BATCH_PARALLEL_ATEN,
     ]
-    if darwin and "fast_tanhf" in act:
+    if "fast_tanhf" in act:
         lines.append(_FAST_TANH_C)
     lines += [
         f"constexpr int NX = {nx};",
