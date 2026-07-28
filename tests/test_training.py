@@ -1,6 +1,7 @@
 """Tests for tsfast.training — pure-PyTorch training framework."""
 
 import math
+import warnings
 
 import matplotlib
 import pytest
@@ -1277,4 +1278,168 @@ class TestGraphedStatefulModel:
         pred_test, _ = graphed(x_test)
         assert pred_test.shape == (4, 50, 1)
 
+    def test_capture_survives_concurrent_pinned_allocations(self):
+        """Another thread cudaHostAlloc-ing during capture must not invalidate it.
 
+        A ``DataLoader(pin_memory=True)`` makes exactly these calls from the thread that
+        fetches the batch (PrefetchLoader producer, or torch's pin-memory thread with
+        ``num_workers > 0``) while the first training step captures the graph. Under the
+        default global capture mode both sides die — the capture with
+        ``cudaErrorStreamCaptureInvalidated``, the allocating thread with
+        ``cudaErrorStreamCaptureUnsupported``; the wrapper captures in thread_local mode
+        so both must survive. Every allocation here is a fresh ``cudaHostAlloc``
+        (previous tensors are kept alive), because a cached-size pin makes no CUDA call
+        and could not invalidate anything.
+        """
+        import threading
+
+        from tsfast.models.architectures.rnn import SimpleRNN
+        from tsfast.models._core.cudagraph import GraphedStatefulModel
+
+        stop = threading.Event()
+        hostile_errors = []
+        keep = []
+
+        def hostile_pin():
+            while not stop.is_set() and len(keep) < 15000:  # ~1 GB cap
+                try:
+                    keep.append(torch.empty(1 << 16, dtype=torch.uint8).pin_memory())
+                except RuntimeError as e:  # AcceleratorError is a RuntimeError
+                    hostile_errors.append(e)
+                    return
+
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
+        graphed = GraphedStatefulModel(model)
+        x = torch.randn(4, 10, 1, device="cuda")
+
+        thread = threading.Thread(target=hostile_pin, daemon=True)
+        thread.start()
+        try:
+            for _ in range(6):
+                graphed.reset_graph()
+                pred, _ = graphed(x)
+                assert pred.shape == (4, 10, 1)
+                assert graphed._graphed is not None, "capture fell back to eager"
+        finally:
+            stop.set()
+            thread.join(timeout=10)
+        keep.clear()
+
+        assert not hostile_errors, f"allocating thread was rejected during capture: {hostile_errors[0]}"
+        # RNG must be healthy: a failed capture leaves the CUDA generator in capture mode
+        torch.randn(4, device="cuda")
+        torch.cuda.synchronize()
+
+    def test_failed_capture_falls_back_eager_with_warning(self, monkeypatch):
+        """A capture that fails outright warns loudly and runs eagerly, RNG intact."""
+        from tsfast.models.architectures.rnn import SimpleRNN
+        from tsfast.models._core.cudagraph import GraphedStatefulModel
+
+        model = SimpleRNN(1, 1, hidden_size=20, return_state=True).cuda()
+        graphed = GraphedStatefulModel(model)
+        x = torch.randn(4, 10, 1, device="cuda")
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("simulated: operation failed due to a previous error during capture")
+
+        monkeypatch.setattr(torch.cuda, "make_graphed_callables", boom)
+        with pytest.warns(RuntimeWarning, match="CUDA graph capture failed"):
+            pred, state = graphed(x)
+        assert pred.shape == (4, 10, 1)
+        assert graphed._graphed is None
+        assert graphed._capture_failed
+
+        # No re-capture attempt on later calls: stays eager without further warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            pred2, state2 = graphed(x)
+        assert pred2.shape == (4, 10, 1)
+
+        # RNG healthy after the failure path
+        torch.randn(4, device="cuda")
+        torch.cuda.synchronize()
+
+        # Drop the eager outputs before re-capturing: their live autograd graph ties the
+        # parameters' AccumulateGrad nodes to the legacy default stream, and a captured
+        # backward may not depend on that stream (cudaErrorStreamCaptureImplicit).
+        del pred, pred2, state, state2
+
+        # reset_graph clears the failure; with the real capture machinery it recovers
+        monkeypatch.undo()
+        graphed.reset_graph()
+        pred3, _ = graphed(x)
+        assert graphed._graphed is not None
+        assert pred3.shape == (4, 10, 1)
+
+    def test_capture_under_pinning_thread_is_numerically_exact(self):
+        """thread_local must be *safe*, not merely quiet.
+
+        thread_local stops CUDA from policing other threads, so the open question is
+        whether ``cudaHostAlloc``'s implicit device synchronization — the very thing
+        the global-mode check exists to catch — corrupts an in-flight capture silently
+        instead of failing it loudly.
+
+        This compares the replayed graph against eager on identical weights and inputs
+        while a thread makes fresh ``cudaHostAlloc`` calls throughout the capture.
+        Gradients are checked as well as outputs, because the backward graph is what
+        the race kills. A positive control keeps the assertion honest: perturbing one
+        weight by 1e-6 must be detected, so an all-passing comparison cannot be an
+        artefact of comparing nothing.
+        """
+        import copy
+        import threading
+
+        from tsfast.models._core.cudagraph import GraphedStatefulModel
+        from tsfast.models.architectures.rnn import SimpleRNN
+
+        def fwd_bwd(m, x, y, param_src=None):
+            # param_src: the wrapper prefixes parameter names with "model.", so
+            # gradients are read off the inner module to keep the keys aligned.
+            src = m if param_src is None else param_src
+            m.zero_grad(set_to_none=True)
+            out, _ = m(x)
+            ((out - y) ** 2).mean().backward()
+            torch.cuda.synchronize()
+            return out.detach().clone(), {n: p.grad.detach().clone() for n, p in src.named_parameters()}
+
+        torch.manual_seed(0)
+        model = SimpleRNN(3, 2, num_layers=2, hidden_size=32, return_state=True).cuda()
+        x = torch.randn(4, 64, 3, device="cuda")
+        y = torch.randn(4, 64, 2, device="cuda")
+
+        ref_out, ref_grads = fwd_bwd(copy.deepcopy(model), x, y)
+
+        # Positive control: the comparison must be able to see a small change.
+        perturbed = copy.deepcopy(model)
+        with torch.no_grad():
+            next(iter(perturbed.parameters()))[0, 0] += 1e-6
+        pert_out, _ = fwd_bwd(perturbed, x, y)
+        assert not torch.allclose(ref_out, pert_out, rtol=0, atol=1e-9), (
+            "comparison is insensitive; the equivalence assertions below prove nothing"
+        )
+
+        stop = threading.Event()
+        keep = []  # held, so every pin is a fresh cudaHostAlloc rather than a cache hit
+
+        def hostile_pin():
+            while not stop.is_set() and len(keep) < 15000:  # ~1 GB cap
+                try:
+                    keep.append(torch.empty(1 << 16, dtype=torch.uint8).pin_memory())
+                except RuntimeError:
+                    return
+
+        graphed = GraphedStatefulModel(copy.deepcopy(model))
+        thread = threading.Thread(target=hostile_pin, daemon=True)
+        thread.start()
+        try:
+            for _ in range(6):  # past warmup, so the last pass replays the graph
+                got_out, got_grads = fwd_bwd(graphed, x, y, param_src=graphed.model)
+            assert graphed._graphed is not None, "capture fell back to eager"
+        finally:
+            stop.set()
+            thread.join(timeout=10)
+            keep.clear()
+
+        assert torch.allclose(ref_out, got_out, rtol=1e-4, atol=1e-5)
+        for name, ref in ref_grads.items():
+            assert torch.allclose(ref, got_grads[name], rtol=1e-4, atol=1e-6), name
