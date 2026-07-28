@@ -73,13 +73,14 @@ def main():
         rows.append(("c", shape, t_d, m_d, t_k, m_k))
 
     set_backend("auto")
-    hdr = f"{'kernel':7s} {'shape':18s} {'doubling ms':>12s} {'dbl peakMB':>11s} " f"{'kernel ms':>10s} {'ker peakMB':>11s} {'speedup':>8s}"
+    hdr = (
+        f"{'kernel':7s} {'shape':18s} {'doubling ms':>12s} {'dbl peakMB':>11s} "
+        f"{'kernel ms':>10s} {'ker peakMB':>11s} {'speedup':>8s}"
+    )
     print(hdr)
     print("-" * len(hdr))
     for kern, shape, t_d, m_d, t_k, m_k in rows:
-        print(
-            f"{kern:7s} {str(shape):18s} {t_d:12.2f} {m_d:11.1f} {t_k:10.2f} {m_k:11.1f} {t_d / t_k:7.1f}x"
-        )
+        print(f"{kern:7s} {str(shape):18s} {t_d:12.2f} {m_d:11.1f} {t_k:10.2f} {m_k:11.1f} {t_d / t_k:7.1f}x")
 
 
 if __name__ == "__main__":

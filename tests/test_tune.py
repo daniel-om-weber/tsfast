@@ -137,7 +137,11 @@ def test_checkpoint_every(ray_init_shutdown, dls_silverbox):
     from tsfast.tune import report_metrics
 
     lrn = RNNLearner(
-        dls_silverbox, rnn_type="gru", hidden_size=16, n_skip=5, metrics=[fun_rmse],
+        dls_silverbox,
+        rnn_type="gru",
+        hidden_size=16,
+        n_skip=5,
+        metrics=[fun_rmse],
     )
 
     calls = []
@@ -162,7 +166,11 @@ def test_checkpoint_every_none(ray_init_shutdown, dls_silverbox):
     from tsfast.tune import report_metrics
 
     lrn = RNNLearner(
-        dls_silverbox, rnn_type="gru", hidden_size=16, n_skip=5, metrics=[fun_rmse],
+        dls_silverbox,
+        rnn_type="gru",
+        hidden_size=16,
+        n_skip=5,
+        metrics=[fun_rmse],
     )
 
     calls = []
@@ -225,7 +233,11 @@ def test_learner_trainable_reset_config(ray_init_shutdown, dls_silverbox):
 
     def create_learner(config):
         return RNNLearner(
-            dls, rnn_type="gru", hidden_size=16, n_skip=5, metrics=[fun_rmse],
+            dls,
+            rnn_type="gru",
+            hidden_size=16,
+            n_skip=5,
+            metrics=[fun_rmse],
         )
 
     def apply_config(lrn, config):
@@ -233,7 +245,9 @@ def test_learner_trainable_reset_config(ray_init_shutdown, dls_silverbox):
             pg["lr"] = config["lr"]
 
     trainable_with = tune.with_parameters(
-        LearnerTrainable, create_learner=create_learner, apply_config=apply_config,
+        LearnerTrainable,
+        create_learner=create_learner,
+        apply_config=apply_config,
     )
     t = trainable_with({"lr": 1e-3})
     assert t.reset_config({"lr": 5e-4}) is True
@@ -241,7 +255,8 @@ def test_learner_trainable_reset_config(ray_init_shutdown, dls_silverbox):
     t.cleanup()
 
     trainable_without = tune.with_parameters(
-        LearnerTrainable, create_learner=create_learner,
+        LearnerTrainable,
+        create_learner=create_learner,
     )
     t2 = trainable_without({"lr": 1e-3})
     assert t2.reset_config({"lr": 5e-4}) is False
@@ -260,8 +275,12 @@ def test_learner_trainable_scheduler(ray_init_shutdown, dls_silverbox):
 
     def create_learner(config):
         return RNNLearner(
-            dls, rnn_type="gru", hidden_size=16, n_skip=5,
-            metrics=[fun_rmse], device=ray_device(),
+            dls,
+            rnn_type="gru",
+            hidden_size=16,
+            n_skip=5,
+            metrics=[fun_rmse],
+            device=ray_device(),
         )
 
     def flat_cos_fn(opt, total_steps):
@@ -300,7 +319,11 @@ def test_learner_trainable_scheduler_checkpoint(ray_init_shutdown, dls_silverbox
 
     def create_learner(config):
         return RNNLearner(
-            dls, rnn_type="gru", hidden_size=16, n_skip=5, metrics=[fun_rmse],
+            dls,
+            rnn_type="gru",
+            hidden_size=16,
+            n_skip=5,
+            metrics=[fun_rmse],
         )
 
     def flat_cos_fn(opt, total_steps):
@@ -331,7 +354,11 @@ def test_learner_freed_by_refcount(dls_silverbox):
     from tsfast.training import RNNLearner, fun_rmse
 
     lrn = RNNLearner(
-        dls_silverbox, rnn_type="gru", hidden_size=16, n_skip=5, metrics=[fun_rmse],
+        dls_silverbox,
+        rnn_type="gru",
+        hidden_size=16,
+        n_skip=5,
+        metrics=[fun_rmse],
     )
     ref = weakref.ref(lrn)
     lrn.fit_flat_cos(1, lr=3e-3)

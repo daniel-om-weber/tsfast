@@ -103,8 +103,12 @@ class TestPHNN:
             bmat = core.j_net(x).view(-1, 4, 4) * core.jr_scale
             amat = core.r_net(x).view(-1, 4, 4) * core.jr_scale
             g = core.g_net(x).view(-1, 4, 1) * core.g_scale
-            return torch.einsum("bij,bj->bi", bmat - bmat.transpose(1, 2) - amat @ amat.transpose(1, 2), dhdx) + \
-                torch.einsum("bij,bj->bi", g, u), g, dhdx
+            return (
+                torch.einsum("bij,bj->bi", bmat - bmat.transpose(1, 2) - amat @ amat.transpose(1, 2), dhdx)
+                + torch.einsum("bij,bj->bi", g, u),
+                g,
+                dhdx,
+            )
 
         u = xin[..., :1]
         x = m.encoder(u[:, :5], xin[:, :5, 1:])

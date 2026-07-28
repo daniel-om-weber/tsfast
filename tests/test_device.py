@@ -3,6 +3,7 @@
 Runs on any available non-CPU accelerator (CUDA, MPS, XPU, …).
 Skipped when only CPU is available.
 """
+
 import math
 import pytest
 import torch
@@ -21,9 +22,7 @@ def _get_accelerator() -> torch.device | None:
 
 _accelerator = _get_accelerator()
 
-requires_accelerator = pytest.mark.skipif(
-    _accelerator is None, reason="No non-CPU accelerator available"
-)
+requires_accelerator = pytest.mark.skipif(_accelerator is None, reason="No non-CPU accelerator available")
 
 
 @pytest.fixture
@@ -45,10 +44,14 @@ class TestHookCallbackDevices:
         lrn = FranSysLearner(dls_prediction, init_sz=50, hidden_size=20, rnn_layer=1, attach_output=True)
         lrn.model.to(device)
         model = unwrap_model(lrn.model)
-        lrn.aux_losses.append(FranSysRegularizer(
-            modules=[model.diagnosis, model.prognosis],
-            p_state_sync=1.0, sync_type="mse", model=model,
-        ))
+        lrn.aux_losses.append(
+            FranSysRegularizer(
+                modules=[model.diagnosis, model.prognosis],
+                p_state_sync=1.0,
+                sync_type="mse",
+                model=model,
+            )
+        )
         lrn.fit(1, 3e-3)
         assert not math.isnan(lrn.recorder[-1][1])
 
@@ -72,8 +75,10 @@ class TestQuaternionPlotDevices:
 
     def _make_axes(self, n=3):
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+
         _, axs = plt.subplots(n, 1)
         return axs
 

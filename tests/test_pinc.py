@@ -54,7 +54,9 @@ class TestPINC:
         from tsfast.pinn.pinc import PINC
 
         torch.manual_seed(0)
-        m = PINC(2, 1, hidden_size=32, hidden_layer=2, ic_mode=ic_mode, hard_ic_style=style, derivative_mode=dmode).eval()
+        m = PINC(
+            2, 1, hidden_size=32, hidden_layer=2, ic_mode=ic_mode, hard_ic_style=style, derivative_mode=dmode
+        ).eval()
         x = torch.randn(4, 3, 4)
         _, dy = m(x, derivative_flag=True)
 
@@ -217,10 +219,18 @@ class TestLinearDecay:
             torch.manual_seed(0)
             m = PINC(1, 0, hidden_size=32, hidden_layer=2)
             lrn = PINCLearner(
-                m, gen, residual,
-                state_range=[(-1, 1)], cond_range=[], t_max=0.5, ic_weight=ic_weight,
-                steps_per_epoch=50, bs=512, val_steps=4,
-                device=torch.device("cpu"), show_bar=False,
+                m,
+                gen,
+                residual,
+                state_range=[(-1, 1)],
+                cond_range=[],
+                t_max=0.5,
+                ic_weight=ic_weight,
+                steps_per_epoch=50,
+                bs=512,
+                val_steps=4,
+                device=torch.device("cpu"),
+                show_bar=False,
             )
             lrn.fit_flat_cos(10, lr=3e-3)
             xk = torch.linspace(-0.9, 0.9, 50)[:, None, None]

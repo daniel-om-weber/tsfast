@@ -69,7 +69,8 @@ class BenchmarkDls:
 def make_model():
     torch.manual_seed(SEED)
     return SimpleRNN(
-        N_U, N_Y,
+        N_U,
+        N_Y,
         num_layers=NUM_LAYERS,
         hidden_size=HIDDEN_SIZE,
         rnn_type=RNN_TYPE,
@@ -151,7 +152,8 @@ class CustomGRUModel(nn.Module):
 def make_custom_model():
     torch.manual_seed(SEED)
     return CustomGRUModel(
-        N_U, N_Y,
+        N_U,
+        N_Y,
         num_layers=NUM_LAYERS,
         hidden_size=HIDDEN_SIZE,
         return_state=True,
@@ -182,24 +184,28 @@ class CompiledStepTbpttLearner(TbpttLearner):
         loss_func = self.loss_func
 
         if has_state and n_skip > 0:
+
             def _fwd_bwd(xb: Tensor, yb: Tensor, state: list) -> tuple[Tensor, list]:
                 pred, new_state = model(xb, state=state)
                 loss = loss_func(pred[:, n_skip:], yb[:, n_skip:])
                 loss.backward()
                 return loss, new_state
         elif has_state:
+
             def _fwd_bwd(xb: Tensor, yb: Tensor, state: list) -> tuple[Tensor, list]:
                 pred, new_state = model(xb, state=state)
                 loss = loss_func(pred, yb)
                 loss.backward()
                 return loss, new_state
         elif n_skip > 0:
+
             def _fwd_bwd(xb: Tensor, yb: Tensor) -> tuple[Tensor, list]:
                 pred, new_state = model(xb)
                 loss = loss_func(pred[:, n_skip:], yb[:, n_skip:])
                 loss.backward()
                 return loss, new_state
         else:
+
             def _fwd_bwd(xb: Tensor, yb: Tensor) -> tuple[Tensor, list]:
                 pred, new_state = model(xb)
                 loss = loss_func(pred, yb)
@@ -285,6 +291,7 @@ def register(name: str, desc: str):
     def decorator(fn):
         METHODS[name] = (fn, desc)
         return fn
+
     return decorator
 
 
@@ -314,7 +321,8 @@ def _custom_compile_autotune(dls):
 @register("custom_compile_step", "custom GRU + compile step (reduce-overhead)")
 def _custom_compile_step(dls):
     return CompiledStepTbpttLearner(
-        make_custom_model(), dls,
+        make_custom_model(),
+        dls,
         loss_func=nn.L1Loss(),
         sub_seq_len=SUB_SEQ_LEN,
         compile_mode="reduce-overhead",
@@ -328,8 +336,10 @@ def main():
     assert torch.cuda.is_available(), "This benchmark requires CUDA"
 
     print("=== RNN Training Benchmark: torch.compile vs CUDA Graphs ===")
-    print(f"Config: {RNN_TYPE.upper()}, {NUM_LAYERS} layers, {HIDDEN_SIZE} hidden, "
-          f"{WIN_SZ} window, sub_seq={SUB_SEQ_LEN}, bs={BS}")
+    print(
+        f"Config: {RNN_TYPE.upper()}, {NUM_LAYERS} layers, {HIDDEN_SIZE} hidden, "
+        f"{WIN_SZ} window, sub_seq={SUB_SEQ_LEN}, bs={BS}"
+    )
     print(f"Data:   {N_TRAIN} train / {N_VALID} valid samples (synthetic)")
     print(f"Timing: {N_WARMUP} warmup epochs + {BENCH_SECONDS}s timed per method")
     print()
@@ -385,7 +395,6 @@ def main():
                 diff = abs(res["val_loss"] - baseline_loss)
                 status = "OK" if diff < 0.05 else "WARN"
                 print(f"  {res['desc']}: diff={diff:.6f} [{status}]")
-
 
 
 if __name__ == "__main__":

@@ -21,9 +21,7 @@ _CUDA_OK = torch.cuda.is_available() and selective_triton._HAVE_TRITON
 
 _BACKENDS = [
     pytest.param(selective_c, "c", "cpu", marks=pytest.mark.skipif(not _C_OK, reason="no C++ toolchain/ninja")),
-    pytest.param(
-        selective_triton, "triton", "cuda", marks=pytest.mark.skipif(not _CUDA_OK, reason="no CUDA/triton")
-    ),
+    pytest.param(selective_triton, "triton", "cuda", marks=pytest.mark.skipif(not _CUDA_OK, reason="no CUDA/triton")),
 ]
 
 

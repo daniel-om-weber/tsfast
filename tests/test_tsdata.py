@@ -856,8 +856,15 @@ class TestPipeline:
         from tsfast.tsdata.dataset import WindowedDataset
 
         dls = create_dls(
-            u=["u"], y=["y"], dataset=WH_PATH, win_sz=100, stp_sz=100,
-            num_workers=0, n_batches_train=2, targ_fs=1.0, src_fs=2.0,
+            u=["u"],
+            y=["y"],
+            dataset=WH_PATH,
+            win_sz=100,
+            stp_sz=100,
+            num_workers=0,
+            n_batches_train=2,
+            targ_fs=1.0,
+            src_fs=2.0,
         )
         assert isinstance(dls.train.dataset, WindowedDataset)
         assert not isinstance(dls.train.dataset, ConcatDataset)
@@ -869,8 +876,15 @@ class TestPipeline:
         from tsfast.tsdata.dataset import WindowedDataset
 
         dls = create_dls(
-            u=["u"], y=["y"], dataset=WH_PATH, win_sz=100, stp_sz=100,
-            num_workers=0, n_batches_train=4, targ_fs=[1.0, 0.5], src_fs=2.0,
+            u=["u"],
+            y=["y"],
+            dataset=WH_PATH,
+            win_sz=100,
+            stp_sz=100,
+            num_workers=0,
+            n_batches_train=4,
+            targ_fs=[1.0, 0.5],
+            src_fs=2.0,
         )
         ds = dls.train.dataset
         assert isinstance(ds, WindowedDataset)

@@ -15,7 +15,6 @@ matplotlib.use("Agg")
 requires_cuda = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
 
 
-
 # ──────────────────────────────────────────────────────────────────────────────
 #  Helpers
 # ──────────────────────────────────────────────────────────────────────────────
@@ -972,9 +971,7 @@ class TestTbpttLearner:
 
         dls = _SyntheticDls(n_u=1, n_y=1, seq_len=100)
         model = SimpleRNN(1, 1, hidden_size=20, return_state=True)
-        lrn = TbpttLearner(
-            model, dls, loss_func=nn.MSELoss(), sub_seq_len=25, n_skip=10, device=torch.device("cpu")
-        )
+        lrn = TbpttLearner(model, dls, loss_func=nn.MSELoss(), sub_seq_len=25, n_skip=10, device=torch.device("cpu"))
         lrn.fit(1)
         assert math.isfinite(lrn.recorder[-1][1])
         # n_skip must be preserved across training
@@ -1167,7 +1164,7 @@ class TestGraphedStatefulModel:
         lrn_graphed = TbpttLearner(graphed, _FixedDls(), loss_func=nn.MSELoss(), sub_seq_len=sub_seq_len)
         lrn_graphed.fit(n_epoch)
 
-        for (e_plain, e_graphed) in zip(lrn_plain.recorder, lrn_graphed.recorder):
+        for e_plain, e_graphed in zip(lrn_plain.recorder, lrn_graphed.recorder):
             assert abs(e_plain[1] - e_graphed[1]) < 1e-4, (
                 f"Val losses diverged: plain={e_plain[1]:.6f} vs graphed={e_graphed[1]:.6f}"
             )
