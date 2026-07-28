@@ -1,6 +1,7 @@
 """Backend preference and fused-kernel resolution shared by all multi-backend models."""
 
 __all__ = [
+    "AUTOTUNE_CACHE",
     "BACKENDS",
     "get_backend",
     "set_backend",
@@ -11,11 +12,20 @@ __all__ = [
 
 import contextvars
 import importlib
+import os
 import warnings
 from contextlib import contextmanager
 from types import ModuleType
 
 import torch
+
+#: Whether Triton autotune results persist to the on-disk cache across processes
+#: (``TSFAST_AUTOTUNE_CACHE=1``). Off by default: a cache hit skips the benchmark
+#: sweep entirely, so the first process's pick — possibly measured on a contended
+#: GPU — would be reused indefinitely, and the cache key distinguishes GPU
+#: architecture but not SKU. Worth enabling where repeated short-lived processes
+#: retune the same shapes (test suites), not where the timings matter.
+AUTOTUNE_CACHE = os.environ.get("TSFAST_AUTOTUNE_CACHE", "0") == "1"
 
 #: Recognized process-wide backend preferences. ``"auto"`` picks the fastest fused kernel
 #: available for the input's device; an explicit kernel family (``"triton"``, ``"c"``,

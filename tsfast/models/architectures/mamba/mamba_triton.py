@@ -29,6 +29,8 @@ __all__ = [
 
 import torch
 
+from ..._core.dispatch import AUTOTUNE_CACHE
+
 try:
     import triton
     import triton.language as tl
@@ -78,7 +80,7 @@ if _HAVE_TRITON:
     # L is intentionally NOT an autotune key: the launch grid is B*cdiv(D, BLOCK_D)
     # (L is only the inner tile-loop trip count), so the optimal (BLOCK_T, num_warps)
     # is L-invariant. Keying on L would re-search on every horizon-schedule length.
-    @triton.autotune(configs=_fwd_configs(), key=["D", "N", "STORE_CHK", "BLOCK_D"])
+    @triton.autotune(configs=_fwd_configs(), key=["D", "N", "STORE_CHK", "BLOCK_D"], cache_results=AUTOTUNE_CACHE)
     @triton.jit
     def _mamba_fwd(
         draw_ptr,  # [B, L, D] dt_proj output, pre-softplus
@@ -154,7 +156,9 @@ if _HAVE_TRITON:
             h = tl.sum(tl.where(rows[:, None, None] == BLOCK_T - 1, h_c, 0.0), axis=0)
         tl.store(hlast_ptr + b * D * N + dn_off, h, mask=mask_dn)
 
-    @triton.autotune(configs=_bwd_configs(), key=["D", "N", "BLOCK_D"])  # L-invariant, see fwd
+    @triton.autotune(
+        configs=_bwd_configs(), key=["D", "N", "BLOCK_D"], cache_results=AUTOTUNE_CACHE
+    )  # L-invariant, see fwd
     @triton.jit
     def _mamba_bwd(
         draw_ptr,  # [B, L, D]

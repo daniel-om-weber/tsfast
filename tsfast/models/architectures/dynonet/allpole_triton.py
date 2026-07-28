@@ -43,6 +43,8 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 
+from ..._core.dispatch import AUTOTUNE_CACHE
+
 try:
     import triton
 
@@ -73,7 +75,7 @@ def _gen_source(na: int) -> str:
         " for bl in (8, 16, 32) for w in (1, 2) for s in (1, 3)]",
         "",
         "",
-        '@triton.autotune(configs=_configs(), key=["LANES", "HAS_Y0"])',  # L excluded: L-independent grid; best config L-stable to a near-tie (measured) — no re-autotune per horizon length
+        f'@triton.autotune(configs=_configs(), key=["LANES", "HAS_Y0"], cache_results={AUTOTUNE_CACHE})',  # L excluded: L-independent grid; best config L-stable to a near-tie (measured) — no re-autotune per horizon length
         "@triton.jit",
         "def allpole_fwd(a_ptr, w_ptr, y0_ptr, y_ptr, LANES, L, HAS_Y0: tl.constexpr, BLOCK: tl.constexpr):",
         "    pid = tl.program_id(0)",
@@ -94,7 +96,7 @@ def _gen_source(na: int) -> str:
         shift + "        s0 = yt",
         "",
         "",
-        '@triton.autotune(configs=_configs(), key=["LANES"])',  # L excluded, see fwd
+        f'@triton.autotune(configs=_configs(), key=["LANES"], cache_results={AUTOTUNE_CACHE})',  # L excluded, see fwd
         "@triton.jit",
         "def allpole_bwd(a_ptr, g_ptr, y_ptr, gw_ptr, ga_ptr, LANES, L, BLOCK: tl.constexpr):",
         "    pid = tl.program_id(0)",

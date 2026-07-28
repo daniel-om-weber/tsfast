@@ -22,6 +22,8 @@ __all__ = [
 
 import torch
 
+from ..dispatch import AUTOTUNE_CACHE
+
 try:
     import triton
     import triton.language as tl
@@ -39,7 +41,9 @@ def _configs():
 
 if _HAVE_TRITON:
 
-    @triton.autotune(configs=_configs(), key=["N"])  # L excluded: grid=B*cdiv(N,BLOCK_N) is L-invariant
+    @triton.autotune(
+        configs=_configs(), key=["N"], cache_results=AUTOTUNE_CACHE
+    )  # L excluded: grid=B*cdiv(N,BLOCK_N) is L-invariant
     @triton.jit
     def _sel_fwd(lam_ptr, v_ptr, x0_ptr, out_ptr, B, L, N, HAS_X0: tl.constexpr, BLOCK_N: tl.constexpr):
         pid = tl.program_id(0)
@@ -59,7 +63,9 @@ if _HAVE_TRITON:
             x = a * x + vt
             tl.store(out_ptr + p, x, mask=mask)
 
-    @triton.autotune(configs=_configs(), key=["N"])  # L excluded: grid=B*cdiv(N,BLOCK_N) is L-invariant
+    @triton.autotune(
+        configs=_configs(), key=["N"], cache_results=AUTOTUNE_CACHE
+    )  # L excluded: grid=B*cdiv(N,BLOCK_N) is L-invariant
     @triton.jit
     def _sel_bwd(
         lam_ptr,

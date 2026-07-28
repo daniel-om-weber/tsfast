@@ -1,7 +1,15 @@
 """Shared test fixtures for tsfast test suite."""
 
-import pytest
-from pathlib import Path
+import os
+
+# Reuse Triton autotune results across runs. The suite retunes the same handful of kernel
+# shapes in every short-lived process, and the sweep costs ~1.8s per shape key. Must be set
+# before tsfast is imported: the backends read the flag at import time. Kernel timings are
+# not under test here — do not set this where they are (benchmarks/).
+os.environ.setdefault("TSFAST_AUTOTUNE_CACHE", "1")
+
+import pytest  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 
 def _find_project_root():
@@ -48,6 +56,26 @@ def dls_simulation(wh_path):
         dataset=wh_path,
         win_sz=100,
         stp_sz=100,
+        num_workers=0,
+        n_batches_train=2,
+    )
+
+
+@pytest.fixture(scope="session")
+def dls_short(wh_path):
+    """DataLoaders with a short window, for tests whose cost scales with sequence length.
+
+    ONNX export decomposes recurrent models per timestep before folding them back into a
+    single node, so export time is linear in the window while the exported graph is not.
+    """
+    from tsfast.tsdata import create_dls
+
+    return create_dls(
+        u=["u"],
+        y=["y"],
+        dataset=wh_path,
+        win_sz=25,
+        stp_sz=25,
         num_workers=0,
         n_batches_train=2,
     )

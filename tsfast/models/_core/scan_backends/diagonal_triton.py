@@ -33,6 +33,8 @@ __all__ = [
 
 import torch
 
+from ..dispatch import AUTOTUNE_CACHE
+
 try:
     import triton
     import triton.language as tl
@@ -74,7 +76,7 @@ if _HAVE_TRITON:
         return ar, ai, br, bi
 
     @triton.autotune(
-        configs=_configs(), key=["M", "N", "STR", "HAS_X0"]
+        configs=_configs(), key=["M", "N", "STR", "HAS_X0"], cache_results=AUTOTUNE_CACHE
     )  # L excluded: L-independent grid; best config L-stable to a near-tie (<=9% at L=5000, measured) — no re-autotune per horizon length
     @triton.jit
     def _diag_fwd_kernel(
@@ -132,7 +134,7 @@ if _HAVE_TRITON:
             xr = tl.sum(tl.where(last, xr_c, 0.0), axis=0)
 
     @triton.autotune(
-        configs=_configs(), key=["M", "N", "STR", "HAS_X0"]
+        configs=_configs(), key=["M", "N", "STR", "HAS_X0"], cache_results=AUTOTUNE_CACHE
     )  # L excluded: L-independent grid; best config L-stable to a near-tie (<=9% at L=5000, measured) — no re-autotune per horizon length
     @triton.jit
     def _diag_bwd_kernel(
